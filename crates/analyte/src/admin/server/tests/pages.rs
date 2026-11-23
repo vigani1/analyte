@@ -90,7 +90,7 @@ async fn raw_views_are_audited_and_lists_paginate() -> Result<(), Error> {
     rusqlite::Connection::open(&database)?.execute_batch("CREATE TRIGGER test_refuse_raw_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit refusal'); END;")?;
     let refused = request(&host, &raw_path, &post_auth, Some(&form)).await?;
     assert!(refused.starts_with("HTTP/1.1 503"));
-    assert!(!refused.contains("RAW"));
+    assert!(!shows_raw(&refused));
     assert!(!refused.contains("3c 73 63"));
     rusqlite::Connection::open(database)?.execute_batch("DROP TRIGGER test_refuse_raw_audit;")?;
     drop(state);
@@ -210,8 +210,8 @@ async fn assert_paginated_lists(host: &str, auth: &str, parked_id: i64) -> Resul
         assert!(response.starts_with("HTTP/1.1 200"), "{response}");
         headers_present(&response);
         assert_eq!(response.matches(item).count(), sections);
-        assert!(!response.contains("RAW"));
-        assert!(!response.contains("TAIL"));
+        assert!(!shows_raw(&response));
+        assert!(!shows_tail(&response));
     }
     let list = request(host, "/parked", auth, None).await?;
     assert_parked_list(&list);
@@ -292,8 +292,8 @@ async fn assert_raw_authorization(
     let detail = request(host, &format!("/parked/{parked_id}"), auth, None).await?;
     assert!(detail.starts_with("HTTP/1.1 200"));
     assert!(detail.contains("1970-01-01T00:00:00Z"));
-    assert!(!detail.contains("RAW"));
-    assert!(!detail.contains("TAIL"));
+    assert!(!shows_raw(&detail));
+    assert!(!shows_tail(&detail));
     let csrf = csrf(&detail)?;
     let form = format!(
         "csrf={}&target={}&source=receipt&after=0&reason=review",
@@ -310,7 +310,7 @@ async fn assert_raw_authorization(
     ] {
         let response = request(host, &raw_path, &post_auth, Some(&rejected)).await?;
         assert!(response.starts_with("HTTP/1.1 403"));
-        assert!(!response.contains("RAW"));
+        assert!(!shows_raw(&response));
     }
     let other_session = login(host, bearer).await?;
     let wrong_session = request(
@@ -332,7 +332,7 @@ async fn assert_raw_authorization(
     )
     .await?;
     assert!(!unrelated.starts_with("HTTP/1.1 200"));
-    assert!(!unrelated.contains("RAW"));
+    assert!(!shows_raw(&unrelated));
     Ok(RawPage {
         csrf,
         form,
@@ -369,7 +369,7 @@ async fn assert_raw_views_audited(
         assert!(!response.contains("<script>"));
         assert!(response.contains("3c 73 63 72 69 70 74 3e"));
         assert_raw_page(&response);
-        assert!(!response.contains("TAIL"));
+        assert!(!shows_tail(&response));
     }
     let tail = request(
         host,
@@ -379,7 +379,7 @@ async fn assert_raw_views_audited(
     )
     .await?;
     assert!(tail.starts_with("HTTP/1.1 200"));
-    assert!(tail.contains("TAIL"));
+    assert!(shows_tail(&tail));
     let first_audit = store.request(fixture_deadline()?, |s| s.audits(1)).await?;
     let (sequence, audit) = first_audit.first().ok_or("raw audit absent")?;
     assert_eq!(audit.action.as_str(), "admin-raw-view");
@@ -545,4 +545,15 @@ fn assert_raw_page(response: &str) {
     assert!(response.contains("<p class=\"alert__title\">May contain patient data</p>"));
     assert!(response.contains("value=\"review\""));
     assert!(response.contains("name=\"source\" value=\"receipt\">Show the next part</button>"));
+}
+
+// Pages carry a random base64 session token, which can contain the letters
+// "RAW" or "TAIL" by chance; match the seeded message's own surroundings
+// instead, in raw and HTML-escaped form, which base64 cannot contain.
+fn shows_raw(page: &str) -> bool {
+    page.contains("<script>RAW") || page.contains("&#60;script&#62;RAW")
+}
+
+fn shows_tail(page: &str) -> bool {
+    page.contains("AAAATAIL")
 }
