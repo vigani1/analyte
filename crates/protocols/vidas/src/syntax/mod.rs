@@ -1,5 +1,5 @@
 //! Parses VIDAS tagged fields (BCI Appendix A chapter 4).
-use analyte_model::SampleId;
+use analyte_model::{SampleId, SourceText};
 use thiserror::Error;
 #[cfg(test)]
 mod tests;
@@ -13,6 +13,15 @@ pub enum SampleLimit {
     Seventeen,
 }
 
+/// Selects which documented source evidence may identify result controls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlLabels {
+    /// Only the reserved VIDAS PC control identifiers.
+    PcSlots,
+    /// Reserved identifiers plus labels identified by Appendix B flags.
+    AppendixB,
+}
+
 /// Direction and meaning of a logical message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -20,6 +29,85 @@ pub enum Kind {
     Request,
     /// One result, possibly an assay component or control.
     Result,
+}
+
+/// Subject carried by the VIDAS ci field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Subject {
+    /// Exact sample identifier.
+    Sample(SampleId),
+    /// Internal kit control, with the strip lot separate from its name.
+    KitControl {
+        /// Exact control name.
+        name: SourceText,
+        /// Exact strip lot.
+        lot: SourceText,
+    },
+    /// Exact external quality control identifier.
+    QualityControl(SourceText),
+}
+
+impl Subject {
+    fn parse(
+        raw: &str,
+        kind: Kind,
+        limit: SampleLimit,
+        flag: Option<&str>,
+        labels: ControlLabels,
+    ) -> Result<Self, Error> {
+        // BCI Link rev C p. 4-5; VIDAS PC Manual F, internal and external controls.
+        if kind == Kind::Result {
+            let (name, lot) = raw.split_once(' ').unwrap_or((raw, ""));
+            let kit = matches!(name, "C1" | "C2" | "C3");
+            let qc = matches!(raw, "QC1" | "QC2" | "QC3" | "QC4" | "QC5" | "QC6");
+            if kit && flag == Some("conthwst") || qc && flag == Some("conthnor") {
+                return Err(Error::Field("ci".into()));
+            }
+            if !kit
+                && !qc
+                && matches!(flag, Some("conthnor" | "conthwst"))
+                && labels == ControlLabels::PcSlots
+            {
+                return Err(Error::Field("ci".into()));
+            }
+            if kit || flag == Some("conthnor") {
+                if !is_strip_lot(lot) || name.is_empty() || raw.len() > 17 {
+                    return Err(Error::Field("ci".into()));
+                }
+                return Ok(Self::KitControl {
+                    name: SourceText::new(name)?,
+                    lot: SourceText::new(lot)?,
+                });
+            }
+            if qc || flag == Some("conthwst") {
+                if raw.len() > 12 || raw.trim().is_empty() {
+                    return Err(Error::Field("ci".into()));
+                }
+                return Ok(Self::QualityControl(SourceText::new(raw)?));
+            }
+            // A composite that looks like a kit label needs source evidence
+            // before it can be assigned to either a patient or a control.
+            if is_strip_lot(lot) {
+                return Err(Error::Field("ci".into()));
+            }
+        }
+        let max = match limit {
+            SampleLimit::Twelve => 12,
+            SampleLimit::Seventeen => 17,
+        };
+        if raw.len() > max {
+            return Err(Error::Field("ci".into()));
+        }
+        Ok(Self::Sample(SampleId::new(raw)?))
+    }
+}
+
+fn is_strip_lot(lot: &str) -> bool {
+    lot.split_once('-').is_some_and(|(date, version)| {
+        date.len() == 6
+            && date.bytes().all(|byte| byte.is_ascii_digit())
+            && matches!(version, "0" | "2")
+    })
 }
 
 const REQUEST: &[&str] = &["mt", "pi", "pn", "pb", "ps", "so", "si", "ci", "rt", "qd"];
@@ -54,7 +142,7 @@ impl Field {
 pub struct Message {
     original: String,
     fields: Vec<Field>,
-    sample: SampleId,
+    subject: Subject,
     kind: Kind,
 }
 
@@ -83,6 +171,17 @@ impl Message {
     /// # Errors
     /// Rejects malformed, excessive, duplicate, out-of-order or incomplete input.
     pub fn parse(text: &str, limit: SampleLimit) -> Result<Self, Error> {
+        Self::parse_with_control_labels(text, limit, ControlLabels::PcSlots)
+    }
+
+    /// Parses a message using the source control labels accepted by the definition.
+    /// # Errors
+    /// Rejects malformed messages and controls without an established label layout.
+    pub fn parse_with_control_labels(
+        text: &str,
+        limit: SampleLimit,
+        labels: ControlLabels,
+    ) -> Result<Self, Error> {
         if text.len() > 1920
             || !text.ends_with('|')
             || !text.bytes().all(|b| (32..=126).contains(&b))
@@ -135,10 +234,6 @@ impl Message {
             }
             let maximum = match field.tag.as_str() {
                 "pi" => 17,
-                "ci" => match limit {
-                    SampleLimit::Twelve => 12,
-                    SampleLimit::Seventeen => 17,
-                },
                 "pn" | "y3" => 30,
                 "so" => 5,
                 "si" => 0,
@@ -169,11 +264,17 @@ impl Message {
                 }
             }
         }
-        let sample = SampleId::new(get("ci").ok_or_else(|| Error::Field("ci".into()))?)?;
+        let subject = Subject::parse(
+            get("ci").ok_or_else(|| Error::Field("ci".into()))?,
+            kind,
+            limit,
+            get("nc"),
+            labels,
+        )?;
         Ok(Self {
             original: text.to_owned(),
             fields,
-            sample,
+            subject,
             kind,
         })
     }
@@ -190,10 +291,10 @@ impl Message {
         &self.fields
     }
 
-    /// Returns the entered/downloaded identifier exactly.
+    /// Returns the sample or control identified by the source.
     #[must_use]
-    pub fn sample(&self) -> &SampleId {
-        &self.sample
+    pub fn subject(&self) -> &Subject {
+        &self.subject
     }
 
     /// Returns the declared logical message kind.

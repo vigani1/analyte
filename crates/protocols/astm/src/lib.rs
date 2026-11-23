@@ -16,7 +16,13 @@ mod codes;
 pub use codes::{ProcessingId, ResultStatus, TerminationCode};
 
 mod query;
-pub use query::{QueryIntent, QuerySelectorError, query_intent, starts_query};
+pub use query::{
+    OrderProfile, QueryIntent, QuerySelectorError, StructuredQuery, query_intent, starts_query,
+    structured_query_intent,
+};
 
 mod encode;
-pub use encode::{OrderError, OrderRecord, OrderTermination, encode_order_envelope};
+pub use encode::{
+    OrderError, OrderRecord, OrderTermination, encode_order_envelope,
+    encode_structured_order_envelope,
+};

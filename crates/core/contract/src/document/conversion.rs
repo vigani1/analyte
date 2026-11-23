@@ -23,6 +23,7 @@ impl From<&analyte_model::ResultValue> for ResultValue {
                 Self::text((&v.original).into(), v.decoded_text().map(Into::into))
             }
             parsed @ (analyte_model::ValueInterpretation::Absent
+            | analyte_model::ValueInterpretation::Invalid
             | analyte_model::ValueInterpretation::Qualitative(_)
             | analyte_model::ValueInterpretation::Numeric(_)
             | analyte_model::ValueInterpretation::Coded(_)
@@ -355,6 +356,7 @@ impl From<&analyte_model::ValueInterpretation> for ValueInterpretation {
         match v {
             analyte_model::ValueInterpretation::Numeric(v) => Self::Numeric(v.into()),
             analyte_model::ValueInterpretation::Text => Self::Text,
+            analyte_model::ValueInterpretation::Invalid => Self::Invalid,
             analyte_model::ValueInterpretation::Absent => Self::Absent,
             analyte_model::ValueInterpretation::Qualitative(reaction) => {
                 Self::Qualitative(match reaction {
@@ -426,6 +428,14 @@ impl From<&analyte_model::ResultDetails> for super::ResultDetails {
             predilution: v.predilution.as_ref().map(Into::into),
             specimen_label: v.specimen_label.as_ref().map(Into::into),
             control_name: v.control_name.as_ref().map(Into::into),
+            report_list: v.report_list.as_ref().map(Into::into),
+            control_knowledge: v.control_knowledge.as_ref().map(Into::into),
+            control_level: v.control_level.as_ref().map(Into::into),
+            control_lot: v.control_lot.as_ref().map(Into::into),
+            strip_lot: v.strip_lot.as_ref().map(Into::into),
+            instrument_id: v.instrument_id.as_ref().map(Into::into),
+            instrument_serial: v.instrument_serial.as_ref().map(Into::into),
+            technologist: v.technologist.as_ref().map(Into::into),
             termination: v.termination.as_ref().map(Into::into),
             completion: v.completion.map(|completion| match completion {
                 analyte_model::ReportCompletion::Normal => super::ReportCompletion::Normal,

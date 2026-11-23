@@ -1,4 +1,7 @@
 //! Maps received ASTM messages to model results and app orders to ASTM fields without I/O (LIS02-A2).
+mod structured;
+pub use structured::{map_structured_query, no_structured_orders};
+
 use crate::inbound::{grouping, source};
 use crate::orders::codes::{map_priority, map_test};
 use crate::orders::{AppOrder, map_specimen};
@@ -176,6 +179,12 @@ pub fn map_order(
     limits: &analyte_config::SyntaxLimits,
     settings: &analyte_config::AstmOrders,
 ) -> Result<analyte_astm::OrderRecord, OrderError> {
+    if let Some(profile) = settings.layout().profile {
+        return structured::map(Some(order), limits, settings, profile.wire(), None);
+    }
+    if order.test_dilutions.iter().any(Option::is_some) {
+        return Err(OrderError::UnsupportedDilution);
+    }
     let astm = &settings.layout();
     let settings = &settings.tables();
     if order.tests.is_empty() || order.tests.len() > limits.repetitions() {
@@ -303,6 +312,18 @@ pub enum OrderError {
     /// ASTM text is empty or contains unsupported bytes or delimiters.
     #[error("ASTM text is empty or contains unsupported bytes or delimiters")]
     TextRepertoire,
+    /// Specimen cannot be bound to the documented query.
+    #[error("ASTM structured specimen mismatch")]
+    SpecimenMismatch,
+    /// Test code or priority cannot be sent as documented.
+    #[error("ASTM structured test code or priority is invalid")]
+    StructuredCode,
+    /// Repeating the same test can make the analyzer reject the order.
+    #[error("ASTM duplicate test")]
+    DuplicateTest,
+    /// The selected layout cannot represent the requested dilution.
+    #[error("unsupported ASTM order dilution")]
+    UnsupportedDilution,
     /// Shared order evidence is unavailable or unmapped.
     #[error(transparent)]
     Shared(#[from] crate::OrderMappingError),

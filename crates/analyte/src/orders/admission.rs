@@ -26,7 +26,24 @@ pub(crate) async fn prepare<T, E: From<Error>>(
         return Ok(Prepared::Skipped);
     }
     let candidate = super::reservation::pending(machine, cached.id, order.fields().version)?;
-    match map(&order) {
+    let supports_dilution = machine
+        .snapshot
+        .effective()
+        .stack()
+        .astm_orders()
+        .is_some_and(|orders| orders.layout().profile.is_some());
+    let mapped = if !supports_dilution
+        && order
+            .fields()
+            .tests
+            .iter()
+            .any(|test| test.dilution_ratio.is_some())
+    {
+        Err(E::from(Error::UnsupportedDilution))
+    } else {
+        map(&order)
+    };
+    match mapped {
         Ok(mapped) => Ok(Prepared::Mapped(candidate, mapped)),
         Err(error) => {
             reject(store, machine, until, candidate, &reason(&error)).await?;

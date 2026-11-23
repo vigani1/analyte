@@ -2,6 +2,33 @@
 use analyte_config::{Draft, Stack};
 use analyte_fixtures::ConfigEdit as _;
 
+// ADR 0002; VIDAS BCI Link rev C appendix B.
+#[test]
+fn vidas_definitions_select_a_closed_control_label_policy() -> Result<(), Box<dyn std::error::Error>>
+{
+    let definition = include_str!("../examples/vidas_literal.toml");
+    let site = include_str!("../examples/site.toml");
+    let load = |definition: &str| {
+        Draft::load(
+            ("machine", definition),
+            ("site", site),
+            ("overrides", "schema_version=1"),
+        )?
+        .validate()
+    };
+    let chosen = definition.rewrite("[vidas]", "[vidas]\nresult_control_labels = 'appendix_b'");
+    let config = load(&chosen)?;
+    let Stack::Vidas(stack) = config.effective().stack() else {
+        return Err("VIDAS stack expected".into());
+    };
+    assert_eq!(
+        stack.policy().result_control_labels,
+        analyte_config::VidasResultControlLabels::AppendixB,
+    );
+    assert!(load(&chosen.rewrite("'appendix_b'", "'match_prefix'")).is_err());
+    Ok(())
+}
+
 // ADR 0002; VIDAS BCI Link rev A chapter 4
 #[test]
 fn vidas_ack_and_checksum_choices_keep_boolean_toml() -> Result<(), Box<dyn std::error::Error>> {

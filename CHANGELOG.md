@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **cobas e 411 ASTM orders** can answer identified tubes in either protocol
+  type and send cobas batch work lists. Replies carry the analyzer's original
+  coordinates and encode any requested dilution per test. An unknown lookup
+  gets a query error, and unconfirmed test-list replacement stays uncertain.
 - **HL7 barcode orders:** evidenced machine definitions can answer legacy
   record queries with positional display pages. When the order cache is
   unavailable or cannot answer a filter, the analyzer gets an explicit error.
@@ -10,6 +14,11 @@
   a numeric result and its qualitative call together, read separate
   interference measurements, and pair control measurements with their
   lots and levels. Ambiguous reports stay held with their original bytes.
+- VIDAS result uploads preserve control identifiers and strip lots, localized
+  invalid calls, completion time and traceability. The two CMVA doses stay
+  separate and held for review.
+- Autolyser results retain the reported sample code and structured control
+  evidence. Reports still require review when the run cannot be identified.
 - **ASTM result uploads:** documented Roche layouts retain qualitative codes,
   cutoff indices, missing results, alarms and dilution evidence. Generated
   and ambiguous QC labels are held for review. Biolyte mapping keeps

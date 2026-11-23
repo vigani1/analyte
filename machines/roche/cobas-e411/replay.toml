@@ -15,3 +15,15 @@ analyzer_mode = "cobas"
 
 ["elecsys-upload.rec.jsonl".recording]
 analyzer_mode = "elecsys"
+
+["cobas-query-reply.rec.jsonl"]
+order_profile = "cobas"
+
+["cobas-query-reply.rec.jsonl".recording]
+analyzer_mode = "cobas"
+
+["elecsys-query-reply.rec.jsonl"]
+order_profile = "elecsys"
+
+["elecsys-query-reply.rec.jsonl".recording]
+analyzer_mode = "elecsys"

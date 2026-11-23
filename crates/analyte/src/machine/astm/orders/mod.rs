@@ -54,6 +54,8 @@ impl<'a> Queries<'a> {
 pub(crate) enum Request {
     /// Exact specimen identifiers requested by the machine.
     Orders(Vec<SampleId>),
+    /// A query with per-sample instrument context.
+    Structured(analyte_astm::StructuredQuery),
     /// Cancel the pending lookup without sending machine work.
     Cancel,
     /// Selectors outside the declared specimen-only subset.
@@ -64,11 +66,14 @@ pub(crate) enum Request {
 pub(crate) fn request(queries: Queries<'_>, payload: &[u8]) -> Result<Option<Request>, Error> {
     let limits = crate::machine::astm::settings::parser_limits(queries.stack.settings().syntax());
     let messages = analyte_astm::parse(payload, limits)?;
+    let intent = match queries.orders.layout().profile {
+        Some(profile) => analyte_astm::structured_query_intent(&messages, profile.wire()),
+        None => analyte_astm::query_intent(&messages),
+    };
     Ok(
-        match analyte_astm::query_intent(&messages)
-            .map_err(|_| Error::UnsupportedSpecimenEscapes)?
-        {
+        match intent.map_err(|_| Error::UnsupportedSpecimenEscapes)? {
             analyte_astm::QueryIntent::Absent => None,
+            analyte_astm::QueryIntent::Structured(query) => Some(Request::Structured(query)),
             analyte_astm::QueryIntent::Unsupported => Some(Request::Unsupported),
             analyte_astm::QueryIntent::Cancel => Some(Request::Cancel),
             analyte_astm::QueryIntent::Orders(samples) => Some(Request::Orders(
@@ -95,12 +100,41 @@ impl<'a> Pending<'a> {
         samples: Vec<SampleId>,
         started: Instant,
     ) -> Result<Self, Error> {
+        Self::with_context(store, machine, queries, samples, None, started)
+    }
+
+    /// Starts the same cache lookup, carrying coordinates through to the reply.
+    pub(crate) fn structured(
+        store: &'a Handle,
+        machine: &'a Machine,
+        queries: Queries<'a>,
+        query: analyte_astm::StructuredQuery,
+        started: Instant,
+    ) -> Result<Self, Error> {
+        let samples = query
+            .sample()
+            .map(SampleId::new)
+            .transpose()
+            .map_err(crate::orders::OrderError::from)?
+            .into_iter()
+            .collect();
+        Self::with_context(store, machine, queries, samples, Some(query), started)
+    }
+
+    fn with_context(
+        store: &'a Handle,
+        machine: &'a Machine,
+        queries: Queries<'a>,
+        samples: Vec<SampleId>,
+        context: Option<analyte_astm::StructuredQuery>,
+        started: Instant,
+    ) -> Result<Self, Error> {
         let until = started
             .checked_add(std::time::Duration::from_millis(u64::from(
                 queries.policy.deadline_ms,
             )))
             .ok_or_else(|| Error::QueryDeadlineOverflow)?;
-        let future = Box::pin(answer(store, machine, queries, samples, until));
+        let future = Box::pin(answer(store, machine, queries, samples, context, until));
         Ok(Self {
             future,
             until,
@@ -125,8 +159,13 @@ async fn answer(
     machine: &Machine,
     queries: Queries<'_>,
     samples: Vec<SampleId>,
+    context: Option<analyte_astm::StructuredQuery>,
     until: Instant,
 ) -> Result<Option<Reply>, Error> {
+    if samples.is_empty() {
+        return Ok(failure(queries));
+    }
+    let structured = queries.orders.layout().profile.zip(context.as_ref());
     let mut records = Vec::new();
     let mut candidates = Vec::new();
     let mut bytes = 0usize;
@@ -151,11 +190,22 @@ async fn answer(
                         |order| {
                             let order = crate::orders::app_order(order)
                                 .map_err(crate::orders::OrderError::from)?;
-                            Ok(analyte_mapping::astm::map_order(
-                                &order,
-                                queries.stack.settings().syntax().limits(),
-                                queries.orders,
-                            )?)
+                            let limits = queries.stack.settings().syntax().limits();
+                            let mapped = match structured {
+                                Some((profile, query)) => {
+                                    analyte_mapping::astm::map_structured_query(
+                                        &order,
+                                        limits,
+                                        queries.orders,
+                                        profile.wire(),
+                                        query,
+                                    )
+                                }
+                                None => {
+                                    analyte_mapping::astm::map_order(&order, limits, queries.orders)
+                                }
+                            };
+                            Ok(mapped?)
                         },
                     )
                     .await?
@@ -165,6 +215,11 @@ async fn answer(
                             return Ok(failure(queries));
                         }
                         Prepared::Mapped(candidate, mapped) => {
+                            // Separate lists for the same sample can replace one
+                            // another. Require a single app-owned complete list.
+                            if structured.is_some() && !records.is_empty() {
+                                return Ok(failure(queries));
+                            }
                             candidates.push(candidate);
                             records.push(mapped.encode());
                         }
@@ -184,13 +239,27 @@ async fn answer(
     if Instant::now() >= until {
         return Ok(failure(queries));
     }
+    if records.is_empty()
+        && let Some((profile, query)) = structured
+    {
+        let limits = queries.stack.settings().syntax().limits();
+        let Ok(empty) = analyte_mapping::astm::no_structured_orders(
+            limits,
+            queries.orders,
+            profile.wire(),
+            query,
+        ) else {
+            return Ok(failure(queries));
+        };
+        records.push(empty.encode());
+    }
     let code = if records.is_empty() {
         analyte_astm::OrderTermination::NoInformation
     } else {
         analyte_astm::OrderTermination::Normal
     };
     Ok(Some(Reply {
-        records: envelope(queries.orders, records, code),
+        records: envelope(queries.orders, records, code, false),
         candidates,
     }))
 }
@@ -202,6 +271,7 @@ pub(crate) fn failure(queries: Queries<'_>) -> Option<Reply> {
                 queries.orders,
                 Vec::new(),
                 analyte_astm::OrderTermination::QueryError,
+                false,
             ),
             candidates: Vec::new(),
         }),
@@ -214,12 +284,22 @@ pub(crate) fn envelope(
     settings: &AstmOrders,
     orders: Vec<Vec<u8>>,
     termination: analyte_astm::OrderTermination,
+    batch: bool,
 ) -> Vec<Vec<u8>> {
     let receiver = settings
         .layout()
         .receiver
         .as_ref()
         .map_or("", |id| id.as_str());
+    if let Some(profile) = settings.layout().profile {
+        return analyte_astm::encode_structured_order_envelope(
+            profile.wire(),
+            batch,
+            receiver,
+            orders,
+            termination,
+        );
+    }
     let timestamp = jiff::Timestamp::now()
         .strftime("%Y%m%d%H%M%S%z")
         .to_string();

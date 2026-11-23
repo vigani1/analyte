@@ -17,27 +17,63 @@ pub enum OrderTermination {
 pub fn encode_order_envelope(
     receiver: &str,
     timestamp: &str,
-    mut orders: Vec<Vec<u8>>,
+    orders: Vec<Vec<u8>>,
     termination: OrderTermination,
 ) -> Vec<Vec<u8>> {
-    let termination = match termination {
-        OrderTermination::Normal => b'N',
-        OrderTermination::NoInformation => b'I',
-        OrderTermination::QueryError => b'Q',
-    };
-    let receiver = receiver
+    let receiver = escaped_receiver(receiver);
+    let header = format!("H|\\^&|||Analyte|||||{receiver}||P|LIS2-A2|{timestamp}\r");
+    envelope(header.into_bytes(), orders, code(termination))
+}
+
+fn code(termination: OrderTermination) -> &'static [u8] {
+    match termination {
+        OrderTermination::Normal => b"L|1|N\r",
+        OrderTermination::NoInformation => b"L|1|I\r",
+        OrderTermination::QueryError => b"L|1|Q\r",
+    }
+}
+
+fn escaped_receiver(receiver: &str) -> String {
+    receiver
         .replace('&', "&E&")
         .replace('|', "&F&")
         .replace('^', "&S&")
-        .replace('\\', "&R&");
-    let mut records =
-        vec![format!("H|\\^&|||Analyte|||||{receiver}||P|LIS2-A2|{timestamp}\r").into_bytes()];
-    for (index, order) in orders.drain(..).enumerate() {
+        .replace('\\', "&R&")
+}
+
+fn envelope(header: Vec<u8>, orders: Vec<Vec<u8>>, end: &[u8]) -> Vec<Vec<u8>> {
+    let mut records = vec![header];
+    for (index, order) in orders.into_iter().enumerate() {
         records.push(format!("P|{}\r", index.saturating_add(1)).into_bytes());
         records.push(order);
     }
-    records.push(vec![b'L', b'|', b'1', b'|', termination, b'\r']);
+    records.push(end.to_vec());
     records
+}
+
+/// Encodes a documented vendor envelope for query replies or batch downloads.
+#[must_use]
+pub fn encode_structured_order_envelope(
+    profile: crate::OrderProfile,
+    batch: bool,
+    receiver: &str,
+    orders: Vec<Vec<u8>>,
+    termination: OrderTermination,
+) -> Vec<Vec<u8>> {
+    use crate::OrderProfile::{Cobas, Elecsys};
+    let header = match profile {
+        Elecsys => b"H|\\^&|||Analyte|||||||P||\r".to_vec(),
+        Cobas => {
+            let receiver = escaped_receiver(receiver);
+            let cause = if batch { "BATCH" } else { "REPLY" };
+            format!("H|\\^&|||Analyte^1|||||{receiver}|TSDWN^{cause}|P|1\r").into_bytes()
+        }
+    };
+    let end = match (profile, termination) {
+        (Elecsys, OrderTermination::Normal) => b"L|1|\r".as_slice(),
+        (_, termination) => code(termination),
+    };
+    envelope(header, orders, end)
 }
 
 #[cfg(test)]

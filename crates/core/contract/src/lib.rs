@@ -142,7 +142,10 @@ wire!(Patient {
 wire!(OrderTest {
     namespace: document::Identifier, value: document::Identifier,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    name: Option<Text>
+    name: Option<Text>,
+    /// Requested automatic dilution ratio denominator, e.g. 5 for 1:5.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    dilution_ratio: Option<std::num::NonZeroU16>
 });
 wire!(OrderFields {
     id: Text, version: std::num::NonZeroU64, state: document::OrderState, sample_id: Text,

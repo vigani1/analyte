@@ -3,11 +3,13 @@ use crate::inbound::evidence::{Error, map_part, map_result, map_test, map_units,
 use crate::orders::codes::{self, map_priority};
 use crate::orders::{AppOrder, map_patient};
 use crate::{Output, Position};
+use analyte_vidas::syntax::Subject;
 
 use analyte_model::{
-    Dilution, DilutionApplied, EvidenceList, Identifier, IdentityStatus, NamespacedId,
-    ObservationIdentity, Reason, ResultIdentity, ResultValue, SampleId, SampleIdentity,
-    SampleSource, SourceText, Units, ValueInterpretation,
+    Dilution, DilutionApplied, EvidenceList, Identifier, IdentityStatus, NamedSourceTime,
+    NamespacedId, ObservationIdentity, QcClass, Reason, ResultDetails, ResultIdentity, ResultValue,
+    SampleId, SampleIdentity, SampleSource, SourceText, SourceTime, TimePrecision, Units,
+    ValueInterpretation,
 };
 /// Maps VIDAS values and resolves identity only with documented completion evidence.
 /// # Errors
@@ -32,6 +34,8 @@ pub fn map(
         return Ok(output);
     };
     let mut source = map_part(test, evidence.value, time)?;
+    let completion = completion_time(message)?;
+    source.details = result_details(message, &evidence.subject)?;
     source.units = evidence.unit.map(Units::original);
     source.flags = EvidenceList::new(evidence.flag.into_iter().collect())?;
     source.comments = EvidenceList::new(vec![evidence.call])?;
@@ -43,48 +47,115 @@ pub fn map(
         });
     }
     map_units(machine.settings().codes(), &mut source)?;
-    let identity = result_identity(
-        machine,
-        message,
-        &evidence.sample,
-        &source.test,
-        input.revision,
-    )?;
-    push_result(
-        &mut output,
-        map_result(
-            receipt,
-            Some(SampleIdentity {
-                id: evidence.sample,
-                source: SampleSource::Unknown,
-                position: None,
-            }),
-            source,
-            identity,
-        )?,
-    )?;
+    let (sample, identity) = match evidence.subject {
+        Subject::Sample(id) => {
+            let identity = result_identity(
+                machine,
+                message,
+                &completion.time,
+                &id,
+                &source.test,
+                input.revision,
+            )?;
+            (
+                Some(SampleIdentity {
+                    id,
+                    source: SampleSource::Unknown,
+                    position: None,
+                }),
+                identity,
+            )
+        }
+        Subject::KitControl { .. } | Subject::QualityControl(_) => {
+            source.qc_class = QcClass::Control;
+            (
+                None,
+                IdentityStatus::Unresolved(Reason::new(
+                    "VIDAS control lacks trusted run identity",
+                )?),
+            )
+        }
+    };
+    source.times = EvidenceList::new(vec![completion])?;
+    push_result(&mut output, map_result(receipt, sample, source, identity)?)?;
     Ok(output)
+}
+
+fn result_details(
+    message: &analyte_vidas::syntax::Message,
+    subject: &Subject,
+) -> Result<Option<ResultDetails>, Error> {
+    let field = |tag| message.get(tag).map(SourceText::new).transpose();
+    let mut details = ResultDetails {
+        instrument_id: field("id")?,
+        instrument_serial: field("sn")?,
+        technologist: field("m4")?,
+        ..ResultDetails::default()
+    };
+    match subject {
+        Subject::Sample(_) => {}
+        Subject::KitControl { name, lot } => {
+            details.specimen_label = field("ci")?;
+            details.control_name = Some(name.clone());
+            details.strip_lot = Some(lot.clone());
+        }
+        Subject::QualityControl(name) => {
+            details.control_name = Some(name.clone());
+        }
+    }
+    Ok((details != ResultDetails::default()).then_some(details))
+}
+
+fn completion_time(message: &analyte_vidas::syntax::Message) -> Result<NamedSourceTime, Error> {
+    let date = message.get("td").unwrap_or_default();
+    let time = message.get("tt").unwrap_or_default();
+    let original = format!("{date} {time}");
+    let valid = date.len() == 10
+        && time.len() == 5
+        && jiff::civil::DateTime::strptime("%Y/%m/%d %H:%M", &original).is_ok();
+    Ok(NamedSourceTime {
+        role: Identifier::new("completion")?,
+        time: SourceTime {
+            original: SourceText::new(&original)?,
+            // The civil date-time type includes a second, which Literal does not send.
+            parsed: None,
+            offset: None,
+            precision: if valid {
+                TimePrecision::Minute
+            } else {
+                TimePrecision::Unknown
+            },
+        },
+    })
 }
 
 fn result_identity(
     machine: &analyte_config::VidasStack,
     message: &analyte_vidas::syntax::Message,
+    completion: &SourceTime,
     sample: &SampleId,
     code: &NamespacedId,
     revision: analyte_model::Revision,
 ) -> Result<IdentityStatus, Error> {
+    // Rev C Figure 4-3 uses the same short assay code for both doses.
+    if code.value.as_str() == "CMVA" {
+        return Ok(IdentityStatus::Unresolved(Reason::new(
+            "VIDAS CMVA dose has no unique component or run identifier",
+        )?));
+    }
     let Some(recipe) = &machine.settings().codes().vidas_identity else {
         return Ok(IdentityStatus::Unresolved(Reason::new(
             &crate::Unidentified::VidasLiteral.to_string(),
         )?));
     };
     // BCI Link 161150-486 rev C, p. 4-6: date and time are completion evidence.
-    let completion = |tag| message.get(tag).filter(|value| !value.trim().is_empty());
-    let (Some(date), Some(time)) = (completion("td"), completion("tt")) else {
+    if completion.precision != TimePrecision::Minute {
         return Ok(IdentityStatus::Unresolved(Reason::new(
-            "missing VIDAS completion date or time",
+            "missing or unrecognized VIDAS completion date or time",
         )?));
-    };
+    }
+    let date = message.get("td").unwrap_or_default();
+    let time = message.get("tt").unwrap_or_default();
     Ok(IdentityStatus::Resolved(ResultIdentity {
         observation: ObservationIdentity {
             code: code.clone(),
@@ -108,8 +179,18 @@ pub fn map_evidence(
     if message.kind() != analyte_vidas::syntax::Kind::Result {
         return Err(analyte_vidas::syntax::Error::NotResult);
     }
+    let call = message
+        .get("ql")
+        .ok_or_else(|| analyte_vidas::syntax::Error::Field("ql".into()))?;
+    // Rev C Appendix B distinguishes invalid measurements from invalid recalibration.
+    // Literal carries printable ASCII only (chapter 4).
+    let parsed = match call.to_ascii_uppercase().as_str() {
+        "INVALID" | "INVALIDE" | "UNGUELTIG" | "INVALIDO" | "NON VALIDO" | "NIEPOPRAWNY"
+        | "GECERSIZ" => ValueInterpretation::Invalid,
+        _ => ValueInterpretation::Text,
+    };
     Ok(ResultEvidence {
-        sample: message.sample().clone(),
+        subject: message.subject().clone(),
         assay: SourceText::new(
             message
                 .get("rt")
@@ -121,26 +202,20 @@ pub fn map_evidence(
                     .get("qn")
                     .ok_or_else(|| analyte_vidas::syntax::Error::Field("qn".into()))?,
             )?,
-            ValueInterpretation::Text,
+            parsed,
         ),
-        call: SourceText::new(
-            message
-                .get("ql")
-                .ok_or_else(|| analyte_vidas::syntax::Error::Field("ql".into()))?,
-        )?,
+        call: SourceText::new(call)?,
         unit: message.get("y3").map(SourceText::new).transpose()?,
         flag: message.get("nc").map(SourceText::new).transpose()?,
         dilution: message.get("qd").map(SourceText::new).transpose()?,
     })
 }
 
-/// Uninterpreted result evidence, not a deliverable identified observation.
-/// No physical position exists in the documented schema. The host must resolve
-/// result/revision identity and patient versus QC classification before delivery.
+/// Source fields and explicit invalid-call evidence, before result identity is assigned.
 #[derive(Debug, Clone)]
 pub struct ResultEvidence {
-    /// Exact source sample identifier.
-    pub sample: SampleId,
+    /// Exact source sample or control evidence.
+    pub subject: Subject,
     /// The machine's assay code as sent; no assay name guessing.
     pub assay: SourceText,
     /// Original measured text, including comparator, error token or embedded unit.

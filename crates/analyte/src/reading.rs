@@ -227,10 +227,18 @@ pub(crate) fn vidas(
     raw: &[u8],
     settings: &analyte_config::VidasStack,
 ) -> Result<analyte_mapping::Output, Error> {
+    use analyte_config::VidasResultControlLabels;
+    use analyte_vidas::syntax::{ControlLabels, Message};
+
     let packet =
         analyte_framing::vidas::decode(raw, crate::machine::vidas::settings::framing(settings)?)?;
     let limit = crate::machine::vidas::settings::sample_limit(settings);
-    let message = analyte_vidas::syntax::Message::parse(std::str::from_utf8(&packet.body)?, limit)?;
+    let labels = match settings.policy().result_control_labels {
+        VidasResultControlLabels::PcSlots => ControlLabels::PcSlots,
+        VidasResultControlLabels::AppendixB => ControlLabels::AppendixB,
+    };
+    let message =
+        Message::parse_with_control_labels(std::str::from_utf8(&packet.body)?, limit, labels)?;
     Ok(analyte_mapping::vidas::map(settings, &message, input)?)
 }
 

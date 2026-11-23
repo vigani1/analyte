@@ -162,3 +162,17 @@ All cases use synthetic uploads in the [mapping suite](../../../crates/steps/map
 | Biolyte Appendix VI sections 9.4.16, 9.4.26, 10.1.3–4 and p. 86, method, padding, descriptor, report and observation status | `method_specimen_and_report_status_are_independent` |
 | Biolyte Appendix VI section 10.1.4, over-width text retention | `over_width_notation_is_kept_for_review` |
 | Biolyte Appendix VI section 11.1.3, sender abort and normal termination | `sender_abort_holds_retained_measurements` |
+
+## Documented structured ASTM order profiles
+
+- [x] HIM v2.3 Table 14 and pp. 48-50: both Q.3 layouts preserve the original
+  coordinates and distinguish resolved barcodes from missing/generated IDs.
+  Test: `structured_selectors_preserve_coordinates_and_exclude_generated_ids`.
+- [x] HIM v2.3 Tables 11-17 and pp. 48-50: two synthetic
+  [query/reply recordings](../../../machines/roche/cobas-e411/recordings)
+  assert the full header, order, dilution, specimen precedence and termination.
+- [x] HIM v2.3 Table 16 note 6 and Table 17: duplicate identity and
+  both dilution encodings have focused mapper tests.
+- [ ] Confirm installed analyzer acceptance, replacement, error replies and
+  batch behavior with de-identified exchanges. Synthetic replay keeps the
+  evidence at documented.

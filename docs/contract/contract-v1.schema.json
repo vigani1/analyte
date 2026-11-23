@@ -690,6 +690,16 @@
     "OrderTest": {
       "description": "Version 1 OrderTest; unknown fields are ignored.",
       "properties": {
+        "dilution_ratio": {
+          "description": "The dilution_ratio value, defined in docs/contract/v1.md.\nRequested automatic dilution ratio denominator, e.g. 5 for 1:5.",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "name": {
           "anyOf": [
             {
@@ -972,6 +982,39 @@
           ],
           "description": "Interpretation of the source termination, when the layout declares one."
         },
+        "control_knowledge": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Exact source code for known or unknown control material."
+        },
+        "control_level": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Exact level of the control used in the measurement."
+        },
+        "control_lot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Lot of the control material, as reported."
+        },
         "control_name": {
           "anyOf": [
             {
@@ -993,6 +1036,28 @@
             }
           ],
           "description": "Source-reported test cutoff, including an explicitly absent value."
+        },
+        "instrument_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Identifier of the analyzer that produced the result."
+        },
+        "instrument_serial": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Instrument serial number, including any embedded spaces."
         },
         "message_code": {
           "anyOf": [
@@ -1027,6 +1092,17 @@
           ],
           "description": "Source predilution indicator, independent of the selected factor."
         },
+        "report_list": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Exact list code the analyzer reports the measurement under."
+        },
         "report_status": {
           "anyOf": [
             {
@@ -1059,6 +1135,28 @@
             }
           ],
           "description": "Complete specimen or control label when its meaning is conditional."
+        },
+        "strip_lot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Lot of the test strip, as reported."
+        },
+        "technologist": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Technologist named in the source result."
         },
         "termination": {
           "anyOf": [
@@ -1794,6 +1892,11 @@
         {
           "const": "text",
           "description": "Source qualitative, textual or error token; original text remains authoritative.",
+          "type": "string"
+        },
+        {
+          "const": "invalid",
+          "description": "The analyzer explicitly reported an invalid measurement.",
           "type": "string"
         },
         {

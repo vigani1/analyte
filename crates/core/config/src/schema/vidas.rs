@@ -110,7 +110,24 @@ impl From<ChecksumAcceptance> for bool {
     }
 }
 
-/// Explicit installed VIDAS Literal settings; no defaults.
+/// Sources a VIDAS definition may use to identify control labels.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResultControlLabels {
+    /// Use only the reserved VIDAS PC control identifiers.
+    #[default]
+    PcSlots,
+    /// Also accept named controls identified by the exact Appendix B flags.
+    AppendixB,
+}
+
+impl ResultControlLabels {
+    fn is_pc_slots(&self) -> bool {
+        *self == Self::PcSlots
+    }
+}
+
+/// Explicit installed VIDAS Literal settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Settings {
@@ -133,6 +150,9 @@ pub struct Settings {
     pub checksum_acceptance: ChecksumAcceptance,
     /// Installed sample ID ceiling, twelve or seventeen.
     pub sample_limit: VidasSampleLimit,
+    /// Source evidence accepted for result control labels.
+    #[serde(default, skip_serializing_if = "ResultControlLabels::is_pc_slots")]
+    pub result_control_labels: ResultControlLabels,
     /// Peer ACK deadline.
     pub acknowledgment_ms: u32,
     /// Interbyte deadline.

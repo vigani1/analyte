@@ -3,7 +3,7 @@
 use analyte_config::{Draft, Validated};
 use analyte_fixtures::ConfigEdit as _;
 use analyte_mapping::{AppOrder, AppOrderPriority, OrderMappingError};
-use analyte_model::{Identifier, NamespacedId, SampleId};
+use analyte_model::{Identifier, NamespacedId, SampleId, SourceText};
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 const SECTION: &str = "\n[orders]\nsend_ahead=true\npatient_namespace='patients'\npriorities=[{app='routine',machine='R'}]\n";
 fn config(definition: &str) -> Result<Validated, analyte_config::Error> {
@@ -159,6 +159,7 @@ fn test(namespace: &str, value: &str) -> Result<NamespacedId, analyte_model::Tex
 
 fn order() -> Result<AppOrder, analyte_model::TextError> {
     Ok(AppOrder {
+        test_dilutions: Vec::new(),
         sample: SampleId::new("000Ab")?,
         tests: vec![test("synthetic", "SYN")?],
         test_names: vec![None],
@@ -422,4 +423,247 @@ fn vidas_completion_evidence_distinguishes_measurements() -> TestResult {
         if key == "codes.vidas_identity")
     );
     Ok(())
+}
+
+// BCI Link rev C pp. 4-5 and B-7; VIDAS PC Manual F ch. 10.
+#[test]
+fn vidas_control_labels_keep_composite_and_enforce_qc_width() -> TestResult {
+    use analyte_model::{QcClass, TimePrecision};
+
+    let config = config(include_str!(
+        "../../../core/config/examples/vidas_literal.toml"
+    ))?;
+    let analyte_config::Stack::Vidas(machine) = config.effective().stack() else {
+        return Err("expected VIDAS stack".into());
+    };
+    let result = analyte_mapping::vidas::map(
+        machine,
+        &vidas_control_message("KitX 260203-2", "conthnor")?,
+        result_input(),
+    )?;
+    let kit = &result.results.first().ok_or("kit result")?.content;
+    let part = kit.parts.as_slice().first().ok_or("part")?;
+    assert!(kit.sample.is_none());
+    assert_eq!(part.qc_class, QcClass::Control);
+    let details = part.details.as_ref().ok_or("result details")?;
+    assert_eq!(
+        details.instrument_id.as_ref().map(SourceText::as_str),
+        Some("Box 01")
+    );
+    assert_eq!(
+        details.instrument_serial.as_ref().map(SourceText::as_str),
+        Some("000 a")
+    );
+    assert_eq!(
+        details.technologist.as_ref().map(SourceText::as_str),
+        Some("Tech 7")
+    );
+    assert_eq!(
+        details.specimen_label.as_ref().map(SourceText::as_str),
+        Some("KitX 260203-2")
+    );
+    assert_eq!(
+        details.control_name.as_ref().map(SourceText::as_str),
+        Some("KitX")
+    );
+    assert_eq!(
+        details.strip_lot.as_ref().map(SourceText::as_str),
+        Some("260203-2")
+    );
+    let completion = part.times.as_slice().first().ok_or("completion")?;
+    assert_eq!(completion.role.as_str(), "completion");
+    assert_eq!(completion.time.original.as_str(), "2026/02/03 09:05");
+    assert_eq!(completion.time.precision, TimePrecision::Minute);
+    assert!(completion.time.offset.is_none());
+    for (id, flag) in [("QC6", ""), ("Qc0000000001", "conthwst")] {
+        let result = analyte_mapping::vidas::map(
+            machine,
+            &vidas_control_message(id, flag)?,
+            result_input(),
+        )?;
+        let qc = &result.results.first().ok_or("QC result")?.content;
+        let part = qc.parts.as_slice().first().ok_or("part")?;
+        assert!(qc.sample.is_none());
+        assert_eq!(part.qc_class, QcClass::Control);
+        let details = part.details.as_ref().ok_or("result details")?;
+        assert_eq!(
+            details.control_name.as_ref().map(SourceText::as_str),
+            Some(id)
+        );
+        assert!(details.strip_lot.is_none());
+    }
+    Ok(())
+}
+
+// BCI Link rev C pp. 4-5 and B-7; VIDAS PC Manual F pp. 6-8 and 10-8.
+#[test]
+fn vidas_rejects_ambiguous_control_labels() -> TestResult {
+    assert!(matches!(
+        vidas_control_message("C2 260203-0", "")?.subject(),
+        analyte_vidas::syntax::Subject::KitControl { name, lot }
+            if name.as_str() == "C2" && lot.as_str() == "260203-0"
+    ));
+    assert!(
+        analyte_vidas::syntax::Message::parse(
+            vidas_control_message("KitX 260203-2", "conthnor")?.text(),
+            analyte_vidas::syntax::SampleLimit::Twelve,
+        )
+        .is_err()
+    );
+    assert!(vidas_control_message("C2 260203-1", "").is_err());
+    assert!(vidas_control_message("C3", "").is_err());
+    assert!(vidas_control_message("QC1", "conthnor").is_err());
+    assert!(vidas_control_message("Kit 260203-2", "").is_err());
+    assert!(vidas_control_message("Qc00000000012", "conthwst").is_err());
+    Ok(())
+}
+
+fn vidas_control_message(
+    ci: &str,
+    flag: &str,
+) -> Result<analyte_vidas::syntax::Message, analyte_vidas::syntax::Error> {
+    use analyte_vidas::syntax::{ControlLabels, Message, SampleLimit};
+    Message::parse_with_control_labels(
+        &format!(
+            "mtrsl|pi|si|ci{ci}|rtSYN|tt09:05|td2026/02/03|ql|qn1|nc{flag}|idBox 01|sn000 a|m4Tech 7|"
+        ),
+        SampleLimit::Twelve,
+        ControlLabels::AppendixB,
+    )
+}
+
+// BCI Link rev C p. 4-9, Figure 4-3. The two separate doses use the same short assay code.
+#[test]
+fn vidas_cmva_doses_remain_separate_even_with_completion_recipe() -> TestResult {
+    let definition = include_str!("../../../core/config/examples/vidas_literal.toml");
+    let config = config(&format!("{definition}\n{VIDAS_RECIPE}"))?;
+    let analyte_config::Stack::Vidas(machine) = config.effective().stack() else {
+        return Err("expected VIDAS stack".into());
+    };
+    let mut receipts = Vec::new();
+    for dose in ["< 2", "41"] {
+        let message = analyte_vidas::syntax::Message::parse(
+            &format!("mtrsl|pi|si|ci000a|rtCMVA|tt09:05|td2026/02/03|ql|qn{dose}|"),
+            analyte_vidas::syntax::SampleLimit::Twelve,
+        )?;
+        let output = analyte_mapping::vidas::map(machine, &message, result_input())?;
+        let result = &output.results.first().ok_or("dose")?.content;
+        let part = result.parts.as_slice().first().ok_or("part")?;
+        assert!(result.requires_parking());
+        assert_eq!(
+            part.values
+                .as_slice()
+                .first()
+                .ok_or("value")?
+                .original
+                .as_str(),
+            dose
+        );
+        assert!(part.units.is_none());
+        assert!(part.dilution.is_none());
+        receipts.push(result.receipt);
+    }
+    assert_ne!(receipts.first(), receipts.last());
+    Ok(())
+}
+
+// Autolyser Rev18 pp. 175, 177–178. The association preserves the documented
+// padding, while an empty patient code or the analyzer's fallback stays unresolved.
+#[test]
+fn autolyser_keeps_report_code_without_inventing_sample_or_run() -> TestResult {
+    let definition = include_str!("../../../core/config/examples/autolyser.toml");
+    let config = config(definition)?;
+    let analyte_config::Stack::Autolyser(machine) = config.effective().stack() else {
+        return Err("expected Autolyser stack".into());
+    };
+    for (code, id) in [
+        ("00aBc          ", Some("00aBc          ")),
+        ("               ", None),
+        ("{0}            ", None),
+    ] {
+        let raw = format!("{code}TS001SYN   <0.1 ");
+        let report = analyte_autolyser::syntax::Report::parse(raw.as_bytes(), false)?;
+        let output = analyte_mapping::autolyser::map(machine, &report, result_input())?;
+        let result = &output.results.first().ok_or("result")?.content;
+        assert_eq!(result.sample.as_ref().map(|s| s.id.as_str()), id);
+        assert!(
+            result
+                .sample
+                .as_ref()
+                .and_then(|s| s.position.as_ref())
+                .is_none()
+        );
+        assert!(result.requires_parking());
+        let part = result.parts.as_slice().first().ok_or("part")?;
+        assert_eq!(
+            part.values
+                .as_slice()
+                .first()
+                .ok_or("value")?
+                .original
+                .as_str(),
+            "  <0.1 "
+        );
+    }
+    Ok(())
+}
+
+// Autolyser Rev18 §23.2 pp. 177–178. Follow the field widths, including the
+// original level and lot, in place of the inconsistent printed example.
+#[test]
+fn autolyser_projects_controls_layout_and_leaves_normal_placeholders_raw() -> TestResult {
+    use analyte_model::QcClass;
+    let config = config(include_str!("../../../core/config/examples/autolyser.toml"))?;
+    let analyte_config::Stack::Autolyser(machine) = config.effective().stack() else {
+        return Err("expected Autolyser stack".into());
+    };
+    let lot = " 00lot              ";
+    for (control, expected_class) in [
+        (format!("YU007{lot}"), QcClass::Control),
+        (format!("NK001{:20}", ""), QcClass::Unknown),
+    ] {
+        let raw = format!("00aBc          RU{control}001SYN   <0.1 ");
+        let report = analyte_autolyser::syntax::Report::parse(raw.as_bytes(), true)?;
+        let output = analyte_mapping::autolyser::map(machine, &report, result_input())?;
+        let result = &output.results.first().ok_or("result")?.content;
+        let part = result.parts.as_slice().first().ok_or("part")?;
+        assert_eq!(part.qc_class, expected_class);
+        assert!(result.requires_parking());
+        let details = part.details.as_ref().ok_or("result details")?;
+        assert_eq!(
+            details.report_list.as_ref().map(SourceText::as_str),
+            Some("R")
+        );
+        assert_eq!(
+            details.specimen_descriptor.as_ref().map(SourceText::as_str),
+            Some("U")
+        );
+        let control = expected_class == QcClass::Control;
+        if control {
+            assert!(result.sample.is_none());
+        }
+        assert_eq!(
+            details.control_knowledge.as_ref().map(SourceText::as_str),
+            control.then_some("U")
+        );
+        assert_eq!(
+            details.control_level.as_ref().map(SourceText::as_str),
+            control.then_some("007")
+        );
+        assert_eq!(
+            details.control_lot.as_ref().map(SourceText::as_str),
+            control.then_some(lot)
+        );
+        assert_eq!(report.raw, raw.as_bytes());
+    }
+    Ok(())
+}
+
+fn result_input() -> analyte_mapping::Input<'static> {
+    analyte_mapping::Input {
+        device: None,
+        receipt: analyte_model::ReceiptId::new(),
+        received_at: jiff::Timestamp::UNIX_EPOCH,
+        revision: analyte_model::Revision(0),
+    }
 }

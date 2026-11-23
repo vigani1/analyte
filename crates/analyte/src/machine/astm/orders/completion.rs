@@ -4,25 +4,23 @@ use analyte_dialog::astm::outcome::Code as AstmEnd;
 use analyte_model::OrderState;
 use analyte_store::{Handle, MachineOrder};
 
-/// Records a specific failed transfer as uncertain; normal transfer becomes Sent.
+/// Settles link completion, keeping a possible application replacement uncertain.
 pub(crate) async fn finished(
     store: &Handle,
     order: &MachineOrder,
     end: analyte_dialog::astm::End,
+    may_replace: bool,
 ) -> Result<(), Error> {
     // LIS01 confirms transfer, not the analyzer application's acceptance.
     // Only explicit application evidence may advance Sent to Accepted.
-    let code = match end {
-        analyte_dialog::astm::End::Normal => AstmEnd::Confirmed,
-        analyte_dialog::astm::End::Abort => AstmEnd::Aborted,
-        analyte_dialog::astm::End::Timeout => AstmEnd::Timeout,
-        analyte_dialog::astm::End::Interrupt => AstmEnd::Interrupted,
-        analyte_dialog::astm::End::Incomplete => AstmEnd::Incomplete,
-    };
-    let state = if end == analyte_dialog::astm::End::Normal {
-        OrderState::Sent
-    } else {
-        OrderState::Uncertain
+    use analyte_dialog::astm::End;
+    let (state, code) = match end {
+        End::Normal if may_replace => (OrderState::Uncertain, AstmEnd::ReplacementUnverified),
+        End::Normal => (OrderState::Sent, AstmEnd::Confirmed),
+        End::Abort => (OrderState::Uncertain, AstmEnd::Aborted),
+        End::Timeout => (OrderState::Uncertain, AstmEnd::Timeout),
+        End::Interrupt => (OrderState::Uncertain, AstmEnd::Interrupted),
+        End::Incomplete => (OrderState::Uncertain, AstmEnd::Incomplete),
     };
     Ok(crate::orders::sending::complete(store, order, state, code.as_str()).await?)
 }
@@ -33,9 +31,10 @@ impl<S, T> Work<'_, S, T> {
         &mut self,
         store: &Handle,
         end: analyte_dialog::astm::End,
+        may_replace: bool,
     ) -> Result<(), Error> {
         if let Some(order) = &self.active {
-            finished(store, order, end).await?;
+            finished(store, order, end, may_replace).await?;
         }
         self.active = None;
         Ok(())

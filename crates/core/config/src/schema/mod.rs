@@ -2,7 +2,10 @@
 pub(crate) mod law;
 pub use law::{Law, LawConnectionMode, LawPeer, LawQueryForm, LawWork, PeerSupport};
 mod vidas;
-pub use vidas::{AckPoint, ChecksumAcceptance, ChecksumInclusion, HexCase, Settings as Vidas};
+pub use vidas::{
+    AckPoint, ChecksumAcceptance, ChecksumInclusion, HexCase,
+    ResultControlLabels as VidasResultControlLabels, Settings as Vidas,
+};
 
 use analyte_model::Identifier;
 use serde::{Deserialize, Serialize};
