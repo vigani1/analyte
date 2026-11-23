@@ -39,6 +39,7 @@ pub(crate) fn dialog(
         settings.settings().syntax().limits().records(),
         analyte_dialog::astm::Interrupt::Honor,
     )?
+    .with_repeat_enq(settings.repeat_enq())
     .with_record_boundaries(record_boundaries(settings))
     .with_checksum_hex(checksum_policy(settings));
     Ok(config)

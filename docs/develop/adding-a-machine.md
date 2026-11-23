@@ -417,9 +417,9 @@ The rules the loader checks:
 | `kind` is `mode` or `software_version`, at most one `software_version` | A version band is read on the About screen, not set |
 | `suggested` is one of the choice's values, or absent when only the lab can know | Without a suggestion the lab must choose; nothing is assumed |
 | 2 to 16 values, at most 16 choices and 64 combinations | Every combination is validated as a whole stack when the definition loads |
-| A value selects only these blocks: `mappings` (a whole table: a host dialect's field positions), `orders = "on"` or `"off"` (keep or turn off the definition's `[orders]`), `vidas.alternate`, `vidas.sample_limit` | A choice selects behaviour the protocol code already has; no field path or expression |
+| A value selects only these blocks: `mappings` (a whole table: a host dialect's field positions), `orders = "on"` or `"off"` (keep or turn off the definition's `[orders]`), `vidas.alternate`, `vidas.sample_limit`, `encoding`, `departures`, and the three Autolyser mode settings | A choice selects behaviour the protocol code already has; no field path or expression |
 | Every value of a choice selects the same blocks, and a block belongs to one choice | Each value states its whole effect |
-| A block a choice selects is written only in the choice; leave the `[mappings]` table or the `[vidas]` key out of the definition | One place decides it |
+| A block a choice selects is written only in the choice; leave the selected table or key out of its usual section | One place decides it |
 | A choice cannot write `evidence`, `deviations` or `departure_scope` | Departures stay the evidenced list below (ADR 0015) |
 
 The lab's values go in the site file's `[choices]`, which Setup writes (see
@@ -655,3 +655,20 @@ Machine definitions use `schema_version = 2`: set `protocol` and
 `transport.kind`, and the loader derives framing, dialog and syntax, so those
 sections carry no `kind` key. Any other machine schema version is refused as
 unsupported.
+
+### Mode-specific departures and site poll intervals
+
+A mode that needs a departure lists its rule tag in
+`[[choices.values]]` using `departures = ["astm_packed_records_in_frame"]`.
+Use `departures = []` for the other modes. Declare the rule under
+`[[choice_departures]]` with its exact mode (the value name), firmware, traffic
+scope and source evidence. Add the common installed scope under
+`[departure_scope]`. The loader checks every offered mode and refuses missing
+or mismatched declarations. The effective snapshot records the active rules.
+
+Choice values can also set `encoding` to a supported encoding documented by
+the machine, or set individual `autolyser.controls`,
+`autolyser.recover_last_on_poll` and `autolyser.download` keys. Write each
+selected key only in the choice. Leave the Autolyser cadence to the lab by
+setting `poll_ms = "site"` in `[autolyser]`. The site file then requires
+`autolyser_poll_seconds` from 1 to 300.

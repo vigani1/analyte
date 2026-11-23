@@ -67,6 +67,10 @@ pub enum DepartureGuarantee {
     AbsentObx11Final,
     /// Vendor explicitly documents packed inbound records.
     PackedRecords,
+    /// Vendor documents: Empty H.12 in a documented upload is treated as production.
+    AbsentProcessingIdProduction,
+    /// Vendor documents: One repeated ENQ before any frame can recover a lost establishment ACK.
+    RepeatEnq,
     /// Vendor documents MSH-16 codes 0, 1 and 2 as patient, calibration and QC.
     Msh16MessageCategory,
     /// Existing compatibility option is explicitly documented.
@@ -134,6 +138,10 @@ pub enum MachineDeparture {
     Hl7AbsentObx11MeansFinal(DepartureDeclaration),
     /// Several CR-ended inbound LIS02 records share a verified frame.
     AstmPackedRecordsInFrame(DepartureDeclaration),
+    /// Empty H.12 in a documented upload is treated as production.
+    AstmAbsentH12MeansProduction(DepartureDeclaration),
+    /// One repeated ENQ before any frame can recover a lost establishment ACK.
+    AstmRepeatEnqAfterLostAck(DepartureDeclaration),
     /// Accept the later UTF-8 designation in HL7 2.3.1.
     Hl7Utf8InV231(DepartureDeclaration),
     /// HL7 2.3.1 ORU^R01 uses MSH-16 for a documented result category.
@@ -183,6 +191,12 @@ impl MachineDeparture {
             Self::AstmPackedRecordsInFrame(_) => {
                 "Verified inbound frames may contain several CR-ended records; semantic content is unchanged."
             }
+            Self::AstmAbsentH12MeansProduction(_) => {
+                "Empty H.12 in a documented upload is treated as production."
+            }
+            Self::AstmRepeatEnqAfterLostAck(_) => {
+                "One repeated ENQ before any frame can recover a lost establishment ACK."
+            }
             Self::Hl7Msh16MessageCategory(_) => {
                 "MSH-16 identifies the upload category in HL7 2.3.1 ORU^R01."
             }
@@ -210,6 +224,8 @@ impl MachineDeparture {
         match self {
             Self::Hl7AbsentObr25MeansFinal(value)
             | Self::Hl7AbsentObx11MeansFinal(value)
+            | Self::AstmAbsentH12MeansProduction(value)
+            | Self::AstmRepeatEnqAfterLostAck(value)
             | Self::AstmPackedRecordsInFrame(value)
             | Self::Hl7Msh16MessageCategory(value)
             | Self::Hl7Utf8InV231(value)
@@ -231,6 +247,8 @@ impl MachineDeparture {
             Self::Hl7AbsentObr25MeansFinal(_) => "hl7_absent_obr25_means_final",
             Self::Hl7AbsentObx11MeansFinal(_) => "hl7_absent_obx11_means_final",
             Self::AstmPackedRecordsInFrame(_) => "astm_packed_records_in_frame",
+            Self::AstmAbsentH12MeansProduction(_) => "astm_absent_h12_means_production",
+            Self::AstmRepeatEnqAfterLostAck(_) => "astm_repeat_enq_after_lost_ack",
             Self::Hl7Msh16MessageCategory(_) => "hl7_msh16_message_category",
             Self::Hl7Utf8InV231(_) => "hl7_utf8_in_v231",
             Self::Hl7CrLfTerminators(_) => "hl7_cr_lf_terminators",
