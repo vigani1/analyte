@@ -6,6 +6,10 @@
   order reservations at disconnect. Committed reservations whose store reply
   timed out become uncertain without resending the order.
 
+- Reject orders that request dilution on an Autolyser, HL7 order send, HL7
+  display reply, or LAW work order. The rejection event records
+  `unsupported-dilution` before any work is sent.
+
 - The admin overview and status report when a machine software version warning
   could not be saved. Analyzers still receive acknowledgments for stored results
   under the normal protocol rules.

@@ -28,8 +28,8 @@ mod inbound;
 mod orders;
 
 pub use orders::{
-    AppOrder, AppOrderPriority, Hl7Command, LawCommand, OrderMappingError, OutboundItem, app_order,
-    law_address, map_display, map_hl7_order, map_law_order, map_law_work,
+    AppOrder, AppOrderPriority, AppOrderTest, Hl7Command, LawCommand, OrderMappingError,
+    OutboundItem, app_order, law_address, map_display, map_hl7_order, map_law_order, map_law_work,
 };
 
 use analyte_config::StackChoice;

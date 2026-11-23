@@ -121,7 +121,6 @@ async fn next_work(
         let namespace = settings.send.placer_namespace().clone();
         let groups = command
             .tests()
-            .iter()
             .cloned()
             .map(|test| vec![test])
             .collect::<Vec<_>>();

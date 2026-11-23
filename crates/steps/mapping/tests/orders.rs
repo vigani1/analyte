@@ -1,7 +1,7 @@
 //! Tests configured outgoing orders: machine test and specimen codes as written, explicit priorities.
 use analyte_config::{Draft, Validated};
 use analyte_fixtures::ConfigEdit as _;
-use analyte_mapping::{AppOrder, AppOrderPriority, OrderMappingError};
+use analyte_mapping::{AppOrder, AppOrderPriority, AppOrderTest, OrderMappingError};
 use analyte_model::{Identifier, NamespacedId, SampleId};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -208,13 +208,15 @@ fn order() -> Result<AppOrder, analyte_model::TextError> {
         patient_birth_date: None,
         patient_sex_code: None,
         sample_origin: None,
-        test_dilutions: Vec::new(),
         sample: SampleId::new("001a")?,
-        tests: vec![NamespacedId {
-            namespace: Identifier::new("synthetic")?,
-            value: Identifier::new("SEND")?,
+        tests: vec![AppOrderTest {
+            code: NamespacedId {
+                namespace: Identifier::new("synthetic")?,
+                value: Identifier::new("SEND")?,
+            },
+            name: None,
+            dilution: None,
         }],
-        test_names: vec![None],
         priority: AppOrderPriority::Routine,
         position: None,
         patient: None,
@@ -249,9 +251,13 @@ fn cobas_batch_download_bounds_tests_and_keeps_the_complete_list() -> TestResult
     });
     requested.tests = (100..118)
         .map(|code| {
-            Ok(NamespacedId {
-                namespace: namespace.clone(),
-                value: Identifier::new(&code.to_string())?,
+            Ok(AppOrderTest {
+                code: NamespacedId {
+                    namespace: namespace.clone(),
+                    value: Identifier::new(&code.to_string())?,
+                },
+                name: None,
+                dilution: None,
             })
         })
         .collect::<Result<_, analyte_model::TextError>>()?;
@@ -259,18 +265,26 @@ fn cobas_batch_download_bounds_tests_and_keeps_the_complete_list() -> TestResult
     assert!(wire.starts_with(b"O|1|001a|^^^^S5^MC|^^^100^"));
     assert!(wire.ends_with(b"|R||||||A||||5||||||||||O\r"));
     assert_eq!(wire.split(|byte| *byte == b'\\').count(), 18);
-    requested.tests.push(NamespacedId {
-        namespace: namespace.clone(),
-        value: Identifier::new("118")?,
+    requested.tests.push(AppOrderTest {
+        code: NamespacedId {
+            namespace: namespace.clone(),
+            value: Identifier::new("118")?,
+        },
+        name: None,
+        dilution: None,
     });
     assert!(matches!(
         map_order(&requested, stack),
         Err(OrderError::TestCount)
     ));
     requested.tests.truncate(2);
-    requested.tests.push(NamespacedId {
-        namespace,
-        value: Identifier::new("100")?,
+    requested.tests.push(AppOrderTest {
+        code: NamespacedId {
+            namespace,
+            value: Identifier::new("100")?,
+        },
+        name: None,
+        dilution: None,
     });
     assert!(matches!(
         map_order(&requested, stack),
@@ -291,7 +305,7 @@ fn disabled_foreign_or_unmapped_orders_refuse_output() -> TestResult {
     let section = include_str!("../../../core/config/examples/orders.toml");
     let settings = config(section)?;
     let mut input = order()?;
-    input.tests[0].namespace = Identifier::new("different-system")?;
+    input.tests[0].code.namespace = Identifier::new("different-system")?;
     assert!(matches!(
         map_order(&input, settings.effective().stack()),
         Err(analyte_mapping::astm::OrderError::Shared(
@@ -448,6 +462,20 @@ fn dsp_layout_is_explicit_without_guessed_context() -> TestResult {
             Vec::new()
         ]
     );
+    let mut diluted = input;
+    diluted.tests.first_mut().ok_or("test")?.dilution = std::num::NonZeroU16::new(5);
+    let stack = settings.effective().stack();
+    assert!(matches!(
+        analyte_mapping::map_display(
+            &diluted,
+            "order-a",
+            stack.hl7_orders().ok_or("orders")?,
+            stack.limits()
+        ),
+        Err(analyte_mapping::hl7::OrderError::Shared(
+            OrderMappingError::UnsupportedDilution
+        ))
+    ));
     let mut wrong = order()?;
     wrong.sample = SampleId::new("bad|delimiter")?;
     assert!(matches!(
@@ -464,7 +492,7 @@ fn dsp_layout_is_explicit_without_guessed_context() -> TestResult {
         Err(analyte_mapping::hl7::OrderError::DisplayLineBounds)
     ));
     wrong = order()?;
-    wrong.tests.first_mut().ok_or("test")?.namespace = Identifier::new("unmapped-system")?;
+    wrong.tests.first_mut().ok_or("test")?.code.namespace = Identifier::new("unmapped-system")?;
     assert!(matches!(
         analyte_mapping::map_display(
             &wrong,
@@ -661,20 +689,7 @@ fn patient_and_orc_group_refusals_are_typed() -> TestResult {
 // name when it gives one and stays empty otherwise. Another code system is refused.
 #[test]
 fn hl7_send_writes_the_code_its_system_and_the_lab_app_name() -> TestResult {
-    let definition = format!(
-        "{}\n{}",
-        include_str!("../../../core/config/examples/hl7.toml"),
-        include_str!("../../../core/config/examples/hl7_send.toml"),
-    );
-    let cfg = Draft::load(
-        ("machine", &definition),
-        (
-            "site",
-            include_str!("../../../core/config/examples/site.toml"),
-        ),
-        ("local", "schema_version=1"),
-    )?
-    .validate()?;
+    let cfg = hl7_send_settings()?;
     let analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) =
         cfg.effective().stack()
     else {
@@ -701,7 +716,7 @@ fn hl7_send_writes_the_code_its_system_and_the_lab_app_name() -> TestResult {
             analyte_hl7::Options::default(),
         )?;
         let namespace = Identifier::new("LAB")?;
-        let tests = command.tests().to_vec();
+        let tests = command.tests().cloned().collect::<Vec<_>>();
         let items = [analyte_mapping::OutboundItem {
             placer: "placer-1",
             namespace: Some(&namespace),
@@ -727,6 +742,206 @@ fn hl7_send_writes_the_code_its_system_and_the_lab_app_name() -> TestResult {
             )),
         }
     }
+    Ok(())
+}
+
+fn hl7_send_settings() -> Result<Validated, analyte_config::Error> {
+    let definition = format!(
+        "{}\n{}",
+        include_str!("../../../core/config/examples/hl7.toml"),
+        include_str!("../../../core/config/examples/hl7_send.toml"),
+    );
+    Draft::load(
+        ("machine", &definition),
+        (
+            "site",
+            include_str!("../../../core/config/examples/site.toml"),
+        ),
+        ("local", "schema_version=1"),
+    )?
+    .validate()
+}
+
+fn response() -> Result<analyte_hl7::Response<'static>, analyte_hl7::Error> {
+    Ok(analyte_hl7::Response {
+        control_id: analyte_hl7::ControlId::new(b"send-1")?,
+        timestamp: b"20261122120000",
+    })
+}
+
+const DILUTED_HL7: &[u8] = br#"{"id":"order-1","version":1,"state":"requested","sample_id":"000Ab12","tests":[{"namespace":"synthetic","value":"TEST","name":"Synthetic","dilution_ratio":5}],"priority":"routine","target_analyzers":null,"expires_at":null,"tombstone":false,"specimen_type":{"namespace":"L","value":"SER"}}"#;
+
+fn hl7_command(raw: &[u8]) -> Result<analyte_mapping::Hl7Command, Box<dyn std::error::Error>> {
+    let cfg = hl7_send_settings()?;
+    let analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) =
+        cfg.effective().stack()
+    else {
+        return Err("HL7 stream fixture expected".into());
+    };
+    Ok(analyte_mapping::map_hl7_order(
+        stack.settings().syntax(),
+        stack.orders().ok_or("orders")?,
+        &analyte_contract::decode(raw)?,
+        analyte_hl7::Options::default(),
+    )?)
+}
+
+// Contract v1: Order tests.
+#[test]
+fn hl7_new_order_refuses_dilution() -> TestResult {
+    let command = hl7_command(DILUTED_HL7)?;
+    let namespace = Identifier::new("LAB")?;
+    let tests = command.tests().cloned().collect::<Vec<_>>();
+    let items = [analyte_mapping::OutboundItem {
+        placer: "placer-1",
+        namespace: Some(&namespace),
+        tests: &tests,
+    }];
+    assert!(matches!(
+        command.map(&items, false, response()?),
+        Err(analyte_mapping::hl7::WireError::Shared(
+            OrderMappingError::UnsupportedDilution
+        ))
+    ));
+    Ok(())
+}
+
+// Contract v1: Order tests. Cancellation addresses an existing placer identity.
+#[test]
+fn hl7_cancel_ignores_dilution() -> TestResult {
+    let namespace = Identifier::new("LAB")?;
+    let items = [analyte_mapping::OutboundItem {
+        placer: "placer-1",
+        namespace: Some(&namespace),
+        tests: &[],
+    }];
+    let command = hl7_command(DILUTED_HL7)?;
+    let message = command.map(&items, true, response()?)?;
+    assert!(
+        message
+            .message()
+            .raw()
+            .split(|&byte| byte == b'\r')
+            .any(|line| line.starts_with(b"ORC|CA|placer-1^LAB|"))
+    );
+    Ok(())
+}
+
+// Contract v1: Order tests.
+#[test]
+fn generic_astm_refuses_dilution() -> TestResult {
+    let cfg = config(include_str!("../../../core/config/examples/orders.toml"))?;
+    let mut input = order()?;
+    input.tests.first_mut().ok_or("test")?.dilution = std::num::NonZeroU16::new(5);
+    assert!(matches!(
+        map_order(&input, cfg.effective().stack()),
+        Err(analyte_mapping::astm::OrderError::Shared(
+            OrderMappingError::UnsupportedDilution
+        ))
+    ));
+    Ok(())
+}
+
+// Contract v1: Order tests.
+proptest::proptest! {
+    #[test]
+    fn app_adapter_preserves_each_test(
+        tests in proptest::collection::vec((
+            "[A-Z0-9]{1,8}",
+            proptest::option::of("[a-z]{1,12}"),
+            proptest::option::of(1_u16..=u16::MAX),
+        ), 1..12)
+    ) {
+        use proptest::prelude::*;
+        use std::fmt::Write as _;
+        let wire_tests = tests.iter().map(|(code, name, dilution)| {
+            let mut test = format!(r#"{{"namespace":"synthetic","value":"{code}""#);
+            if let Some(name) = name {
+                write!(test, r#","name":"{name}""#).expect("writing to String cannot fail");
+            }
+            if let Some(dilution) = dilution {
+                write!(test, r#","dilution_ratio":{dilution}"#).expect("writing to String cannot fail");
+            }
+            test.push('}');
+            test
+        }).collect::<Vec<_>>().join(",");
+        let raw = format!(
+            r#"{{"id":"order-1","version":1,"state":"requested","sample_id":"000Ab12","tests":[{wire_tests}],"priority":"routine","target_analyzers":null,"expires_at":null,"tombstone":false}}"#
+        );
+        let app = analyte_contract::decode(raw.as_bytes()).map_err(|e| TestCaseError::fail(e.to_string()))?;
+        let order = analyte_mapping::app_order(&app).map_err(|e| TestCaseError::fail(e.to_string()))?;
+        prop_assert_eq!(order.tests.len(), tests.len());
+        for (actual, (code, name, dilution)) in order.tests.iter().zip(tests) {
+            prop_assert_eq!(actual.code.value.as_str(), code.as_str());
+            prop_assert_eq!(actual.name.as_ref().map(analyte_model::SourceText::as_str), name.as_deref());
+            prop_assert_eq!(actual.dilution.map(std::num::NonZeroU16::get), dilution);
+        }
+    }
+}
+
+// Contract v1: Order tests.
+#[test]
+fn law_new_work_refuses_dilution_but_cancel_keeps_its_wire_form() -> TestResult {
+    use analyte_hl7::law::WorkAction;
+    let definition = format!(
+        "{}\n{}",
+        include_str!("../../../core/config/examples/law.toml")
+            .rewrite("specimen = false", "specimen = true"),
+        include_str!("../../../core/config/examples/law_orders.toml"),
+    );
+    let cfg = Draft::load(
+        ("machine", &definition),
+        (
+            "site",
+            include_str!("../../../core/config/examples/site.toml"),
+        ),
+        ("local", "schema_version=1"),
+    )?
+    .validate()?;
+    let analyte_config::Stack::Law(stack) = cfg.effective().stack() else {
+        return Err("LAW stream fixture expected".into());
+    };
+    let diluted = std::str::from_utf8(DILUTED_HL7)?
+        .rewrite(r#""namespace":"synthetic""#, r#""namespace":"99LAB""#)
+        .rewrite(r#""namespace":"L""#, r#""namespace":"HL70487""#);
+    let plain = diluted.rewrite(r#","dilution_ratio":5"#, "");
+    let command = |raw: &str| -> Result<_, Box<dyn std::error::Error>> {
+        Ok(analyte_mapping::map_law_order(
+            stack,
+            &analyte_contract::decode(raw.as_bytes())?,
+        )?)
+    };
+    let plain = command(&plain)?;
+    let diluted = command(&diluted)?;
+    let tests = plain.tests().cloned().collect::<Vec<_>>();
+    let items = [analyte_mapping::OutboundItem {
+        placer: "placer-1",
+        namespace: Some(plain.placer_namespace()),
+        tests: &tests,
+    }];
+    let metadata = analyte_hl7::Response {
+        control_id: analyte_hl7::law::control_id(b"00000000000000000000000000000001")?,
+        timestamp: b"20261122120000+0000",
+    };
+    let options = analyte_hl7::Options {
+        charset: analyte_hl7::Charset::Utf8,
+        ..analyte_hl7::Options::default()
+    };
+    let map = |command, action| {
+        analyte_mapping::map_law_work(&[(command, &items)], action, options, metadata)
+    };
+    let new_work = map(&plain, WorkAction::New)?;
+    assert!(new_work.segments().any(|segment| segment.id() == b"OBR"));
+    assert!(matches!(
+        map(&diluted, WorkAction::New),
+        Err(analyte_mapping::law::WireError::Shared(
+            OrderMappingError::UnsupportedDilution
+        ))
+    ));
+    let cancel = map(&diluted, WorkAction::Cancel)?;
+    assert_eq!(cancel.raw(), map(&plain, WorkAction::Cancel)?.raw());
+    assert!(cancel.segments().any(|segment| segment.id() == b"ORC"
+        && segment.field(1).is_some_and(|field| field.raw() == b"CA")));
     Ok(())
 }
 

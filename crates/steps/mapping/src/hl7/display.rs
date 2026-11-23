@@ -19,13 +19,14 @@ pub fn map(
         .query()
         .ok_or(crate::OrderMappingError::Disabled)?
         .layout();
+    order.require_no_dilution()?;
     if layout.record_location.is_some() {
         return positional(order, orders, limits);
     }
     let settings = &orders.tables();
     let mut lines = Vec::new();
     for test in &order.tests {
-        let code = map_test(settings.test_system(), test)?;
+        let code = map_test(settings.test_system(), &test.code)?;
         for line in &layout.lines {
             let value = match line {
                 DsrLine::SampleId => order.sample.as_str(),
@@ -102,7 +103,7 @@ fn positional(
     rows[25] = specimen.as_bytes().to_vec();
     let mut lines = Vec::from(rows);
     for test in &order.tests {
-        let code = map_test(settings.test_system(), test)?.as_bytes();
+        let code = map_test(settings.test_system(), &test.code)?.as_bytes();
         if !analyte_hl7::is_safe_field(code, 297, analyte_hl7::FieldSyntax::Plain) {
             return Err(OrderError::DisplayLineBounds);
         }

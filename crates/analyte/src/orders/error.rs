@@ -23,9 +23,6 @@ pub enum OrderError {
     /// The cached app order violated the app contract.
     #[error(transparent)]
     Document(#[from] analyte_contract::DocumentError),
-    /// A requested dilution has no supported destination.
-    #[error("unsupported-order-dilution")]
-    UnsupportedDilution,
     /// Order response text was not valid UTF-8.
     #[error(transparent)]
     Encoding(#[from] std::str::Utf8Error),
