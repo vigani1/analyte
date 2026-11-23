@@ -12,7 +12,7 @@ use super::{
     SetupError, Shipped, audit, copies, definition_name, definitions, lab_apps, level_and_state,
     needs_login, off_thread,
     plan::{self, Choice as Posted, KEEP, chosen, plan, save_blocking},
-    refused, running, settings_version, site,
+    refused, settings_version, site,
 };
 use crate::admin::{
     server::{Context, sessions::Session},
@@ -605,7 +605,7 @@ pub(in crate::admin) async fn save(
                     shown: format::digest_short(&saved.digest),
                     exact: format::digest_hex(&saved.digest),
                 },
-                settings_version(running(&state, &id)),
+                settings_version(state.setup.running(&id)),
             )),
             model: saved.model,
         },

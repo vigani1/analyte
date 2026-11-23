@@ -1,6 +1,6 @@
 //! Lists configured machines and their live state in text or JSON.
 use super::super::{Failure, Installation, Outcome, live, say};
-use super::{args::saved_peers, running};
+use super::args::saved_peers;
 use crate::admin::setup::{cable, choices, model, plan, site};
 use crate::admin::view::format;
 use analyte_config::{SerialSetting, TransportKind};
@@ -150,7 +150,7 @@ pub(in super::super) fn settings_rows(installation: &Installation) -> Result<Vec
             model: model(&config, root.as_deref(), definition.as_deref()).map(|m| m.shown),
             definition,
             connection,
-            lab_app: plan::current_lab_app(running(setup, &id), &table),
+            lab_app: plan::current_lab_app(setup.running(&id), &table),
             set_up: entry.definition.is_some(),
             settings_version: version,
             live: None,
