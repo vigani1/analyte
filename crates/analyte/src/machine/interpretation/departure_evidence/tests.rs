@@ -117,7 +117,7 @@ async fn packed_results_deliver_without_changing_meaning() -> Result<(), Error> 
     let program = program(temp.path(), &definition, "127.0.0.1:5600")?;
     let machine = program.machines().first().ok_or("machine")?;
     let mut store = crate::runtime::service::open_store(&program, Box::new(Space)).await?;
-    let destination = crate::orders::destination(machine);
+    let destination = crate::orders::destination(machine)?;
     let payload=b"H|\\^&||||||||||P|LIS2-A2|20261115120000\rP|1\rO|1|00012\rR|1|^^^SYN|12.30|mg/L||N||F\rL|1|N\r";
     let raw: Vec<_> = analyte_framing::astm::encode(
         payload,
@@ -169,7 +169,7 @@ async fn latin1_receipt(encoding: &str) -> Result<(bool, Vec<u8>, String), Error
     let program = program(temp.path(), &definition, "127.0.0.1:5600")?;
     let machine = program.machines().first().ok_or("machine")?;
     let mut store = crate::runtime::service::open_store(&program, Box::new(Space)).await?;
-    let destination = crate::orders::destination(machine);
+    let destination = crate::orders::destination(machine)?;
     // MSH-18 is empty; OBX-6 holds Latin-1 0xB5 (micro sign).
     let payload=b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012|SYN^Synthetic^synthetic|||||||||||||||||||||F\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|\xb5g/L|||||F\r";
     let raw = analyte_framing::hl7::encode(payload, analyte_framing::hl7::Limit::new(1048576)?)?;

@@ -205,6 +205,13 @@ therefore remains empty when no peer identity is agreed. Sites may configure
   and 0010; named scope and evidence under ADR 0015. Manual or qualified ADR
   0009 recording evidence must establish the installed packing mode; synthetic
   tests do not qualify any machine.
+- **record only**: [ADR 0034](../../adr/0034-record-only-connections.md)
+  decision 10 lets a model's `record.toml` declare the same policy for one
+  analyzer mode the lab answers (the cobas e 411's cobas protocol type). The
+  record-only host keeps every chunk before replying and never reads records,
+  so no ledger is written; the snapshot names the declaration. [Paired
+  record-only cases](../../../crates/analyte/tests/record_only/packing.rs)
+  cover strict NAK, cobas-type ACK with capture, and a bad checksum.
 - **tests**: [paired strict/packed dialog cases](../../../crates/steps/dialog/tests/packed.rs)
   cover frame custody, checksum failure, retries and ETB continuation.
   [Stored interpretation cases](../../../crates/analyte/src/machine/interpretation/departure_evidence/tests.rs)

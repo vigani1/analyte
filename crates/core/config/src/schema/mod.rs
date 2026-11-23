@@ -569,12 +569,16 @@ pub struct Site {
     /// connections from; absent accepts any device that reaches the port,
     /// which the pages show as a warning (ADR 0026).
     pub allowed_peers: Option<crate::AllowedPeers>,
-    /// Selected lab app.
-    pub destination: Destination,
+    /// Selected lab app; absent only for a record-only machine, which sends
+    /// nothing to any lab app (ADR 0034).
+    pub destination: Option<Destination>,
     /// The lab's time zone: an IANA name or a fixed `+HH:MM` offset. Only a LAW
     /// MSH-7 sent without an offset is read in it, with a note; absent keeps
     /// refusing such a header.
     pub time_zone: Option<crate::SiteTimeZone>,
+    /// Present only for a record-only machine: the lab's answers to the
+    /// capture profile's questions (ADR 0034).
+    pub recording: Option<crate::ProfileAnswers>,
 }
 
 /// The site file as written: `endpoint` and `usb_serial` are two keys, and
@@ -608,6 +612,10 @@ pub(crate) struct SiteFile {
     /// the snapshot holds the resolved values under its own `choices`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     choices: Option<ChoiceSelections>,
+    /// Record only (ADR 0034): the machine is connected only to record its
+    /// conversation; nothing goes to a lab app.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recording: Option<crate::ProfileAnswers>,
 }
 
 /// What the lab chose in its site file beside the site settings: the serial
@@ -628,8 +636,22 @@ impl SiteFile {
         path: &str,
         lab_apps: &crate::LabApps,
     ) -> Result<(Site, crate::LabAppSource, LabChoices), crate::Error> {
-        let (destination, source) =
-            lab_apps.resolve(path, self.destination, self.lab_app.as_ref())?;
+        let (destination, source) = if self.recording.is_some() {
+            // A record-only machine has no lab app; one written here would be
+            // a destination nothing ever delivers to (ADR 0034).
+            if self.destination.is_some() || self.lab_app.is_some() {
+                return Err(crate::invalid(
+                    path,
+                    "lab_app",
+                    "a record-only machine sends nothing to a lab app; remove lab_app and [destination], or remove [recording] to connect it normally",
+                ));
+            }
+            (None, crate::LabAppSource::None)
+        } else {
+            let (destination, source) =
+                lab_apps.resolve(path, self.destination, self.lab_app.as_ref())?;
+            (Some(destination), source)
+        };
         Ok((
             Site {
                 retention: self.retention,
@@ -638,6 +660,7 @@ impl SiteFile {
                 allowed_peers: self.allowed_peers,
                 destination,
                 time_zone: self.time_zone,
+                recording: self.recording,
             },
             source,
             LabChoices {
@@ -645,6 +668,17 @@ impl SiteFile {
                 choices: self.choices.unwrap_or_default(),
             },
         ))
+    }
+}
+
+impl Site {
+    /// The name of the lab app this machine sends to; none for a record-only
+    /// machine (ADR 0034).
+    #[must_use]
+    pub fn lab_app_name(&self) -> Option<&Identifier> {
+        self.destination
+            .as_ref()
+            .map(|destination| &destination.name)
     }
 }
 
@@ -660,11 +694,12 @@ impl From<Site> for SiteFile {
             endpoint,
             usb_serial,
             allowed_peers: site.allowed_peers,
-            destination: Some(site.destination),
+            destination: site.destination,
             lab_app: None,
             time_zone: site.time_zone,
             serial: None,
             choices: None,
+            recording: site.recording,
         }
     }
 }

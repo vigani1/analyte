@@ -8,7 +8,7 @@
 //! write through [`commit`].
 use super::SetupError;
 use crate::installation::config::{Program, folder, read};
-use analyte_config::{Destination, Draft, Endpoint, LabApps, Validated};
+use analyte_config::{Destination, Endpoint, LabApps, Validated};
 use analyte_model::Identifier;
 use std::{
     io::Write as _,
@@ -134,6 +134,41 @@ pub(super) fn candidate(
     elsewhere: &[Destination],
 ) -> Result<Candidate, SetupError> {
     let mut table: toml::Table = current.parse().map_err(SetupError::SiteFile)?;
+    apply_link(&mut table, (connection, peers, serial, chosen))?;
+    let mut after = keep_own_destination(&mut table, lab_apps)?;
+    if after.get(lab_app.as_str()).is_none() {
+        let old = elsewhere
+            .iter()
+            .find(|known| &known.name == lab_app)
+            .ok_or_else(|| SetupError::UnknownLabApp(lab_app.as_str().into()))?;
+        after = moved(&after, old.clone())?;
+    }
+    table.remove("lab_app");
+    table.insert(
+        "lab_app".into(),
+        toml::Value::String(lab_app.as_str().into()),
+    );
+    let text = toml::to_string(&table).map_err(SetupError::SiteText)?;
+    Ok(Candidate {
+        text: format!("# Written by the Analyte setup page.\n{text}"),
+        lab_apps: after,
+    })
+}
+
+/// Writes the connection, the devices it accepts (`allowed_peers`, removed
+/// when none are chosen, ADR 0026), the model's own choices (`[choices]`,
+/// removed when there are none, ADR 0032) and the serial cable settings
+/// (`[serial]`, removed for other links, ADR 0031) into a site table, and
+/// leaves record only (`[recording]` goes, ADR 0034).
+fn apply_link(
+    table: &mut toml::Table,
+    (connection, peers, serial, chosen): (
+        &Endpoint,
+        Option<&analyte_config::AllowedPeers>,
+        Option<&analyte_config::SerialValues>,
+        &analyte_config::ChoiceSelections,
+    ),
+) -> Result<(), SetupError> {
     table.remove("endpoint");
     table.remove("usb_serial");
     let (key, value) = match connection {
@@ -154,6 +189,9 @@ pub(super) fn candidate(
             ),
         );
     }
+    // A normal connection leaves record only (ADR 0034); its recorded
+    // messages stay kept and are never delivered.
+    table.remove("recording");
     table.remove("choices");
     if !chosen.is_empty() {
         table.insert(
@@ -170,32 +208,57 @@ pub(super) fn candidate(
             toml::Value::try_from(serial).map_err(SetupError::SiteText)?,
         );
     }
-    let mut after = lab_apps.clone();
-    if let Some(own) = table.remove("destination") {
-        let complete = own.get("name").is_some() || own.get("base_url").is_some();
-        match own.try_into::<Destination>() {
-            Ok(own) => after = moved(&after, own)?,
-            Err(_) if !complete => {}
-            Err(error) => return Err(SetupError::SiteDestination(error)),
-        }
-    }
-    if after.get(lab_app.as_str()).is_none() {
-        let old = elsewhere
-            .iter()
-            .find(|known| &known.name == lab_app)
-            .ok_or_else(|| SetupError::UnknownLabApp(lab_app.as_str().into()))?;
-        after = moved(&after, old.clone())?;
-    }
+    Ok(())
+}
+
+/// The current site file made record-only (ADR 0034): the connection, the
+/// devices it accepts and the cable as [`candidate`] writes them, the
+/// capture profile's answers in `[recording]`, and no lab app. A complete
+/// `[destination]` moves into `lab-apps.toml`, as [`candidate`] does, so
+/// results already waiting for it stay deliverable; `lab_app` and the
+/// model's `[choices]` go.
+pub(super) fn recording_candidate(
+    current: &str,
+    (connection, peers, serial): (
+        &Endpoint,
+        Option<&analyte_config::AllowedPeers>,
+        Option<&analyte_config::SerialValues>,
+    ),
+    answers: &analyte_config::ProfileAnswers,
+    lab_apps: &LabApps,
+) -> Result<Candidate, SetupError> {
+    let none = analyte_config::ChoiceSelections::default();
+    let mut table: toml::Table = current.parse().map_err(SetupError::SiteFile)?;
+    let after = keep_own_destination(&mut table, lab_apps)?;
     table.remove("lab_app");
+    apply_link(&mut table, (connection, peers, serial, &none))?;
     table.insert(
-        "lab_app".into(),
-        toml::Value::String(lab_app.as_str().into()),
+        "recording".into(),
+        toml::Value::try_from(answers).map_err(SetupError::SiteText)?,
     );
     let text = toml::to_string(&table).map_err(SetupError::SiteText)?;
     Ok(Candidate {
         text: format!("# Written by the Analyte setup page.\n{text}"),
         lab_apps: after,
     })
+}
+
+/// Takes the site table's own `[destination]` out and returns `lab_apps` with
+/// it added, so results waiting for it stay deliverable; a partial one (the
+/// installers' starter key names, which never loaded) is dropped.
+fn keep_own_destination(
+    table: &mut toml::Table,
+    lab_apps: &LabApps,
+) -> Result<LabApps, SetupError> {
+    let Some(own) = table.remove("destination") else {
+        return Ok(lab_apps.clone());
+    };
+    let complete = own.get("name").is_some() || own.get("base_url").is_some();
+    match own.try_into::<Destination>() {
+        Ok(own) => moved(lab_apps, own),
+        Err(_) if !complete => Ok(lab_apps.clone()),
+        Err(error) => Err(SetupError::SiteDestination(error)),
+    }
 }
 
 /// `lab_apps` with `lab_app` added; unchanged when it is already listed with
@@ -216,17 +279,17 @@ pub(super) fn validate(
     site_text: &str,
     lab_apps: &LabApps,
 ) -> Result<Validated, SetupError> {
-    let overrides = match &installed.overrides {
-        Some(path) => read(path)?,
-        None => "schema_version = 1".into(),
-    };
-    Ok(Draft::load_with(
+    let overrides = installed
+        .overrides
+        .as_ref()
+        .map(|path| read(path))
+        .transpose()?;
+    Ok(analyte_config::load_machine(
         (&definition.display().to_string(), &read(definition)?),
         (&installed.site.display().to_string(), site_text),
-        ("overrides", &overrides),
+        overrides.as_deref().map(|text| ("overrides", text)),
         lab_apps,
-    )?
-    .validate()?)
+    )?)
 }
 
 /// The program text with this entry's `definition` replaced, or added on its own

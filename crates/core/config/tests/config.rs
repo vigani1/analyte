@@ -825,12 +825,13 @@ fn site_request_timeout_defaults_and_bounds() -> Result<(), Error> {
             .effective()
             .site()
             .destination
-            .request_timeout_seconds
+            .as_ref()
+            .map(|destination| destination.request_timeout_seconds)
     };
-    assert_eq!(configured(&validate("")?), 10);
+    assert_eq!(configured(&validate("")?), Some(10));
     for seconds in [1, 120] {
         let config = validate(&format!("request_timeout_seconds = {seconds}\n"))?;
-        assert_eq!(configured(&config), seconds);
+        assert_eq!(configured(&config), Some(seconds));
     }
     for seconds in [0, 121] {
         let refusal = validate(&format!("request_timeout_seconds = {seconds}\n"));

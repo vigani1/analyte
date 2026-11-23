@@ -1053,7 +1053,7 @@ fn machine(
                 .to_owned()
         }),
         connection,
-        lab_app: Identifier::new(lab_app)?,
+        lab_app: Some(Identifier::new(lab_app)?),
     })
 }
 

@@ -75,6 +75,8 @@ pub(super) struct Row {
     /// When its open link opened; none while the link is not open.
     pub(super) since: Option<Moment>,
     pub(super) lab_app: Option<String>,
+    /// Record only (ADR 0034): its counts since start; none for a normal machine.
+    pub(super) recording: Option<String>,
 }
 
 /// GET /machines/{id}, and the same page under the Remove dialog.

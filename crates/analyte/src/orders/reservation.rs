@@ -131,8 +131,12 @@ pub(crate) async fn admit<T: Send + 'static>(
 pub(crate) fn key(
     machine: &crate::installation::config::Machine,
     order: analyte_model::Identifier,
-) -> MachineOrderKey {
-    key_parts(super::destination(machine), order, machine.id.clone())
+) -> Result<MachineOrderKey, Error> {
+    Ok(key_parts(
+        super::destination(machine)?,
+        order,
+        machine.id.clone(),
+    ))
 }
 
 /// Lists cancellation candidates only while the cached order feed is trusted.
@@ -141,7 +145,7 @@ pub(crate) async fn cancellations(
     machine: &crate::installation::config::Machine,
     until: Instant,
 ) -> Result<Vec<(MachineOrder, analyte_store::CachedOrder)>, Error> {
-    let destination = super::destination(machine);
+    let destination = super::destination(machine)?;
     let target = machine.id.clone();
     let freshness = machine.destination_limits.freshness.as_secs();
     Ok(store
@@ -176,9 +180,9 @@ pub(crate) fn pending(
     machine: &crate::installation::config::Machine,
     order: analyte_model::Identifier,
     version: NonZeroU64,
-) -> super::Candidate {
-    super::Candidate {
-        identity: key(machine, order),
+) -> Result<super::Candidate, Error> {
+    Ok(super::Candidate {
+        identity: key(machine, order)?,
         version,
-    }
+    })
 }

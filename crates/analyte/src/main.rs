@@ -54,6 +54,12 @@ enum Command {
         #[arg(long)]
         reason: String,
     },
+    /// Recorded conversations (ADR 0009, ADR 0034): list them, or copy one to
+    /// a folder. They contain patient data; both are audited.
+    Captures {
+        #[command(subcommand)]
+        command: analyte::operator::captures::Command,
+    },
     /// Places or releases an indefinite retention hold.
     Holds {
         #[command(subcommand)]
@@ -343,6 +349,7 @@ async fn execute(cli: Cli) -> Result<ExitCode, Error> {
         )
         .await
         .map_err(Into::into),
+        Command::Captures { command } => captures(&config()?, cli.actor, command).await,
         Command::Holds { command } => analyte::operator::holds::run(
             &Program::load(&config()?)?,
             required_actor(cli.actor)?,
@@ -504,6 +511,16 @@ async fn operator(
     .await;
     store.shutdown(analyte::deadline()?).await?;
     result
+}
+
+/// Lists or exports recordings, audited under the required `--actor` (ADR 0034).
+async fn captures(
+    config: &std::path::Path,
+    actor: Option<Identifier>,
+    command: analyte::operator::captures::Command,
+) -> Result<(), Error> {
+    let program = Program::load(config)?;
+    Ok(analyte::operator::captures::run(&program, required_actor(actor)?, command).await?)
 }
 
 fn check_config(file: &std::path::Path) -> Result<(), Error> {

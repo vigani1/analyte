@@ -554,6 +554,7 @@ fn vendor_namespace(
         | analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(_))
         | analyte_config::Stack::Law(_)
         | analyte_config::Stack::Poct(_)
+        | analyte_config::Stack::Record(_)
         | analyte_config::Stack::Astm(analyte_config::RecordTransport::Folder(_))
         | analyte_config::Stack::Hl7(analyte_config::RecordTransport::Folder(_)) => {
             Err("vendor fixture".into())

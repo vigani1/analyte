@@ -8,6 +8,7 @@ mod error;
 // A stored parking reason; `receive::bytes` pins its spelling.
 pub(crate) const UNSOLICITED_REASON: &str = "HL7 unsolicited message or queue overflow";
 pub(crate) mod orders;
+pub(in crate::machine) mod recording;
 pub(crate) mod settings;
 use crate::machine::receive::custody::{self, WriteDeadline};
 use analyte_dialog::hl7::outcome::Code as Hl7End;

@@ -41,6 +41,8 @@ pub(super) struct ModelStep {
     pub(super) action: String,
     pub(super) hidden: Hidden,
     pub(super) choices: Vec<Choice>,
+    /// Record only is chosen (ADR 0034): nothing is sent to a lab app.
+    pub(super) records_only: bool,
 }
 
 /// One model to pick, or keeping the current one.
@@ -73,6 +75,23 @@ pub(super) struct ConnectionStep {
     /// The model's own choices (ADR 0032); empty when it declares none.
     pub(super) choices: Vec<Setting>,
     pub(super) lab_apps: Picker,
+    /// Record only (ADR 0034): the capture profile's questions, and no lab app.
+    pub(super) recording: Option<Recording>,
+    /// Record only: the analyzer mode the model's record file asks, if any.
+    pub(super) analyzer_mode: Option<Setting>,
+}
+
+/// Record only, step 2: what the protocol's capture profile asks the lab.
+pub(super) enum Recording {
+    /// ASTM and HL7 need only the connection.
+    Nothing,
+    /// The VIDAS PC's acknowledgment point, `literal` or `alternate`.
+    Vidas { acknowledgment: String },
+    /// Seconds between next-report requests, and whether reports carry controls.
+    Autolyser {
+        poll_seconds: String,
+        controls: String,
+    },
 }
 
 /// One choice the model declares, on step 2: its declared values with the
@@ -274,7 +293,8 @@ pub(super) struct Summary {
     pub(super) choices: Option<String>,
     /// Which devices it accepts; none unless the machine connects to this PC.
     pub(super) accepts: Option<Accepts>,
-    pub(super) lab_app: Sends,
+    /// The lab app it sends to; none while it records only (ADR 0034).
+    pub(super) lab_app: Option<Sends>,
     pub(super) test: Tested,
     /// After saving: the new settings version and the one running now.
     pub(super) versions: Option<(Hover, Option<Hover>)>,

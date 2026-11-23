@@ -35,10 +35,19 @@ Do not equate method-sheet numbers with transmission codes or generated
 
 ## Departures
 
-No tolerance added. HIM D permits several records in one cobas-dialect frame;
-Elecsys sends at most one record per frame. Analyte refuses packed frames under
-LIS01-A2 §§3.3.2/6.3.1.1 (PR #140). A cobas-dialect definition is blocked until
-the installed behavior is established; do not silently select Elecsys instead.
+HIM D permits several records in one cobas-dialect frame; Elecsys sends at
+most one record per frame. A normal connection refuses packed frames under
+LIS01-A2 §§3.3.2/6.3.1.1 (PR #140), and a cobas-dialect definition is blocked
+until the installed behavior is established; do not silently select Elecsys
+instead.
+
+Record only ([ADR 0034](../../../docs/adr/0034-record-only-connections.md)):
+`record.toml` asks the protocol type (`analyzer_mode`, Elecsys or cobas, no
+suggestion) and declares the ADR 0015 `astm_packed_records_in_frame`
+departure for the cobas type only (HIM v2.3 §5 p. 14, v2.2 D-1 p. D-2;
+documented, firmware unknown). With the cobas type a packed frame whose
+checksum, frame number and length pass is acknowledged and kept; with
+Elecsys it is NAKed and kept. A bad checksum is NAKed in both.
 
 ## Evidence
 
@@ -48,7 +57,8 @@ Research only; no machine recording or simulator run. No recordings shipped.
 
 ## Open questions
 
-- Blocking: selected dialect, packed-frame behavior and serial flow control.
+- Blocking: selected dialect, packed-frame behavior and serial flow control
+  (record only asks the dialect; the recording shows the packing).
 - Required site settings: software version, host codes, unit mappings,
   identity/run evidence, QC rules, deadlines and order reply fields.
 - Confirm barcode-error handling, query coordinates and rerun semantics from

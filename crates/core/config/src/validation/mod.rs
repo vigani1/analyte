@@ -9,6 +9,7 @@ mod departures;
 mod mappings;
 mod stack;
 use departures::validate_departures;
+pub(crate) use departures::validate_recording;
 use mappings::{validate_mapping_family, validate_mappings};
 pub(crate) use stack::check_serial;
 use stack::{
@@ -42,7 +43,24 @@ impl crate::Destination {
 }
 
 pub(super) fn validate_site(site: &Site, transport: &Transport, path: &str) -> Result<(), Error> {
-    site.destination.check(path, "site.destination")?;
+    match (&site.destination, &site.recording) {
+        (Some(destination), None) => destination.check(path, "site.destination")?,
+        (None, Some(_)) => {}
+        (Some(_), Some(_)) => {
+            return Err(invalid(
+                path,
+                "lab_app",
+                "a record-only machine sends nothing to a lab app; remove the lab app",
+            ));
+        }
+        (None, None) => {
+            return Err(invalid(
+                path,
+                "lab_app",
+                "choose the lab app this machine sends results to",
+            ));
+        }
+    }
     if site.allowed_peers.is_some() && transport.kind != TransportKind::TcpServer {
         return Err(invalid(
             path,

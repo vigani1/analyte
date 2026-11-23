@@ -789,6 +789,9 @@ impl Store {
 
 impl Store {
     /// Lists a bounded page of raw receipts awaiting their first interpretation.
+    /// Receipts kept by the `kept_only` driver are never interpreted, so they
+    /// are not listed: a record-only connection's journal can be long, and
+    /// no page of it is ever read (ADR 0034).
     /// Recovery owns no transport and cannot resend work.
     /// # Errors
     /// Reports invalid stored metadata, bounds and database failures.
@@ -796,13 +799,15 @@ impl Store {
         &self,
         machine: &Identifier,
         after: i64,
+        kept_only: &str,
     ) -> Result<Vec<(i64, ReceiptMetadata)>, Error> {
-        let mut query=self.db.prepare("SELECT r.rowid,r.metadata FROM receipts r WHERE r.rowid>?1 AND json_extract(r.metadata,'$.machine')=?2 AND NOT EXISTS(SELECT 1 FROM interpretations i WHERE i.receipt=r.id) ORDER BY r.rowid LIMIT ?3")?;
+        let mut query=self.db.prepare("SELECT r.rowid,r.metadata FROM receipts r WHERE r.rowid>?1 AND json_extract(r.metadata,'$.machine')=?2 AND json_extract(r.metadata,'$.driver.namespace')<>?4 AND NOT EXISTS(SELECT 1 FROM interpretations i WHERE i.receipt=r.id) ORDER BY r.rowid LIMIT ?3")?;
         let rows = query.query_map(
             params![
                 after,
                 machine.as_str(),
-                i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidOperatorInput)?
+                i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidOperatorInput)?,
+                kept_only
             ],
             |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)),
         )?;

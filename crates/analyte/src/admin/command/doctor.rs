@@ -475,6 +475,18 @@ async fn connection(
         // cable, a difference from the manual is shown, not judged.
         checks.push(ok(format!("{what} analyzer settings"), choices));
     }
+    if effective.records_only() {
+        // Record only is the lab's choice for a first visit (ADR 0034); it
+        // is reported, not judged: nothing goes to a lab app by design.
+        checks.push(ok(
+            format!("{what} mode"),
+            format!(
+                "{}; every byte is kept and recorded under captures/{}",
+                format::RECORDING_ONLY,
+                machine.id().as_str()
+            ),
+        ));
+    }
     checks
 }
 
@@ -729,8 +741,10 @@ fn every_lab_app(program: &Program) -> Vec<&analyte_config::Destination> {
         .map(crate::installation::config::LabApp::settings)
         .collect();
     for machine in program.machines() {
-        let own = &machine.snapshot().effective().site().destination;
-        if !all.iter().any(|known| known.name == own.name) {
+        // A record-only machine names no lab app (ADR 0034).
+        if let Some(own) = &machine.snapshot().effective().site().destination
+            && !all.iter().any(|known| known.name == own.name)
+        {
             all.push(own);
         }
     }
@@ -802,10 +816,8 @@ async fn order_lists(program: &Program, store: &analyte_store::Handle) -> OrderL
             return program
                 .machines()
                 .iter()
-                .map(|machine| {
-                    let name = &machine.snapshot().effective().site().destination.name;
-                    (name.as_str().to_owned(), Err(why.clone()))
-                })
+                .filter_map(|machine| machine.snapshot().effective().site().destination.as_ref())
+                .map(|destination| (destination.name.as_str().to_owned(), Err(why.clone())))
                 .collect();
         }
     };

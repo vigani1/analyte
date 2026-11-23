@@ -5,6 +5,9 @@ pub enum OrderError {
     /// The shared send-ahead poll cadence could not represent its next deadline.
     #[error("order poll deadline overflow")]
     PollDeadlineOverflow,
+    /// A record-only machine has no lab app, so no order path runs for it (ADR 0034).
+    #[error("a record-only machine has no lab app; no order is looked up or sent for it")]
+    RecordOnly,
     /// Durable order lookup or lifecycle persistence failed.
     #[error(transparent)]
     Store(#[from] analyte_store::OrderError),

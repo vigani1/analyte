@@ -81,8 +81,46 @@
 </div>
 </fieldset>
 {%- endif %}
+{%- if let Some(recording) = recording %}
+{%- match recording %}
+{%- when Recording::Vidas { acknowledgment } %}
+<fieldset class="wizard__set stack">
+<legend class="field__label wizard__legend">Recording</legend>
+<div class="field"><label class="field__label" for="s2-ack">VIDAS PC acknowledgment</label><select id="s2-ack" class="select" name="acknowledgment" required>
+{%- if acknowledgment.is_empty() %}<option value="" selected>Choose</option>{% endif %}
+<option value="literal"{% if acknowledgment == "literal" %} selected{% endif %}>Literal (after the checksum)</option>
+<option value="alternate"{% if acknowledgment == "alternate" %} selected{% endif %}>Alternate (after ETX)</option>
+</select><span class="field__hint">As set on the VIDAS PC; it cannot be guessed.</span></div>
+</fieldset>
+{%- when Recording::Autolyser { poll_seconds, controls } %}
+<fieldset class="wizard__set stack">
+<legend class="field__label wizard__legend">Recording</legend>
+<div class="form-grid">
+<div class="field"><label class="field__label" for="s2-poll">Seconds between asks</label><input id="s2-poll" class="input mono" name="poll_seconds" required maxlength="4" inputmode="numeric" value="{{ poll_seconds }}"><span class="field__hint">How often Analyte asks for the next report (1 to 3600). It never asks for the archive.</span></div>
+<div class="field"><label class="field__label" for="s2-controls">Reports carry controls</label><select id="s2-controls" class="select" name="controls" required>
+{%- if controls.is_empty() %}<option value="" selected>Choose</option>{% endif %}
+<option value="yes"{% if controls == "yes" %} selected{% endif %}>Yes</option>
+<option value="no"{% if controls == "no" %} selected{% endif %}>No</option>
+</select><span class="field__hint">Whether controls are enabled in the analyzer report layout.</span></div>
+</div>
+</fieldset>
+{%- when Recording::Nothing %}
+{%- endmatch %}
+{%- endif %}
+{%- if let Some(field) = analyzer_mode %}
+<fieldset class="wizard__set stack">
+<legend class="field__label wizard__legend">Recording</legend>
+<div class="field"><label class="field__label" for="{{ field.id }}">{{ field.label }}</label><select id="{{ field.id }}" class="select" name="{{ field.name }}" required>
+{%- if !field.chosen %}<option value="" selected>Choose</option>{% endif %}
+{%- for option in field.options %}<option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>{% endfor -%}
+</select><span class="field__hint">{{ field.hint }}</span></div>
+</fieldset>
+{%- endif %}
 <div class="form-grid">
 <div class="field"><label class="field__label" for="s2-name">Name in Analyte</label><input id="s2-name" class="input" value="{{ wizard.id }}" readonly><span class="field__hint">Cannot change: stored results are kept under this name.</span></div>
+{%- if recording.is_some() %}
+<div class="field"><span class="field__label">Send results to</span>{% call feedback::alert(crate::admin::view::Tone::Attention, crate::admin::view::format::RECORDING_ONLY, "Every byte is kept and recorded. Nothing is read, no order is sent and no lab app is needed.") %}{% endcall %}</div>
+{%- else %}
 {%- match lab_apps %}
 {%- when Picker::Choose { apps, chosen } %}
 <div class="field"><label class="field__label" for="s2-lab">Send results to</label><select id="s2-lab" class="select" name="lab_app" required>
@@ -94,6 +132,7 @@
 {%- when Picker::Unreadable(why) %}
 <div class="field"><span class="field__label">Send results to</span>{% call feedback::alert(crate::admin::view::Tone::Problem, "The lab apps could not be read", why) %}{% endcall %}</div>
 {%- endmatch %}
+{%- endif %}
 </div>
 </section>
 {%- call forms::hidden_fields(hidden) %}{% endcall %}

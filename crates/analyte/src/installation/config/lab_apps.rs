@@ -144,7 +144,7 @@ pub(super) fn validate(
 
 fn lab_app(settings: &Destination) -> LabApp {
     LabApp {
-        limits: crate::runtime::delivery::limits(settings),
+        limits: crate::runtime::delivery::limits(Some(settings)),
         settings: settings.clone(),
     }
 }

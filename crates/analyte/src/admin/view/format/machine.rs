@@ -28,6 +28,20 @@ pub(in crate::admin) fn connection_detail(connection: &Connection) -> Option<Str
     }
 }
 
+/// What every page and command says about a record-only machine (ADR 0034).
+pub(crate) const RECORDING_ONLY: &str = "Recording only — nothing is sent to a lab app";
+
+/// A record-only machine's counts since start, in words (ADR 0034): what it
+/// kept and how many exchanges failed; every byte of both is in the store.
+pub(crate) fn recording_counts(tally: crate::machine::link::status::Tally) -> String {
+    let count = |n: u64, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+    format!(
+        "{} kept, {} since the start; export the recordings with analyte captures export",
+        count(tally.messages, "message", "messages"),
+        count(tally.failures, "failed exchange", "failed exchanges"),
+    )
+}
+
 /// What a page says about a listening machine without `allowed_peers` (ADR 0026).
 pub(in crate::admin) const OPEN_TO_ANY: &str = "Accepts connections from any device";
 

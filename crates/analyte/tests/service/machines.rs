@@ -312,3 +312,94 @@ fn deleted_definition_is_rejected() {
     std::fs::write(model.join("README.md"), "Level: documented").expect("machine README");
     definitions(temp.path()).expect("read inventory");
 }
+
+// ADR 0034 decision 3: every shipped record.toml loads through the real
+// record-only loader with a synthetic site, names only its protocol and link,
+// and never sits beside a machine.toml (one place per model).
+#[test]
+fn every_record_file_loads_as_a_recording() -> Result<(), Error> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../machines");
+    let mut found = 0_usize;
+    let mut pending = vec![root];
+    while let Some(directory) = pending.pop() {
+        for entry in std::fs::read_dir(&directory)? {
+            let entry = entry?;
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                pending.push(path);
+                continue;
+            }
+            if entry.file_name() != analyte_config::RECORD_FILE {
+                continue;
+            }
+            found = found.saturating_add(1);
+            assert!(
+                !directory.join("machine.toml").exists(),
+                "{}: record.toml beside machine.toml",
+                directory.display()
+            );
+            let text = std::fs::read_to_string(&path)?;
+            let table: toml::Table = text.parse()?;
+            let kind = table
+                .get("transport")
+                .and_then(|transport| transport.get("kind"))
+                .and_then(toml::Value::as_str)
+                .ok_or("transport.kind")?;
+            let endpoint = if kind == "serial" {
+                "COM3"
+            } else {
+                "127.0.0.1:5600"
+            };
+            let serial = if kind == "serial" {
+                "[serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n"
+            } else {
+                ""
+            };
+            let answers = match table.get("protocol").and_then(toml::Value::as_str) {
+                Some("vidas") => "acknowledgment = \"literal\"\n",
+                Some("autolyser") => "poll_seconds = 30\ncontrols = false\n",
+                _ => "",
+            };
+            let site = format!(
+                "retention = \"keep\"\nschema_version = 1\nendpoint = \"{endpoint}\"\n{serial}[recording]\n{answers}"
+            );
+            // A model that asks its analyzer mode loads with each value it
+            // offers; a departure applies only to the mode it names.
+            let modes = table
+                .get("analyzer_mode")
+                .and_then(|mode| mode.get("values"))
+                .and_then(toml::Value::as_array)
+                .map(|values| {
+                    values
+                        .iter()
+                        .filter_map(|value| value.get("value")?.as_str())
+                        .map(|value| Some(value.to_owned()))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_else(|| vec![None]);
+            for mode in modes {
+                let chosen = mode
+                    .as_ref()
+                    .map(|mode| format!("analyzer_mode = \"{mode}\"\n"))
+                    .unwrap_or_default();
+                let validated = analyte_config::recording::load(
+                    (&path.display().to_string(), &text),
+                    ("site.toml", &format!("{site}{chosen}")),
+                )
+                .map_err(|error| format!("{}: {error}", path.display()))?;
+                let effective = validated.effective();
+                assert!(effective.records_only());
+                for departure in &effective.machine().deviations {
+                    assert_eq!(
+                        Some(departure.declaration().scope.mode.as_str()),
+                        mode.as_deref(),
+                        "{}",
+                        path.display()
+                    );
+                }
+            }
+        }
+    }
+    assert!(found >= 6, "the six first-lab models record: found {found}");
+    Ok(())
+}

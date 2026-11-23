@@ -557,9 +557,14 @@ async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     let first = fixture.get("/setup/machine-1").await?;
     assert!(first.starts_with("HTTP/1.1 200"), "{first}");
     assert!(first.contains(STEP_ONE), "{first}");
+    // Only the mode starts chosen (Connect normally); no model is (ADR 0034).
     assert!(
-        !first.contains(" checked"),
+        !first.contains("required checked"),
         "no model is chosen yet: {first}"
+    );
+    assert!(
+        first.contains("name=\"mode\" value=\"\" checked") && first.contains("Record only"),
+        "{first}"
     );
     assert!(!first.contains("name=\"lab_app\""));
     let page = "/setup/machine-1/connection?definition=example/network-hl7";
@@ -2409,5 +2414,183 @@ async fn test_with_no_bytes_says_nothing_received() -> Result<(), Error> {
         "{view}"
     );
     assert!(fixture.written.lock().map_err(|_| "poisoned")?.is_empty());
+    Ok(())
+}
+
+// ADR 0034 decisions 1, 3 and 8: on the Setup page a model not ready yet is
+// set up to record only: step 2 asks the profile's own question and no lab
+// app, step 4 says nothing is sent to a lab app, and the save writes what
+// `machines set --record-only` writes.
+#[tokio::test(flavor = "multi_thread")]
+async fn setup_page_saves_a_record_only_machine_without_a_lab_app() -> Result<(), Error> {
+    let fixture = start_with(
+        "[admin]\nport = 8080\n[[machines]]\nid = 'machine-1'\nsite = 'site.toml'\n",
+        include_str!("../../../../../../../packaging/linux/starter/machine-1.site.toml"),
+    )
+    .await?;
+    let vidas = fixture.root().join("machines/biomerieux/vidas");
+    std::fs::create_dir_all(&vidas)?;
+    std::fs::write(
+        vidas.join("README.md"),
+        "# bioMérieux VIDAS\n\nA blocked machine definition.\n",
+    )?;
+    std::fs::write(
+        vidas.join(analyte_config::RECORD_FILE),
+        "recording_schema_version = 1\nprotocol = \"vidas\"\n[transport]\nkind = \"tcp_server\"\n",
+    )?;
+    let first = fixture.get("/setup/machine-1").await?;
+    assert!(
+        first.contains("It can be connected to record only"),
+        "{first}"
+    );
+    let step = "/setup/machine-1/connection?definition=biomerieux/vidas&mode=record";
+    let connection = fixture.get(step).await?;
+    assert!(connection.starts_with("HTTP/1.1 200"), "{connection}");
+    assert!(
+        connection.contains("name=\"acknowledgment\""),
+        "{connection}"
+    );
+    assert!(!connection.contains("name=\"lab_app\""), "{connection}");
+    assert!(
+        connection.contains(crate::admin::view::format::RECORDING_ONLY),
+        "{connection}"
+    );
+    let fields = [
+        ("definition", "biomerieux/vidas"),
+        ("mode", "record"),
+        ("host", "127.0.0.1"),
+        ("tcp_port", "5602"),
+        ("acknowledgment", "literal"),
+    ];
+    let query = fields
+        .iter()
+        .map(|(name, value)| format!("{name}={}", encode(value)))
+        .collect::<Vec<_>>()
+        .join("&");
+    let review = fixture
+        .get(&format!("/setup/machine-1/save?{query}"))
+        .await?;
+    assert!(review.starts_with("HTTP/1.1 200"), "{review}");
+    let body = std::iter::once(("csrf".to_owned(), csrf(&review)?))
+        .chain(
+            fields
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned())),
+        )
+        .map(|(name, value)| format!("{name}={}", encode(&value)))
+        .collect::<Vec<_>>()
+        .join("&");
+    let saved = fixture.post("/setup/machine-1", &body).await?;
+    assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
+    assert!(
+        saved.contains(&format!(
+            "<dt>Sends results to</dt><dd><span class=\"tone-warn\">{}</span></dd>",
+            crate::admin::view::format::RECORDING_ONLY
+        )),
+        "{saved}"
+    );
+    let site: toml::Table = std::fs::read_to_string(&fixture.site)?.parse()?;
+    assert_eq!(
+        site.get("recording")
+            .and_then(|recording| recording.get("acknowledgment"))
+            .and_then(toml::Value::as_str),
+        Some("literal"),
+        "{site}"
+    );
+    assert!(!site.contains_key("lab_app"), "{site}");
+    let program = Program::load(&fixture.config)?;
+    let machine = program.machines().first().ok_or("machine missing")?;
+    assert!(machine.snapshot().effective().records_only());
+    Ok(())
+}
+
+// ADR 0034 with ADR 0015; cobas e 411 HIM v2.3 Host communication setting
+// (p. 7) and v2.2 Table B-3: step 2 asks the protocol type the model's record
+// file declares, never assumes it, and the save writes it, so only the cobas
+// type records with packed frames.
+#[tokio::test(flavor = "multi_thread")]
+async fn setup_page_asks_the_cobas_protocol_type_for_record_only() -> Result<(), Error> {
+    let fixture = start_with(
+        "[admin]\nport = 8080\n[[machines]]\nid = 'machine-1'\nsite = 'site.toml'\n",
+        include_str!("../../../../../../../packaging/linux/starter/machine-1.site.toml"),
+    )
+    .await?;
+    let cobas = fixture.root().join("machines/roche/cobas-e411");
+    std::fs::create_dir_all(&cobas)?;
+    std::fs::write(
+        cobas.join("README.md"),
+        "# Roche cobas e 411\n\nA blocked machine definition.\n",
+    )?;
+    let mut record: toml::Table =
+        include_str!("../../../../../../../machines/roche/cobas-e411/record.toml").parse()?;
+    let mut transport = toml::Table::new();
+    transport.insert("kind".into(), "tcp_server".into());
+    record.insert("transport".into(), transport.into());
+    std::fs::write(
+        cobas.join(analyte_config::RECORD_FILE),
+        toml::to_string(&record)?,
+    )?;
+    let step = "/setup/machine-1/connection?definition=roche/cobas-e411&mode=record";
+    let connection = fixture.get(step).await?;
+    assert!(connection.starts_with("HTTP/1.1 200"), "{connection}");
+    assert!(
+        connection.contains(
+            "name=\"analyzer_mode\" required><option value=\"\" selected>Choose</option>"
+        ),
+        "{connection}"
+    );
+    assert!(
+        connection
+            .contains("<option value=\"cobas\">cobas (a frame may hold several records)</option>"),
+        "{connection}"
+    );
+    assert!(!connection.contains("name=\"lab_app\""), "{connection}");
+    let fields = |mode: Option<&'static str>| {
+        let mut fields = vec![
+            ("definition", "roche/cobas-e411"),
+            ("mode", "record"),
+            ("host", "127.0.0.1"),
+            ("tcp_port", "5603"),
+        ];
+        fields.extend(mode.map(|mode| ("analyzer_mode", mode)));
+        fields
+    };
+    let query = |fields: &[(&str, &str)]| {
+        fields
+            .iter()
+            .map(|(name, value)| format!("{name}={}", encode(value)))
+            .collect::<Vec<_>>()
+            .join("&")
+    };
+    // Unanswered, the save is refused by name: the type is never assumed.
+    let unanswered = fixture
+        .get(&format!("/setup/machine-1/save?{}", query(&fields(None))))
+        .await?;
+    assert!(
+        unanswered.contains("recording.analyzer_mode: no value"),
+        "{unanswered}"
+    );
+    let chosen = fields(Some("cobas"));
+    let review = fixture
+        .get(&format!("/setup/machine-1/save?{}", query(&chosen)))
+        .await?;
+    assert!(review.starts_with("HTTP/1.1 200"), "{review}");
+    let body = format!("csrf={}&{}", encode(&csrf(&review)?), query(&chosen));
+    let saved = fixture.post("/setup/machine-1", &body).await?;
+    assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
+    let site: toml::Table = std::fs::read_to_string(&fixture.site)?.parse()?;
+    assert_eq!(
+        site.get("recording")
+            .and_then(|recording| recording.get("analyzer_mode"))
+            .and_then(toml::Value::as_str),
+        Some("cobas"),
+        "{site}"
+    );
+    let program = Program::load(&fixture.config)?;
+    let machine = program.machines().first().ok_or("machine missing")?;
+    let analyte_config::Stack::Record(stack) = machine.snapshot().effective().stack() else {
+        return Err("record-only stack".into());
+    };
+    assert!(stack.packed_records());
     Ok(())
 }

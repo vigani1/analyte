@@ -56,6 +56,17 @@ pub enum Stack {
     Vidas(Box<VidasStack>),
     /// Autolyser polling over serial or TCP.
     Autolyser(Box<AutolyserStack>),
+    /// Record only (ADR 0034): one protocol's link rules from its shipped
+    /// capture profile; no mappings, no orders and no lab app.
+    Record(Box<crate::RecordStack>),
+}
+
+/// The serial or TCP link of a record-only stack.
+pub(crate) fn record_transport(
+    transport: &Transport,
+    path: &str,
+) -> Result<StreamTransport, Error> {
+    stream(transport, path)
 }
 
 impl Stack {
@@ -103,9 +114,10 @@ impl Stack {
         self.common().timeouts
     }
 
-    /// Returns the machine's test code system and unit table; neither has a fallback.
+    /// Returns the machine's test code system and unit table; neither has a
+    /// fallback. A record-only stack reads no result, so it has none.
     #[must_use]
-    pub fn code_tables(&self) -> (&analyte_model::Identifier, &[UnitMapping]) {
+    pub fn code_tables(&self) -> Option<(&analyte_model::Identifier, &[UnitMapping])> {
         self.common().codes
     }
 }
@@ -149,7 +161,7 @@ impl Stack {
 struct CommonView<'a> {
     limits: &'a SyntaxLimits,
     timeouts: &'a DialogTimeouts,
-    codes: (&'a analyte_model::Identifier, &'a [UnitMapping]),
+    codes: Option<(&'a analyte_model::Identifier, &'a [UnitMapping])>,
     transport: TransportKind,
     operation_timeout_ms: u32,
     fields: Option<&'a Mappings>,
@@ -163,7 +175,7 @@ impl Stack {
                 CommonView {
                     limits: settings.limits(),
                     timeouts: settings.timeouts(),
-                    codes: (&settings.codes().test_system, &settings.codes().units),
+                    codes: Some((&settings.codes().test_system, &settings.codes().units)),
                     transport: $kind,
                     operation_timeout_ms: $timeout,
                     fields: $fields,
@@ -219,6 +231,14 @@ impl Stack {
                 stream_timeout(s.settings.transport()),
                 None
             ),
+            Self::Record(s) => CommonView {
+                limits: s.limits(),
+                timeouts: s.timeouts(),
+                codes: None,
+                transport: stream_kind(s.transport()),
+                operation_timeout_ms: stream_timeout(s.transport()),
+                fields: None,
+            },
         }
     }
 }

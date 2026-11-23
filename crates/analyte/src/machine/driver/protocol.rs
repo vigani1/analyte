@@ -100,6 +100,10 @@ impl<'a, 'm, P: Protocol> Session<'a, 'm, P> {
     pub(in crate::machine) fn elapsed(&self) -> Duration {
         self.start.elapsed()
     }
+    /// When the connection clock started; dialog write deadlines count from it.
+    pub(in crate::machine) const fn started(&self) -> Instant {
+        self.start
+    }
     /// Starts the connection clock again for a fresh dialog.
     pub(in crate::machine) fn restart_clock(&mut self) {
         self.start = Instant::now();

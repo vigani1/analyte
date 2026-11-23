@@ -450,8 +450,8 @@ mod tests {
         )
         .await?;
         let owner = Identifier::new("owner")?;
-        let first = crate::orders::reservation::key(&machine, Identifier::new("order-2")?);
-        let second = crate::orders::reservation::key(&machine, Identifier::new("order-1")?);
+        let first = crate::orders::reservation::key(&machine, Identifier::new("order-2")?)?;
+        let second = crate::orders::reservation::key(&machine, Identifier::new("order-1")?)?;
         reserve_original_connection(&store, &first, &owner).await?;
         reserve_original_connection(&store, &second, &owner).await?;
         let database = rusqlite::Connection::open(temp.path().join("owned-cleanup.db"))?;
@@ -504,7 +504,7 @@ mod tests {
         )
         .await?;
         let key = analyte_store::MachineOrderKey {
-            destination: crate::orders::destination(&machine),
+            destination: crate::orders::destination(&machine)?,
             order: Identifier::new("order-1")?,
             machine: machine.id.clone(),
         };
@@ -578,7 +578,7 @@ mod tests {
         )
         .await?;
         let key = analyte_store::MachineOrderKey {
-            destination: crate::orders::destination(&machine),
+            destination: crate::orders::destination(&machine)?,
             order: Identifier::new("order-1")?,
             machine: machine.id.clone(),
         };
@@ -651,7 +651,7 @@ mod tests {
             model: analyte_contract::document::ModelId::new("example", "synthetic-astm")?,
             capture: false,
             destination_limits: crate::runtime::delivery::limits(
-                &snapshot.effective().site().destination,
+                snapshot.effective().site().destination.as_ref(),
             ),
 
             hooks: crate::installation::config::MachineHooks::default(),

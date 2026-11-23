@@ -73,10 +73,25 @@ addresses, `--dry-run`, `--anyway`) are in [Connect](connect.md#from-the-command
 | Set it up: model, connection, lab app | `analyte --actor it-anna machines set hl7-1 --model vendor/model --address 192.168.1.20 --port 5600 --lab-app main-lab` |
 | Choose a serial machine's cable settings to match the analyzer's LIS screen ([ADR 0031](../adr/0031-lab-chooses-serial-cable-settings.md)); also on `add` and `test` | `analyte --actor it-anna machines set cobas-1 --baud 9600 --data-bits 8 --parity none --stop-bits 1 --flow-control none` |
 | Choose one of the model's own settings, such as its protocol mode or software version ([ADR 0032](../adr/0032-machine-definitions-declare-lab-choices.md)); repeat for several, also on `test`; `machines models` lists them | `analyte --actor it-anna machines set vidas-1 --choice software_version=v2` |
+| Record only, for a first visit or a model not ready yet: keeps every byte, sends nothing to a lab app ([ADR 0034](../adr/0034-record-only-connections.md)); also on `test`. The Autolyser also takes `--poll-seconds` and `--reports-carry-controls`, the VIDAS `--vidas-acknowledgment`, the cobas e 411 `--analyzer-mode elecsys` or `cobas` (its protocol type; `machines models` lists it) | `analyte --actor it-anna machines set cobas-1 --model roche/cobas-e411 --record-only --usb-serial A10K3XYZ --analyzer-mode cobas` |
+| Leave record only: connect normally again (needs a ready model and a lab app); recorded messages are never delivered | `analyte --actor it-anna machines set cobas-1 --connect-normally --lab-app main-lab` |
 | Accept only the analyzer's own device ([ADR 0026](../adr/0026-accept-only-the-machine.md)); repeat for several | `analyte --actor it-anna machines set hl7-1 --allowed-peer 192.168.1.50` |
 | Accept any device again (shown as a warning) | `analyte --actor it-anna machines set hl7-1 --any-device` |
 | Listen-only connection test (nothing sent or stored); names the device that connected | `analyte machines test hl7-1 --seconds 30` |
 | Remove a machine (its results and history stay) | `analyte --actor it-anna machines remove hl7-1` |
+
+## Recordings
+
+Recorded conversations ([ADR 0009](../adr/0009-recording-format.md)) live
+under the data folder in `captures/<machine>/`. They **contain patient data**:
+both commands are audited first and say so. Export copies one file byte for
+byte and never overwrites; make a reviewed de-identified copy before sharing it
+([Capture, de-identify and replay](../develop/adding-a-machine.md#capture-de-identify-and-replay)).
+
+| Task | Command |
+| --- | --- |
+| List each machine's recordings: file, size, last change, and whether capture stopped early | `analyte --actor it-anna captures list --machine cobas-1` |
+| Copy one recording to a protected folder | `analyte --actor it-anna captures export cobas-1 <file>.rec.jsonl --to D:\Protected --reason "First visit"` |
 
 ## Lab apps
 

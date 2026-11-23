@@ -350,7 +350,7 @@ fn configured_destination(
         .machines()
         .iter()
         .find(|machine| machine.id().as_str() == id)
-        .map(|machine| machine.snapshot().effective().site().destination.clone()))
+        .and_then(|machine| machine.snapshot().effective().site().destination.clone()))
 }
 
 /// The lab app a machine sends to, as far as removing it is concerned.

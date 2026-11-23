@@ -202,6 +202,8 @@ pub(super) struct MachineNode {
     pub(super) dot: &'static str,
     /// What Analyte observed, shown while the link is not open.
     pub(super) line: Option<String>,
+    /// Record only (ADR 0034): nothing is sent to a lab app, and its counts.
+    pub(super) recording: Option<String>,
 }
 
 /// One lab app on the signal path.

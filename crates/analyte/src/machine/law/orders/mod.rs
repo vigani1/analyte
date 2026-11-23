@@ -445,7 +445,7 @@ async fn query_orders(
     options: Options,
 ) -> Result<Vec<analyte_store::CachedOrder>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
-    let destination = crate::orders::destination(machine);
+    let destination = crate::orders::destination(machine)?;
     let target = machine.id.clone();
     let bound = options.limits.segments;
     machine

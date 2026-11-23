@@ -65,8 +65,9 @@ pub(super) struct Machine {
     /// Its model's own choices in words, with what differs from the model's
     /// suggestion; none when the model declares none (ADR 0032).
     pub(super) choices: Option<String>,
-    /// The lab app it sends to.
-    pub(super) lab_app: Identifier,
+    /// The lab app it sends to; none for a record-only machine, which sends
+    /// nothing (ADR 0034).
+    pub(super) lab_app: Option<Identifier>,
 }
 
 /// How a set-up machine is attached, as configured: what the overview can name.
@@ -232,7 +233,7 @@ pub(crate) async fn prepare(
                     super::setup::cable::summary(serial, effective.serial_suggestion())
                 }),
                 choices: super::setup::choices::summary(effective.choices()),
-                lab_app: effective.site().destination.name.clone(),
+                lab_app: effective.site().lab_app_name().cloned(),
             })
         })
         .collect::<Result<Vec<_>, Error>>()?;

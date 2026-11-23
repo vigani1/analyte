@@ -32,11 +32,25 @@ pub async fn reprocess(
     if receipt.metadata.machine != *machine.id() {
         return Err(intake::Error::WrongMachine);
     }
+    // A record-only receipt is a journaled chunk, never a message (ADR 0034);
+    // and a record-only machine reads nothing.
+    if is_recorded(&receipt.metadata) {
+        return Err(intake::Error::RecordedOnly);
+    }
+    if machine.snapshot.effective().records_only() {
+        return Err(intake::Error::RecordOnly);
+    }
     Ok(
         retained::process(store, machine, &receipt, None, Some(action))
             .await?
             .1,
     )
+}
+
+/// Whether a record-only connection kept this receipt: its driver namespace
+/// says so (ADR 0034). Such a receipt is never interpreted, parked or delivered.
+pub(crate) fn is_recorded(metadata: &analyte_model::ReceiptMetadata) -> bool {
+    metadata.driver.namespace.as_str() == analyte_config::recording::RECORD_DRIVER
 }
 
 // Read source context from durable evidence; every stack then uses the same layer-owned reader.

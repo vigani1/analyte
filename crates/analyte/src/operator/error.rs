@@ -41,6 +41,9 @@ pub enum Error {
     /// Worker admission, completion or shutdown failed.
     #[error(transparent)]
     Worker(#[from] analyte_store::WorkerError),
+    /// A recording could not be listed or exported.
+    #[error(transparent)]
+    Capture(#[from] super::captures::CaptureError),
     /// The selected retained receipt does not exist.
     #[error("receipt does not exist")]
     UnknownReceipt,

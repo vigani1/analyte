@@ -27,7 +27,11 @@
 {%- endmatch -%}
 </dd>
 {%- endif %}
-<dt>Sends results to</dt><dd><a class="link" href="{{ summary.lab_app.href }}" title="{{ summary.lab_app.address }}">{{ summary.lab_app.name }}</a>{% if let Some(missing) = summary.lab_app.missing %} <span class="tone-warn">· {{ missing }}</span>{% endif %}</dd>
+{%- if let Some(lab_app) = summary.lab_app %}
+<dt>Sends results to</dt><dd><a class="link" href="{{ lab_app.href }}" title="{{ lab_app.address }}">{{ lab_app.name }}</a>{% if let Some(missing) = lab_app.missing %} <span class="tone-warn">· {{ missing }}</span>{% endif %}</dd>
+{%- else %}
+<dt>Sends results to</dt><dd><span class="tone-warn">{{ crate::admin::view::format::RECORDING_ONLY }}</span></dd>
+{%- endif %}
 <dt>Connection test</dt><dd>
 {%- match summary.test %}
 {%- when Tested::Seen { tone, title, when } %}<span class="with-icon tone-{{ tone.class() }}">{% call draw::icon(tone.icon(), "icon--md") %}{% endcall %}<span>{{ title }} · {% call display::time(when) %}{% endcall %}</span></span>

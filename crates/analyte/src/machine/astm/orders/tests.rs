@@ -29,7 +29,7 @@ fn machine(policy: &str) -> Result<Machine, Error> {
         model: analyte_contract::document::ModelId::new("example", "synthetic-astm")?,
         capture: false,
         destination_limits: crate::runtime::delivery::limits(
-            &snapshot.effective().site().destination,
+            snapshot.effective().site().destination.as_ref(),
         ),
 
         hooks: crate::installation::config::MachineHooks::default(),
@@ -154,7 +154,7 @@ async fn untrusted_order_cache_answers_query_error() -> Result<(), Error> {
             crate::test_startup_deadline()?,
         )
         .await?;
-        let destination = crate::orders::destination(&machine);
+        let destination = crate::orders::destination(&machine)?;
         store
             .request::<_, analyte_store::OrderError>(crate::deadline()?, move |s| {
                 if case != "unknown" {

@@ -3,6 +3,10 @@
 /// Specific failures from each owned reading layer; callers retain and park the receipt.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// A record-only connection kept this receipt as a journaled chunk; it is
+    /// never read (ADR 0034).
+    #[error("this message was kept by a record-only connection and is never read")]
+    RecordedOnly,
     /// LAW result mapping refused retained evidence.
     #[error(transparent)]
     LawMapping(#[from] analyte_mapping::law::Error),
@@ -105,7 +109,8 @@ impl Error {
             | Read::AutolyserFrame(_)
             | Read::Encoding(_)
             | Read::Evidence(_)
-            | Read::Context(_) => None,
+            | Read::Context(_)
+            | Read::RecordedOnly => None,
         }
     }
 }

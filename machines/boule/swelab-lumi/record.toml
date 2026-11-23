@@ -1,0 +1,11 @@
+# Boule Swelab Lumi: how it talks, for a record-only connection (ADR 0034).
+# Only the protocol and the link; the rest comes from Analyte's shipped HL7
+# capture profile. Not a machine definition: nothing is read or delivered.
+recording_schema_version = 1
+protocol = "hl7"
+[transport]
+# Lumi User Manual 1504529: HL7 over TCP, the analyzer connects to the host,
+# so Analyte listens (5600 is its documented default port; the lab chooses).
+# Whether it frames with MLLP is unverified: a recording settles it, because
+# every byte is kept even when a block is not MLLP.
+kind = "tcp_server"

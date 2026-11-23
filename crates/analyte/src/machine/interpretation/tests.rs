@@ -295,7 +295,7 @@ async fn assert_repair_resolves_original(
     original: String,
 ) -> Result<(), Error> {
     let original_check = original;
-    let destination = crate::orders::destination(machine);
+    let destination = crate::orders::destination(machine)?;
     store
         .request::<_, FixtureError>(deadline()?, move |s| {
             assert_eq!(
@@ -342,7 +342,7 @@ async fn assert_retransmission_and_conflict(
     let machine = changed.machines().first().ok_or("missing machine")?;
     let commit = reprocess(store, machine, action(id, None)?).await?;
     assert_eq!(commit.outcomes, vec![RevisionOutcome::Conflict]);
-    let destination = crate::orders::destination(machine);
+    let destination = crate::orders::destination(machine)?;
     store
         .request::<_, FixtureError>(deadline()?, move |s| {
             let receipt = s.receipt(id)?.ok_or(FixtureError::Corruption)?;

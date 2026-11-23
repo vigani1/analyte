@@ -169,7 +169,15 @@ fn named_lab_app_gives_the_same_snapshot() -> Result<(), Error> {
     assert_eq!(named.digest(), embedded.digest());
     assert!(!named.canonical().contains("lab_app"));
     assert_eq!(named.effective().lab_app_source(), LabAppSource::LabApps);
-    assert_eq!(named.effective().site().destination.name.as_str(), "demo");
+    assert_eq!(
+        named
+            .effective()
+            .site()
+            .destination
+            .as_ref()
+            .map(|d| d.name.as_str()),
+        Some("demo")
+    );
     Ok(())
 }
 
@@ -204,8 +212,13 @@ fn lab_app_choice_is_never_guessed() -> Result<(), Box<dyn std::error::Error>> {
     let chosen = format!("{unnamed}lab_app = \"second\"\n");
     let second = validated(HL7, &chosen, &two)?;
     assert_eq!(
-        second.effective().site().destination.name.as_str(),
-        "second"
+        second
+            .effective()
+            .site()
+            .destination
+            .as_ref()
+            .map(|d| d.name.as_str()),
+        Some("second")
     );
     let unknown = format!("{unnamed}lab_app = \"third\"\n");
     assert_eq!(

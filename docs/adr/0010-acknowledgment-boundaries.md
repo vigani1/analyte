@@ -1,6 +1,7 @@
 # 0010. Acknowledgment boundaries for every protocol
 
 Status: accepted, 2026-11-15. Extends [ADR 0003](0003-clinical-safety-rules.md).
+Extended by [ADR 0034](0034-record-only-connections.md) (the record-only row).
 
 ## Context
 

@@ -23,7 +23,7 @@
 {%- if let Some(last) = row.last_data %}{% call display::cell("num") %}{% call display::time(last) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("num subtle") %}Nothing yet{% endcall %}{% endif %}
 {%- if let Some(link) = row.link %}{% call display::cell("") %}<span class="with-icon">{% call draw::icon(link.icon, "icon--md") %}{% endcall %}{{ link.kind }}</span>{% if let Some(detail) = link.detail %}<div class="cell-sub mono">{{ detail }}</div>{% endif %}{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}
 {%- if let Some(since) = row.since %}{% call display::cell("num") %}{% call display::time(since) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("num subtle") %}—{% endcall %}{% endif %}
-{%- if let Some(lab_app) = row.lab_app %}{% call display::cell("") %}{{ lab_app }}{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}</tr>
+{%- if let Some(recording) = row.recording %}{% call display::cell("") %}<div class="cell-main tone-warn">{{ crate::admin::view::format::RECORDING_ONLY }}</div><div class="cell-sub">{{ recording }}</div>{% endcall %}{% else if let Some(lab_app) = row.lab_app %}{% call display::cell("") %}{{ lab_app }}{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}</tr>
 {%- endfor %}
 {% endcall %}
 {%- endif %}

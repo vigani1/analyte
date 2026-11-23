@@ -41,6 +41,16 @@ pub enum IntakeError {
     /// Reprocessing cannot cross machine ownership.
     #[error("receipt belongs to a different machine")]
     WrongMachine,
+    /// A record-only machine reads and delivers nothing; its receipts are
+    /// kept as recorded and are never interpreted (ADR 0034).
+    #[error("this machine records only: nothing is read or delivered for it")]
+    RecordOnly,
+    /// The receipt was kept by a record-only connection; it is evidence of the
+    /// conversation, not a message to read again (ADR 0034).
+    #[error(
+        "this message was kept by a record-only connection; replay its capture instead of reprocessing it"
+    )]
+    RecordedOnly,
 }
 
 impl From<analyte_store::WorkerError> for IntakeError {

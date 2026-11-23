@@ -173,6 +173,10 @@ fn effective_options(effective: &analyte_config::Effective) -> Option<analyte_hl
             Escapes::Reject,
             s.settings().limits(),
         )),
-        Stack::Astm(_) | Stack::Poct(_) | Stack::Vidas(_) | Stack::Autolyser(_) => None,
+        Stack::Astm(_)
+        | Stack::Poct(_)
+        | Stack::Vidas(_)
+        | Stack::Autolyser(_)
+        | Stack::Record(_) => None,
     }
 }

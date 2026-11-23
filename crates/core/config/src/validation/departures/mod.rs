@@ -41,11 +41,16 @@ pub(super) fn validate_departures(
     for departure in &m.deviations {
         let tag = departure.tag();
         validate_scope(m, departure).map_err(|r| refusal(path, tag, r))?;
-        evidence::validate(m, departure, reference_path).map_err(|failure| Error::Departure {
-            path: path.into(),
-            rule: tag.into(),
-            reason: failure.reason,
-            source: failure.source,
+        let exercised = |d: &MachineDeparture, file: &analyte_model::Identifier| {
+            evidence::exercised_capability(m, d, file)
+        };
+        evidence::validate(departure, reference_path, &exercised).map_err(|failure| {
+            Error::Departure {
+                path: path.into(),
+                rule: tag.into(),
+                reason: failure.reason,
+                source: failure.source,
+            }
         })?;
     }
     for (tag, selected) in selected_settings(m) {
@@ -90,15 +95,9 @@ fn selected_settings(m: &ParsedMachine<'_>) -> [(&'static str, bool); 9] {
     ]
 }
 
-fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result<(), Refusal> {
-    let scope = &departure.declaration().scope;
-    let installed = m
-        .departure_scope
-        .as_ref()
-        .ok_or(Refusal::MissingInstalledScope)?;
-    if scope != installed {
-        return Err(Refusal::ScopeMismatch);
-    }
+/// Refuses a wildcard or unspecified model, mode or firmware; only firmware
+/// may be `unknown`, and then only with explicit vendor coverage.
+fn applicability(scope: &DepartureScope) -> Result<(), Refusal> {
     for text in [&scope.model, &scope.mode, &scope.firmware] {
         if text.as_str().contains(['*', '?']) || matches!(text.as_str(), "all" | "any" | "untested")
         {
@@ -108,6 +107,80 @@ fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result
     if scope.model.as_str() == "unknown" || scope.mode.as_str() == "unknown" {
         return Err(Refusal::UnsupportedApplicability);
     }
+    Ok(())
+}
+
+/// Checks the departures a model's `record.toml` declares for a record-only
+/// connection (ADR 0034 with ADR 0015). Only packed ASTM records in one
+/// verified inbound frame can be declared: every other link rule is the
+/// shipped capture profile's. Each declaration names this model by its folder
+/// key (`model`, `vendor/model`), one analyzer mode the file offers (`offered`),
+/// analyzer uploads and ASTM results, and its own evidence; at most one per
+/// mode. A record-only snapshot is documented, so no level above it is taken.
+pub(crate) fn validate_recording(
+    departures: &[MachineDeparture],
+    astm: bool,
+    model: Option<&str>,
+    offered: &[crate::ChoiceName],
+    path: &str,
+) -> Result<(), Error> {
+    if departures.len() > 12 {
+        return Err(refusal(path, "deviations", Refusal::TooManyDeclarations));
+    }
+    let mut modes_seen = std::collections::HashSet::new();
+    for departure in departures {
+        departure.evidence_snapshot()?;
+        let tag = departure.tag();
+        let fail = |reason| refusal(path, tag, reason);
+        let MachineDeparture::AstmPackedRecordsInFrame(declaration) = departure else {
+            return Err(fail(Refusal::RecordOnlyRule));
+        };
+        if !astm {
+            return Err(fail(Refusal::ProtocolMismatch));
+        }
+        let scope = &declaration.scope;
+        applicability(scope).map_err(fail)?;
+        if model != Some(scope.model.as_str()) {
+            return Err(fail(Refusal::ScopeMismatch));
+        }
+        if !offered
+            .iter()
+            .any(|mode| mode.as_str() == scope.mode.as_str())
+        {
+            return Err(fail(Refusal::ModeNotOffered));
+        }
+        if !modes_seen.insert(scope.mode.as_str()) {
+            return Err(fail(Refusal::DuplicateRule));
+        }
+        if scope.edition != DepartureEdition::Astm {
+            return Err(fail(Refusal::EditionMismatch));
+        }
+        if scope.direction != DepartureDirection::MachineToHost {
+            return Err(fail(Refusal::DirectionMismatch));
+        }
+        if scope.message != DepartureMessage::AstmResults {
+            return Err(fail(Refusal::MessageMismatch));
+        }
+        evidence::validate(departure, path, &|_, _| false).map_err(|failure| Error::Departure {
+            path: path.into(),
+            rule: tag.into(),
+            reason: failure.reason,
+            source: failure.source,
+        })?;
+    }
+    Ok(())
+}
+
+fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result<(), Refusal> {
+    let scope = &departure.declaration().scope;
+    let installed = m
+        .departure_scope
+        .as_ref()
+        .ok_or(Refusal::MissingInstalledScope)?;
+    if scope != installed {
+        return Err(Refusal::ScopeMismatch);
+    }
+    applicability(scope)?;
     let hl7 = match departure {
         MachineDeparture::Hl7AbsentObr25MeansFinal(_)
         | MachineDeparture::Hl7AbsentObx11MeansFinal(_)

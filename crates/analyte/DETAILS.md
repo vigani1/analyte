@@ -577,6 +577,26 @@ unknown capacity stops recording. A saturated queue, limit or low disk ends capt
 visibly rather than silently omitting bytes. Incomplete/failed captures are not
 conformance evidence. Capture does not acknowledge data or change replay policy.
 
+### Record only (ADR 0034)
+
+A site file with `[recording]` makes the machine record only: the definition
+entry names the model's `machine.toml` or, for a model not ready yet, its
+`record.toml`, and the snapshot is a `Stack::Record` built from the shipped
+capture profile of its protocol (`crates/core/config/src/recording/profiles/`)
+with no lab app, mappings or orders. Capture is always on for it and an
+overrides file is refused. Its hosts (`machine/<protocol>/recording.rs`) run
+the protocol's own dialog behind the chunk-journaling runner, so every chunk
+is a stored receipt (driver namespace `analyte-record`) before any reply. The
+ASTM host asks the store for room before ENQ and answers a query with
+termination code Q; the HL7 host answers ORU and OUL with AA and every other
+message with AE; the VIDAS host acknowledges uploads only; the Autolyser host
+sends only R, guarded as on a normal connection, and stops on an unusable
+response. Record-only receipts are never interpreted, parked, delivered or
+reprocessed, and startup recovery leaves them out. The link status counts the
+messages kept and the failed exchanges since start for the pages, `machines
+list` and `doctor`. `analyte captures list` and `export` read the capture
+folder after an audit row.
+
 ## Retention and holds (ADR 0013)
 
 Choosing a period, the retention key, holds and what is purged are operator

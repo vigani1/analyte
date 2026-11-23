@@ -8,6 +8,26 @@ pub(crate) fn options_from_values(
     escapes: Escapes,
     limits: &SyntaxLimits,
 ) -> analyte_hl7::Options {
+    options_with_limits(
+        encoding,
+        terminator,
+        escapes,
+        analyte_hl7::Limits {
+            message_bytes: limits.bytes(),
+            segments: limits.records(),
+            fields: limits.fields(),
+            repetitions: limits.repetitions(),
+        },
+    )
+}
+
+/// The parser options for these settings and resource limits.
+pub(crate) fn options_with_limits(
+    encoding: Encoding,
+    terminator: Terminator,
+    escapes: Escapes,
+    limits: analyte_hl7::Limits,
+) -> analyte_hl7::Options {
     analyte_hl7::Options {
         allow_utf8_in_v231: false,
         header_zone: analyte_hl7::HeaderZone::Required,
@@ -25,12 +45,7 @@ pub(crate) fn options_from_values(
             Escapes::Reject => analyte_hl7::EscapePolicy::Reject,
             Escapes::Preserve => analyte_hl7::EscapePolicy::Preserve,
         },
-        limits: analyte_hl7::Limits {
-            message_bytes: limits.bytes(),
-            segments: limits.records(),
-            fields: limits.fields(),
-            repetitions: limits.repetitions(),
-        },
+        limits,
     }
 }
 

@@ -4,6 +4,28 @@
 
 ### Program
 
+- **Record only** (ADR 0034): any model, including the first lab's six that
+  are not ready yet, can be connected only to record its conversation for a
+  first visit. Analyte keeps the analyzer talking with its protocol's shipped
+  capture profile (ASTM LIS01-A2, HL7 over MLLP, VIDAS Literal, the
+  Autolyser's next-report poll), stores every received chunk before any reply,
+  records every connection, and reads, delivers and orders nothing. A query is
+  answered with the protocol's own error (ASTM code Q, HL7 AE), never "no
+  tests"; the Autolyser is asked only for its next report. Setup step 1 offers
+  "Record only", `analyte machines set` takes `--record-only` (and
+  `--connect-normally` to leave it); the Overview, Machines, the machine's
+  page, `machines list` and `doctor` say "Recording only — nothing is sent to
+  a lab app" with the counts since start. The six first-lab models gained a
+  `record.toml`. Recorded messages are never delivered later and
+  reprocessing refuses them. The cobas e 411 asks its protocol type (Elecsys
+  or cobas; Setup step 2 or `--analyzer-mode`): in the cobas type a frame
+  holding several records is acknowledged under the ADR 0015 departure its
+  `record.toml` declares, instead of being refused every time; a bad
+  checksum is still refused.
+- `analyte captures list` and `analyte captures export` list and copy the
+  recorded conversations, audited first, with a reminder that they contain
+  patient data and must be de-identified before sharing.
+
 - A machine definition can declare the choices a lab makes (ADR 0032): modes
   the analyzer offers on its own screen, and its software version, whose band
   decides version-specific facts such as the VIDAS sample ID limit. Each value

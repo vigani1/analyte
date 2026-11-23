@@ -260,7 +260,11 @@ missing; nothing is guessed in the meantime.
 - **Recordings:** retain and replay synthetic or de-identified conversations in
   the format owned by [ADR 0009](adr/0009-recording-format.md). The program can
   opt each machine into protected live capture (`capture = true`); capture failure
-  is separate from clinical custody and remains visible in status.
+  is separate from clinical custody and remains visible in status. A machine
+  whose definition is not ready can be connected to **record only**
+  ([ADR 0034](adr/0034-record-only-connections.md)): its protocol's shipped
+  capture profile keeps the analyzer talking, every byte is stored and
+  captured, and nothing is read, delivered or ordered.
 - **Failure paths:** broken checksums, lost acknowledgments, split and merged
   reads, timeouts, disconnects, restart between storing and acknowledging,
   disk full, corrected and repeated results, late query replies; a crash

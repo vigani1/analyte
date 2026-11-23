@@ -78,6 +78,8 @@ pub enum LabAppSource {
     LabApps,
     /// The overrides file's `[destination]` table.
     Overrides,
+    /// No lab app: a record-only machine sends nothing (ADR 0034).
+    None,
 }
 
 /// The checked lab apps of one installation, each name once, in written order.

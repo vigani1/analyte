@@ -1,0 +1,26 @@
+# Capture profile for ASTM (ADR 0034), shipped with Analyte, the same for every
+# lab. Only the CLSI LIS01-A2 link rules that keep an analyzer talking while
+# Analyte records: establishment, frame checksums and acknowledgments, and the
+# standard's timers. LIS02 records are kept as received and never read.
+protocol = "astm"
+# Analyte's bound on one transport read or write (AGENTS rule 7).
+operation_timeout_ms = 10000
+# LIS01-A2 6.3.1 and 8.3.1: a frame holds at most 64 000 characters,
+# frame overhead included.
+frame_limit = 64000
+# LIS01-A2 6.5.2.1 and 8.5.2.1: a reply to ENQ within 15 seconds.
+establish_ms = 15000
+# LIS01-A2 6.5.2.2 and 8.5.2.2: after contention the computer waits
+# 20 seconds for the instrument's ENQ.
+contention_ms = 20000
+# LIS01-A2 6.5.2.3 and 8.5.2.3: a sender waits 15 seconds for a frame reply.
+frame_ms = 15000
+# LIS01-A2 6.5.2.4 and 8.5.2.4: a receiver waits 30 seconds for the next
+# frame or EOT.
+receive_ms = 30000
+# LIS01-A2 6.5.2.5 and 8.5.2.5: a receiver replies to a frame within
+# 15 seconds; Analyte stores the frame before replying.
+commit_ms = 15000
+# Analyte's bounds on one transfer (AGENTS rule 7), not from the standard.
+message_bytes = 1048576
+frames = 4096

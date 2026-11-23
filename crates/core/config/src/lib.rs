@@ -21,6 +21,11 @@ mod schema;
 use schema::MachineDocument;
 mod choices;
 pub use choices::{Chosen, declared as declared_choices};
+pub mod recording;
+pub use recording::{
+    AnalyzerMode, AnalyzerModeValue, ProfileAnswers, RECORD_FILE, RecordLink, RecordStack,
+    VidasAcknowledgment,
+};
 mod stack;
 mod validation;
 pub use orders::{
@@ -175,6 +180,43 @@ pub enum Error {
         key: String,
         /// Required corrective action.
         reason: &'static str,
+    },
+    /// A record-only site file does not say which mode the analyzer's own
+    /// settings screen shows, though the model's record file asks it; none is
+    /// assumed (ADR 0034).
+    #[error(
+        "{path}: recording.analyzer_mode: no value: {question}? Choose one of {allowed} on the Setup page (step 2) or with analyte machines set --analyzer-mode <value>"
+    )]
+    MissingAnalyzerMode {
+        /// Site file.
+        path: String,
+        /// The model's question, in plain words.
+        question: String,
+        /// The values the model offers.
+        allowed: String,
+    },
+    /// A record-only site file names an analyzer mode the model does not offer.
+    #[error("{path}: recording.analyzer_mode: {value} is not one of the model's values: {allowed}")]
+    AnalyzerModeValue {
+        /// Site file.
+        path: String,
+        /// The refused value.
+        value: ChoiceName,
+        /// The values the model offers.
+        allowed: String,
+    },
+    /// A record-only site file leaves a question of its protocol's capture
+    /// profile unanswered; no answer is assumed (ADR 0034).
+    #[error(
+        "{path}: recording.{key}: no value: {question}? Answer it on the Setup page (step 2) or with analyte machines set"
+    )]
+    MissingRecordingAnswer {
+        /// Site file.
+        path: String,
+        /// The `[recording]` key.
+        key: &'static str,
+        /// The question, in plain words.
+        question: &'static str,
     },
     /// A serial cable setting has no value in any layer; none is assumed (ADR 0031).
     #[error(
@@ -386,16 +428,18 @@ pub struct Machine {
 }
 
 impl Machine {
-    /// Returns the machine's own test code system (ADR 0029).
+    /// Returns the machine's own test code system (ADR 0029); none for a
+    /// record-only connection, which reads no result (ADR 0034).
     #[must_use]
-    pub fn test_system(&self) -> &analyte_model::Identifier {
-        self.stack.code_tables().0
+    pub fn test_system(&self) -> Option<&analyte_model::Identifier> {
+        self.stack.code_tables().map(|(system, _)| system)
     }
 
-    /// Returns the required unit translation table for this stack.
+    /// Returns the unit translation table for this stack; empty for a
+    /// record-only connection.
     #[must_use]
     pub fn units(&self) -> &[UnitMapping] {
-        self.stack.code_tables().1
+        self.stack.code_tables().map_or(&[], |(_, units)| units)
     }
 }
 
@@ -466,6 +510,7 @@ impl Draft {
         overrides: (&str, &str),
         lab_apps: &LabApps,
     ) -> Result<Self, Error> {
+        recording::refuse_record_file(machine.0, machine.1)?;
         let (resolved, source, chosen) = retention::load_site(site.0, site.1, lab_apps)?;
         Ok(Self {
             machine: load(machine.0, machine.1)?,
@@ -483,6 +528,7 @@ impl Draft {
     /// Rejects incompatible stacks, invalid endpoints, ambiguous mappings and unbounded settings.
     pub fn validate(mut self) -> Result<Validated, Error> {
         let site_path = self.paths.get(1).map_or("site", String::as_str);
+        recording::refuse_recording_site(&self.site, site_path)?;
         let o = self.overrides;
         let path = self.paths.get(2).map_or("overrides", String::as_str);
         let suggestion = self.machine.transport.serial.clone();
@@ -543,7 +589,7 @@ impl Draft {
             self.machine.deviations = v;
         }
         if let Some(v) = o.destination {
-            self.site.destination = v;
+            self.site.destination = Some(v);
             self.source = LabAppSource::Overrides;
         }
         let stack = validate_machine(
@@ -586,6 +632,38 @@ impl Draft {
     }
 }
 
+/// Loads one machine's validated snapshot the way the program does: a site
+/// file with `[recording]` is a record-only connection built from the
+/// model's capture profile (ADR 0034), without overrides; any other is the
+/// definition, site and overrides layers.
+/// # Errors
+/// Rejects what [`recording::load`] or [`Draft::load_with`] and
+/// [`Draft::validate`] reject, and overrides beside a record-only site file.
+pub fn load_machine(
+    definition: (&str, &str),
+    site: (&str, &str),
+    overrides: Option<(&str, &str)>,
+    lab_apps: &LabApps,
+) -> Result<Validated, Error> {
+    if recording::records_only(site.1) {
+        if let Some((path, _)) = overrides {
+            return Err(invalid(
+                path,
+                "overrides",
+                "a record-only machine uses its capture profile as shipped; remove the overrides file from its entry",
+            ));
+        }
+        return recording::load(definition, site);
+    }
+    Draft::load_with(
+        definition,
+        site,
+        overrides.unwrap_or(("overrides", "schema_version = 1")),
+        lab_apps,
+    )?
+    .validate()
+}
+
 impl SerialValues {
     /// Refuses a value outside the standard lists, as loading a site file's
     /// `[serial]` does; for a writer that checks before the machine's model is
@@ -599,7 +677,7 @@ impl SerialValues {
 
 /// Applies the site's serial `chosen` values over the definition's, after
 /// checking each against the standard list; only a serial machine takes them.
-fn choose_serial(
+pub(crate) fn choose_serial(
     transport: &mut Transport,
     chosen: &SerialValues,
     site_path: &str,
@@ -683,6 +761,13 @@ impl Effective {
     #[must_use]
     pub fn choices(&self) -> &[Chosen] {
         &self.choices
+    }
+
+    /// Whether this is a record-only connection: it keeps the analyzer's
+    /// conversation and sends nothing to a lab app (ADR 0034).
+    #[must_use]
+    pub const fn records_only(&self) -> bool {
+        matches!(self.machine.stack, Stack::Record(_))
     }
 
     /// Where the lab app in `site().destination` was written. It is not part of

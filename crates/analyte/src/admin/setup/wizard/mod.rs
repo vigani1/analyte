@@ -79,11 +79,23 @@ pub(in crate::admin) struct Draft {
     /// The values chosen in step 2 for the model's own choices (ADR 0032), by
     /// choice name, from the `choice.<name>` fields; empty takes the suggestion.
     pub(super) choices: std::collections::BTreeMap<String, String>,
+    /// How Analyte uses the machine, chosen in step 1: `record` for record
+    /// only (ADR 0034); empty connects it normally.
+    pub(super) mode: Option<String>,
+    /// Record only, step 2: the capture profile's questions (ADR 0034).
+    /// Autolyser: seconds between next-report requests, and `yes` or `no`
+    /// for reports that carry controls; VIDAS: `literal` or `alternate`.
+    pub(super) poll_seconds: Option<String>,
+    pub(super) controls: Option<String>,
+    pub(super) acknowledgment: Option<String>,
+    /// Record only, step 2: the mode the analyzer's own settings show, when
+    /// the model's record file asks it (the cobas e 411's protocol type).
+    pub(super) analyzer_mode: Option<String>,
 }
 
 /// Most fields a step's form carries: the fixed ones, the CSRF value and one
 /// per choice a model may declare.
-const MOST_FIELDS: usize = 14 + analyte_config::MAX_CHOICES;
+const MOST_FIELDS: usize = 19 + analyte_config::MAX_CHOICES;
 
 impl TryFrom<Vec<(String, String)>> for Draft {
     type Error = String;
@@ -111,7 +123,7 @@ impl TryFrom<Vec<(String, String)>> for Draft {
 
 /// The fields step 2 shows itself, besides the model's choices; every other
 /// step carries them hidden.
-const CONNECTION_FIELDS: [&str; 12] = [
+const CONNECTION_FIELDS: [&str; 16] = [
     "port",
     "port_name",
     "host",
@@ -124,6 +136,10 @@ const CONNECTION_FIELDS: [&str; 12] = [
     "parity",
     "stop_bits",
     "flow_control",
+    "poll_seconds",
+    "controls",
+    "acknowledgment",
+    "analyzer_mode",
 ];
 
 /// The field naming the devices a listening machine accepts (ADR 0026).
@@ -149,11 +165,16 @@ impl Draft {
             "parity" => &mut self.parity,
             "stop_bits" => &mut self.stop_bits,
             "flow_control" => &mut self.flow_control,
+            "mode" => &mut self.mode,
+            "poll_seconds" => &mut self.poll_seconds,
+            "controls" => &mut self.controls,
+            "acknowledgment" => &mut self.acknowledgment,
+            "analyzer_mode" => &mut self.analyzer_mode,
             _ => return None,
         })
     }
 
-    fn fields(&self) -> [(&'static str, Option<&str>); 13] {
+    fn fields(&self) -> [(&'static str, Option<&str>); 18] {
         [
             ("definition", self.definition.as_deref()),
             ("port", self.port.as_deref()),
@@ -168,6 +189,11 @@ impl Draft {
             ("parity", self.parity.as_deref()),
             ("stop_bits", self.stop_bits.as_deref()),
             ("flow_control", self.flow_control.as_deref()),
+            ("mode", self.mode.as_deref()),
+            ("poll_seconds", self.poll_seconds.as_deref()),
+            ("controls", self.controls.as_deref()),
+            ("acknowledgment", self.acknowledgment.as_deref()),
+            ("analyzer_mode", self.analyzer_mode.as_deref()),
         ]
     }
 
@@ -282,11 +308,14 @@ impl Step {
             SetupError::UnknownDefinition
             | SetupError::NoDefinitionYet
             | SetupError::BlockedDefinition(_)
+            | SetupError::RecordOnlyModel(_)
             | SetupError::Definitions(_) => Some(Self::Machine),
             SetupError::Connection(_)
             | SetupError::UnknownChoice(_)
             | SetupError::ChoiceValue { .. }
             | SetupError::NoLabAppChosen
+            | SetupError::LabAppWhileRecording
+            | SetupError::RecordingAnswer(_)
             | SetupError::UnknownLabApp(_)
             | SetupError::LabAppDiffers(..)
             | SetupError::Config(_)
@@ -473,7 +502,12 @@ fn render_machine(
 ) -> Result<Rendered, SetupError> {
     let (_, installed) = site::installed(state.setup.config(), id)?;
     let list = definitions(&state.setup.seams)?;
-    let current = match chosen(&list, None, &installed) {
+    let recording_now = crate::installation::config::read(&installed.site)
+        .is_ok_and(|text| analyte_config::recording::records_only(&text));
+    let records_only = draft.mode.as_deref().map_or(recording_now, |mode| {
+        mode.trim() == super::plan::recording::RECORD
+    });
+    let current = match chosen(&list, None, &installed, true) {
         Ok(current) => Some(current),
         Err(SetupError::NoDefinitionYet) => None,
         Err(error) => return Err(error),
@@ -508,15 +542,20 @@ fn render_machine(
             meta: checked,
             status: Some((status, icon)),
             checked: definition.key == selected,
-            disabled: !matches!(definition.state, Shipped::Ready { .. }),
+            // A model not ready yet can still record, when it names its link.
+            disabled: !matches!(
+                definition.state,
+                Shipped::Ready { .. } | Shipped::Blocked { record: Some(_) }
+            ),
         }
     }));
     Ok(ModelStep {
         frame: frame(state, session, id),
         wizard: wizard(id, current.map(|model| model.name), Some(Step::Machine)),
         action: Step::Connection.path(id),
-        hidden: draft.hidden(&["definition"]),
+        hidden: draft.hidden(&["definition", "mode"]),
         choices,
+        records_only,
     }
     .render())
 }
@@ -543,6 +582,7 @@ fn render_connection(
         Err(error) => Picker::Unreadable(format::sentence(&error.to_string())),
     };
     let (how, inputs) = connection_inputs(state, id, &model.path, &current_site, draft);
+    let records_only = super::plan::recording::chosen(draft);
     Ok(ConnectionStep {
         frame: frame(state, session, id),
         wizard: wizard(id, Some(model.name), Some(Step::Connection)),
@@ -551,10 +591,79 @@ fn render_connection(
         hidden: draft.hidden(&[CONNECTION_FIELDS.as_slice(), &[CHOICES]].concat()),
         how,
         inputs,
-        choices: choice_fields(&model.path, &current_site, draft),
+        // Record only asks its own questions and sends to no lab app (ADR 0034).
+        choices: if records_only {
+            Vec::new()
+        } else {
+            choice_fields(&model.path, &current_site, draft)
+        },
         lab_apps,
+        recording: records_only.then(|| recording_questions(&model.path, &current_site, draft)),
+        analyzer_mode: if records_only {
+            analyzer_mode_field(&model.path, &current_site, draft)
+        } else {
+            None
+        },
     }
     .render())
+}
+
+/// Record only, step 2: the capture profile's questions for the model's
+/// protocol (ADR 0034), filled in with the draft's or the saved answers.
+fn recording_questions(
+    definition: &std::path::Path,
+    current_site: &toml::Table,
+    draft: &Draft,
+) -> page::Recording {
+    let value = |given: &Option<String>, key: &str| {
+        given
+            .clone()
+            .or_else(|| super::plan::recording::saved(current_site, key))
+            .unwrap_or_default()
+    };
+    match super::plan::recording::protocol(definition).as_deref() {
+        Some("autolyser") => page::Recording::Autolyser {
+            poll_seconds: value(&draft.poll_seconds, "poll_seconds"),
+            controls: value(&draft.controls, "controls"),
+        },
+        Some("vidas") => page::Recording::Vidas {
+            acknowledgment: value(&draft.acknowledgment, "acknowledgment"),
+        },
+        _ => page::Recording::Nothing,
+    }
+}
+
+/// Record only, step 2: the analyzer mode the model's record file asks, from
+/// its declared values; the draft's or the saved answer, else "Choose": the
+/// installed mode is never assumed.
+fn analyzer_mode_field(
+    definition: &std::path::Path,
+    current_site: &toml::Table,
+    draft: &Draft,
+) -> Option<Setting> {
+    let mode = super::plan::recording::analyzer_mode(definition)?;
+    let current = draft
+        .analyzer_mode
+        .clone()
+        .or_else(|| super::plan::recording::saved(current_site, "analyzer_mode"));
+    let options: Vec<CableOption> = mode
+        .values
+        .iter()
+        .map(|value| CableOption {
+            selected: current.as_deref() == Some(value.value.as_str()),
+            value: value.value.as_str().to_owned(),
+            label: value.label.as_str().to_owned(),
+        })
+        .collect();
+    Some(Setting {
+        name: "analyzer_mode".to_owned(),
+        id: "s2-analyzer-mode".to_owned(),
+        label: mode.label.as_str().to_owned(),
+        chosen: options.iter().any(|option| option.selected),
+        hint: "As the analyzer shows it; it changes how the analyzer frames its records and cannot be guessed.".to_owned(),
+        differs: false,
+        options,
+    })
 }
 
 /// The lab app picker: the known lab apps with `current` (or the only one) chosen.
@@ -987,10 +1096,12 @@ fn render_review(
         choices: plan.choices(),
         accepts: (link == Link::TcpServer)
             .then(|| offer(plan.peers.as_ref(), seen(state, id, draft))),
-        lab_app: sends(
-            destination,
-            lab_apps::missing_keys(&state.setup, destination),
-        ),
+        lab_app: destination.as_ref().map(|destination| {
+            sends(
+                destination,
+                lab_apps::missing_keys(&state.setup, destination),
+            )
+        }),
         test: tested(state, id, draft, link),
         versions: None,
         model: plan.model.clone(),
@@ -1114,7 +1225,10 @@ pub(in crate::admin) async fn save(
     let (machine, kept) = (id.clone(), draft.clone());
     let saved = off_thread(&state, move |state| {
         let saved = save_blocking(&state.setup, &machine, &kept)?;
-        let missing = lab_apps::missing_keys(&state.setup, &saved.lab_app);
+        let missing = saved
+            .lab_app
+            .as_ref()
+            .and_then(|lab_app| lab_apps::missing_keys(&state.setup, lab_app));
         Ok((saved, missing))
     })
     .await;
@@ -1150,7 +1264,10 @@ pub(in crate::admin) async fn save(
                     saved.peers.is_none(),
                 )
             }),
-            lab_app: sends(&saved.lab_app, missing),
+            lab_app: saved
+                .lab_app
+                .as_ref()
+                .map(|lab_app| sends(lab_app, missing)),
             test: tested(&state, &id, &draft, saved.link),
             versions: Some((
                 Hover {

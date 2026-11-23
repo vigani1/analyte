@@ -143,8 +143,11 @@ Details are in the [plan](plan.md) status.
 ## Next steps
 
 1. From the lab: the settings and recordings listed under "Still needed from
-   outside"; then write the machine configs at the documented level (see
-   [adding a machine](develop/adding-a-machine.md)).
+   outside". At the first visit, connect each machine to record only
+   ([ADR 0034](adr/0034-record-only-connections.md),
+   [First visit: record only](operations/connect.md#first-visit-record-only));
+   then write the machine configs at the documented level from the
+   de-identified recordings (see [adding a machine](develop/adding-a-machine.md)).
 2. LAW: repeat the Gazelle run with the site `time_zone` setting, which now
    reads the simulator's zoneless MSH-7 as a noted tolerance
    ([run report](conformance/gazelle/law-run/README.md)).

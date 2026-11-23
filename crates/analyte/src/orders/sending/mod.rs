@@ -131,7 +131,7 @@ pub(crate) async fn candidate_page(
     after: &mut String,
 ) -> Result<Vec<analyte_store::CachedOrder>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
-    let destination = super::destination(machine);
+    let destination = super::destination(machine)?;
     let machine_id = machine.id.clone();
     let cursor = after.clone();
     let candidates = store
