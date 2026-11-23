@@ -82,7 +82,7 @@ existing ASTM and HL7 paths. These features remain documented evidence only.
 
 ## LAW result mapping
 
-`map_law` takes the existing validated `law::Results` view, a LAW config and
+`law::map` takes the existing validated `law::Results` view, a LAW config and
 host receipt metadata. It uses the shared field mapper, test/unit tables and
 replacement grouping. The LAW adapter makes SAC container context visible to
 its own AWOS/observations; base OUL ownership is unchanged. It uses the original

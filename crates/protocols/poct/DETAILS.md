@@ -199,7 +199,7 @@ delivery, retransmission suppression and an edited revision. These tests do not
 raise the documented evidence level or close the unchecked conformance gates.
 
 Common-model observation conversion and configured code/identity mapping now live
-in `analyte-mapping` (`poct::map_observations` and `map_poct`). The mapping tests
+in `analyte-mapping` (`poct::map_observations` and `poct::map`). The mapping tests
 are in `crates/steps/mapping/tests/poct/mod.rs`, with their original assertions unchanged.
 This crate retains POCT syntax and reviewer builders.
 

@@ -1,4 +1,4 @@
-//! Runs `analyte doctor`: one read-only health check for IT, each line OK, WARN or FAIL with what to do, every check within its own time limit.
+//! Runs the read-only `analyte doctor` health checks and prints OK, WARN or FAIL with what to do.
 //!
 //! It changes nothing. It asks the running engine what only the engine knows
 //! (the Overview's verdict); it opens no serial port and never sends a byte
@@ -13,11 +13,13 @@ use crate::admin::engine::{self, EngineError};
 use crate::admin::overview::answer::{Answer, Verdict};
 use crate::admin::view::format;
 use crate::installation::config::Program;
+use crate::installation::credentials::Locked;
+use crate::installation::secrets::{self, SecretError};
 use crate::machine::link::status::Link;
 use analyte_config::Endpoint;
 use std::{future::Future, path::Path, process::ExitCode, time::Duration};
 
-/// How long one check may take; a slower one fails with that reason.
+/// How long doctor waits on an asynchronous check before reporting a timeout.
 const CHECK_TIME: Duration = Duration::from_secs(8);
 /// How long reading the firewall rule may take: PowerShell starts slowly.
 #[cfg(windows)]
@@ -26,6 +28,53 @@ const FIREWALL_TIME: Duration = Duration::from_secs(7);
 const CONNECT_TIME: Duration = Duration::from_secs(3);
 #[cfg(windows)]
 use crate::admin::setup::{FIREWALL_RULE, FIREWALL_RULE_NAME};
+
+#[cfg(test)]
+mod tests {
+    use super::{CHECK_TIME, Level, bounded, folder};
+    use crate::Error;
+
+    #[tokio::test(start_paused = true)]
+    async fn doctor_reports_a_folder_probe_that_outlives_its_deadline() -> Result<(), Error> {
+        let (started, running) = tokio::sync::oneshot::channel();
+        let (release, hold) = tokio::sync::oneshot::channel::<()>();
+        let executor = std::thread::current().id();
+        let probe = move |_: &str| {
+            // If the check runs inline, return immediately so the test fails
+            // without locking up the same thread that drives the timer.
+            if std::thread::current().id() != executor {
+                let _ = started.send(());
+                let _ = hold.blocking_recv();
+            }
+            Ok(true)
+        };
+        let what = "Machine synthetic";
+        let mut check = std::pin::pin!(bounded(what, async {
+            vec![folder(what, "synthetic", probe).await]
+        }));
+        tokio::select! {
+            biased;
+            checks = &mut check => return Err(format!("the check finished early: {checks:?}").into()),
+            result = running => result?,
+        }
+        let guard = tokio::time::sleep(CHECK_TIME);
+        tokio::time::advance(CHECK_TIME).await;
+        let checks = tokio::select! {
+            biased;
+            checks = &mut check => checks,
+            () = guard => return Err("the folder probe exceeded the check's deadline".into()),
+        };
+        drop(release);
+
+        let [check] = checks.as_slice() else {
+            return Err("expected one folder check".into());
+        };
+        assert_eq!(check.what, what);
+        assert_eq!(check.level, Level::Fail);
+        assert_eq!(check.found, "the check did not finish within 8 seconds");
+        Ok(())
+    }
+}
 
 /// How a check came out; ordered from best to worst.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
@@ -105,7 +154,8 @@ fn fail(what: impl Into<String>, found: impl Into<String>, fix: impl Into<String
     }
 }
 
-/// Runs `check` within [`CHECK_TIME`]; past it, `what` fails with that reason.
+/// Reports a timeout for `what` if `check` is still pending at [`CHECK_TIME`].
+/// The check must yield while waiting for I/O so the timer can run.
 async fn bounded(what: &str, check: impl Future<Output = Vec<Check>>) -> Vec<Check> {
     tokio::time::timeout(CHECK_TIME, check)
         .await
@@ -479,19 +529,12 @@ async fn connection(
         (Link::Serial, endpoint) => serial(what, endpoint).await,
         (Link::TcpServer, Endpoint::Fixed(address)) => listen(what, address, running).await,
         (Link::TcpClient, Endpoint::Fixed(address)) => connect(what, address, running).await,
-        (Link::Folder, Endpoint::Fixed(folder)) => match std::fs::metadata(folder) {
-            Ok(metadata) if metadata.is_dir() => ok(what, format!("folder {folder} is there")),
-            Ok(_) => fail(
-                what,
-                format!("{folder} is not a folder"),
-                "choose the machine's export folder on the Setup page",
-            ),
-            Err(error) => fail(
-                what,
-                format!("folder {folder} cannot be read: {error}"),
-                "create the folder or share it again, or choose another on the Setup page",
-            ),
-        },
+        (Link::Folder, Endpoint::Fixed(path)) => {
+            folder(what, path, |path| {
+                std::fs::metadata(path).map(|metadata| metadata.is_dir())
+            })
+            .await
+        }
         // The program refuses a network or folder link given by USB serial number.
         (Link::TcpServer | Link::TcpClient | Link::Folder, Endpoint::UsbSerial(number)) => warn(
             what,
@@ -554,6 +597,40 @@ fn devices(what: &str, machine: &crate::installation::config::Machine) -> Check 
                 "run analyte machines set {} --allowed-peer <the analyzer's IP address>, or tick Only accept this device in step 4 of its setup",
                 machine.id().as_str()
             ),
+        ),
+    }
+}
+
+/// Checks that the configured path can be read and is a directory.
+/// On timeout the caller stops waiting. An in-flight read-only metadata call
+/// can keep its blocking thread until the OS returns or the process exits.
+async fn folder(
+    what: &str,
+    path: &str,
+    is_dir: impl FnOnce(&str) -> std::io::Result<bool> + Send + 'static,
+) -> Check {
+    let probe_path = path.to_owned();
+    let found = match tokio::task::spawn_blocking(move || is_dir(&probe_path)).await {
+        Ok(found) => found,
+        Err(error) => {
+            return fail(
+                what,
+                format!("the check for folder {path} failed: {error}"),
+                "run analyte doctor again; if it repeats, run analyte logs",
+            );
+        }
+    };
+    match found {
+        Ok(true) => ok(what, format!("folder {path} is there")),
+        Ok(false) => fail(
+            what,
+            format!("{path} is not a folder"),
+            "choose the machine's export folder on the Setup page",
+        ),
+        Err(error) => fail(
+            what,
+            format!("folder {path} cannot be read: {error}"),
+            "create the folder or share it again, or choose another on the Setup page",
         ),
     }
 }
@@ -713,49 +790,42 @@ async fn connect(what: &str, address: &str, running: Engine) -> Check {
     }
 }
 
+const SET_LAB_APP_KEYS: &str = "enter its keys on the Lab apps page, then restart the engine";
+
 /// Each lab app: its name resolves, it answers over HTTPS with a valid
 /// certificate, its keys are there, and when the last complete order list came.
 async fn lab_apps(program: &Program, answer: Option<&Answer>, health: &OrderLists) -> Vec<Check> {
     let mut checks = Vec::new();
     // Read once for every lab app, and only while the engine cannot say.
-    let keys = answer
-        .is_none()
-        .then(|| crate::installation::secrets::Environment::load(program));
+    let stored = answer.is_none().then(|| {
+        Locked::new(program.data_directory())
+            .read()
+            .map_err(SecretError::from)
+    });
     for settings in every_lab_app(program) {
         let name = settings.name.as_str();
         let what = format!("Lab app {name}");
         let url = settings.base_url.url();
         checks.push(reach(&what, url).await);
-        checks.push(match (answer, &keys) {
+        checks.push(match (answer, &stored) {
             (Some(answer), _) => match answer.needs.iter().find(|need| {
                 need.reason == "lab_app_blocked" && need.about.as_deref() == Some(name)
             }) {
-                Some(need) => fail(
-                    &what,
-                    need.text.clone(),
-                    "enter its keys on the Lab apps page, then restart the engine",
-                ),
+                Some(need) => fail(&what, need.text.clone(), SET_LAB_APP_KEYS),
                 None => ok(&what, "the running engine has its keys"),
             },
-            (None, Some(Ok(keys))) => {
-                if keys.has_keys(&settings.name) {
-                    ok(&what, "its API key and signing key are there")
-                } else {
-                    fail(
-                        &what,
-                        "its API key or signing key is missing",
-                        "enter its keys on the Lab apps page, then restart the engine",
-                    )
+            (None, Some(Ok(stored))) => {
+                match secrets::read_destination(
+                    program,
+                    settings,
+                    |key| std::env::var(key).ok(),
+                    stored,
+                ) {
+                    Ok(_) => ok(&what, "its API key and signing key are there"),
+                    Err(error) => lab_app_key_failure(&what, &error),
                 }
             }
-            (None, Some(Err(error))) => warn(
-                &what,
-                format!(
-                    "its keys could not be read from this account: {}",
-                    chain(error)
-                ),
-                "start the engine and run analyte doctor again; the engine checks the keys itself",
-            ),
+            (None, Some(Err(error))) => lab_app_key_failure(&what, error),
             (None, None) => warn(
                 &what,
                 "its keys were not checked",
@@ -781,6 +851,26 @@ async fn lab_apps(program: &Program, answer: Option<&Answer>, health: &OrderList
         }
     }
     checks
+}
+
+/// Gives different remedies for a bad key and a key store this account cannot check.
+fn lab_app_key_failure(what: &str, error: &SecretError) -> Check {
+    match error {
+        SecretError::Missing(name) => fail(
+            what,
+            format!("credential {name} is missing"),
+            SET_LAB_APP_KEYS,
+        ),
+        SecretError::Invalid(_) => fail(what, error.to_string(), SET_LAB_APP_KEYS),
+        SecretError::File(error) => warn(
+            what,
+            format!(
+                "its keys could not be read from this account: {}",
+                chain(error)
+            ),
+            "start the engine and run analyte doctor again; the engine checks the keys itself",
+        ),
+    }
 }
 
 /// Every lab app, once each by name: those on the Lab apps page, then any a

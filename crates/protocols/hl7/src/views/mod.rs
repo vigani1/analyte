@@ -311,11 +311,6 @@ impl<'a> Msh<'a> {
     pub fn processing_id(self) -> Option<Field<'a>> {
         self.segment.field(11)
     }
-    /// Returns MSH-18's exact declaration, absent separately from empty.
-    #[must_use]
-    pub fn character_set(self) -> Option<Field<'a>> {
-        self.segment.field(18)
-    }
 }
 // YHLO LIS Protocol Manual V1.1 sections 2.3.1, 2.4.1. Only the inbound
 // 2.3.1 result header uses these codes in place of negotiation.
