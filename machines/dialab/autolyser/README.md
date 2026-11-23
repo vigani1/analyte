@@ -137,6 +137,12 @@ run.
   run/revision identity. Confirm approved TCP/IP settings separately
   if the lab wants network operation.
 
+## Result identity evidence
+
+Rev18 section 23.2, pp. 177-178 gives the returned patient code and analysis
+code but supplies no immutable measurement discriminator. Keep identity
+unresolved pending additional vendor evidence.
+
 ## Sources
 
 - Autolyser / Autolyser ISE Operator's Manual Rev18, software 21.18/21.18M.

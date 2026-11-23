@@ -45,6 +45,13 @@ pub(super) fn validate_mappings(m: &ParsedMachine<'_>, path: &str) -> Result<(),
             .codes
             .as_ref()
             .ok_or_else(|| invalid(path, "codes", "vendor syntax requires code tables"))?;
+        if codes.vidas_identity.is_some() && m.choice() != StackChoice::VidasLiteral {
+            return Err(invalid(
+                path,
+                "codes.vidas_identity",
+                "requires VIDAS Literal",
+            ));
+        }
         return validate_tables(&[], &codes.units, path);
     };
     validate_test_component(m, mapping, path)?;
@@ -57,6 +64,10 @@ pub(super) fn validate_mappings(m: &ParsedMachine<'_>, path: &str) -> Result<(),
         (
             "mappings.identity.correction_status_codes",
             mapping.identity.correction_status_codes.len(),
+        ),
+        (
+            "mappings.identity.rerun_status_codes",
+            mapping.identity.rerun_status_codes.len(),
         ),
     ] {
         if len > 4096 {
@@ -99,6 +110,39 @@ pub(super) fn validate_mappings(m: &ParsedMachine<'_>, path: &str) -> Result<(),
     for selected in &identity.run {
         field(selected, m.choice(), path, "mappings.identity.run")?;
     }
+    validate_identity_policy(identity, m.choice(), path)?;
+    validate_tables(&mapping.value_kinds, &mapping.units, path)
+}
+
+fn validate_identity_policy(
+    identity: &crate::IdentityEvidence,
+    choice: StackChoice,
+    path: &str,
+) -> Result<(), Error> {
+    let rerun_key = "mappings.identity.rerun_status_codes";
+    if choice == StackChoice::LawManager
+        && (identity.evidence.is_some() || !identity.rerun_status_codes.is_empty())
+    {
+        return Err(invalid(
+            path,
+            "mappings.identity",
+            "LAW uses its standard identity and status rules",
+        ));
+    }
+    if !identity.rerun_status_codes.is_empty() && identity.evidence.is_none() {
+        return Err(invalid(
+            path,
+            rerun_key,
+            "requires a manual citation under mappings.identity.evidence",
+        ));
+    }
+    if identity.evidence.is_some() && identity.run.is_empty() {
+        return Err(invalid(
+            path,
+            "mappings.identity.run",
+            "a documented recipe requires at least one run selector",
+        ));
+    }
     let mut codes = std::collections::HashSet::new();
     for code in &identity.correction_status_codes {
         if !codes.insert(code) {
@@ -109,7 +153,16 @@ pub(super) fn validate_mappings(m: &ParsedMachine<'_>, path: &str) -> Result<(),
             ));
         }
     }
-    validate_tables(&mapping.value_kinds, &mapping.units, path)
+    for code in &identity.rerun_status_codes {
+        if !codes.insert(code) {
+            return Err(invalid(
+                path,
+                rerun_key,
+                "rerun codes must be unique and distinct from correction codes",
+            ));
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn validate_component_parts(

@@ -344,6 +344,7 @@ mod tests {
             (IdentitySetting::OrderId, "order_id"),
             (IdentitySetting::OrderNamespace, "order_namespace"),
             (IdentitySetting::SubId, "sub_id"),
+            (IdentitySetting::Sample, "sample"),
             (IdentitySetting::Run, "run"),
             (IdentitySetting::LawOrder, "LAW order"),
             (
