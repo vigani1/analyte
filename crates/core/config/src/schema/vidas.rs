@@ -1,5 +1,5 @@
 //! Holds installed VIDAS acknowledgment and checksum choices.
-use super::VidasSampleLimit;
+use super::{Identifier, IdentityReference, VidasSampleLimit};
 use serde::{Deserialize, Serialize};
 
 /// Installed point at which VIDAS expects acknowledgment.
@@ -170,4 +170,14 @@ pub struct Settings {
     /// Installed assay codes for which VIDAS PC expects a dilution (Guide C p. 4-6).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dilution_required_assays: Vec<analyte_model::Identifier>,
+}
+
+/// VIDAS result identity from the sample ID, assay and completion date and time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VidasIdentity {
+    /// Assigning namespace for the VIDAS sample ID used as order context.
+    pub sample_namespace: Identifier,
+    /// Manual evidence for this installed mapping.
+    pub evidence: IdentityReference,
 }

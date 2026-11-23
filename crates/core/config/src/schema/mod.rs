@@ -4,7 +4,7 @@ pub use law::{Law, LawConnectionMode, LawPeer, LawQueryForm, LawWork, PeerSuppor
 mod vidas;
 pub use vidas::{
     AckPoint, ChecksumAcceptance, ChecksumInclusion, HexCase,
-    ResultControlLabels as VidasResultControlLabels, Settings as Vidas,
+    ResultControlLabels as VidasResultControlLabels, Settings as Vidas, VidasIdentity,
 };
 
 use analyte_model::Identifier;
@@ -16,7 +16,7 @@ pub use mappings::{
     SampleSelection, SubId, UnitMapping, ValueExpectation,
 };
 mod poct;
-pub use poct::Poct;
+pub use poct::{Poct, PoctIdentity};
 mod autolyser;
 pub use autolyser::Autolyser;
 pub(crate) use autolyser::PollInterval;
@@ -757,16 +757,6 @@ pub struct Overrides {
     pub destination: Option<Destination>,
 }
 
-/// VIDAS result identity from the sample ID, assay and completion date and time.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct VidasIdentity {
-    /// Assigning namespace for the VIDAS sample ID used as order context.
-    pub sample_namespace: Identifier,
-    /// Manual evidence for this installed mapping.
-    pub evidence: IdentityReference,
-}
-
 /// The machine's code system and unit spellings for vendor protocols.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -842,14 +832,4 @@ fn default_order_freshness() -> u64 {
 
 fn default_request_timeout() -> u64 {
     Destination::DEFAULT_REQUEST_TIMEOUT_SECONDS
-}
-
-/// Installed POCT identity evidence, never inferred from values or receipt IDs.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PoctIdentity {
-    /// Require the device sequence in addition to device, observation time and analyte.
-    pub sequence_number: bool,
-    /// Explicit installed processing mode; no source mode is inferred from Hello.
-    pub processing: analyte_model::ProcessingMode,
 }
