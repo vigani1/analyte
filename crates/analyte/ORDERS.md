@@ -347,6 +347,30 @@ Sending, trusted empty/untrusted/stale answers, unknown filters, missed query
 deadlines, AA/AE/AR/lost/wrong ACKs, disconnect and ordinary result delivery with
 queries enabled. Synthetic peers do not raise the evidence level.
 
+### HL7 2.3.1 positional record replies
+
+An evidenced machine definition can select the `hl7_record_display_query`
+departure and set `orders.hl7.record_location` to its exact QRF-1 value.
+This selects QRD-8 and an explicit list of QRD qualifiers, and requires
+`lines = []` because the positional layout is fixed.
+
+The query accepts QRD-2 R, QRD-7 RD and an empty QRD-10. The only lookup
+uses the barcode and the declared barcode QRF qualifiers. Sample-number
+and collection-time filters yield QCK with AE because the cache has no
+trusted keys for them. QCK uses QAK tag SR. Each matching eligible app
+order is one DSR page. DSP-21 carries the exact barcode, DSP-22 is blank
+because the app has no analyzer-assigned sample number, and DSP-29 onward
+carry machine assay codes with three empty components. DSP-24 uses the app
+priority translation and DSP-26 uses the app's machine specimen code if supplied.
+
+The dialog sends each page once within the query deadline, with DSC marking
+whether another page follows. A correlated AA must be durably recorded before
+the next page is issued. Each AA gives only that page's order a Sent outcome.
+Each continuation is rechecked and reserved just before its first write.
+An interrupted exchange leaves the in-flight reservation uncertain and never
+replays it. The installed PC must confirm the actual deadlines and its
+handling of distinct reply IDs. Unsolicited DSR send-ahead is open.
+
 ## Restore and reconciliation
 
 Follow the [operator restore procedure](DETAILS.md#restore-and-reconciliation-plan-11-adr-0003-rules-2-4-8).

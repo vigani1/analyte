@@ -56,6 +56,7 @@ pub(super) fn validate(
         MachineDeparture::AstmPackedRecordsInFrame(_) => DepartureGuarantee::PackedRecords,
         MachineDeparture::Hl7Msh16MessageCategory(_) => DepartureGuarantee::Msh16MessageCategory,
         MachineDeparture::Hl7CategorizedOruResults(_) => DepartureGuarantee::CategorizedOruResults,
+        MachineDeparture::Hl7RecordDisplayQuery(_) => DepartureGuarantee::RecordDisplayQuery,
         MachineDeparture::Hl7Utf8InV231(_)
         | MachineDeparture::Hl7CrLfTerminators(_)
         | MachineDeparture::Hl7LfTerminators(_)

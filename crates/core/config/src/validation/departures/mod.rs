@@ -177,7 +177,13 @@ fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result
         .departure_scope
         .as_ref()
         .ok_or(Refusal::MissingInstalledScope)?;
-    if scope != installed {
+    let record_query = matches!(departure, MachineDeparture::Hl7RecordDisplayQuery(_));
+    // One installed mode can upload ORUs and query orders.
+    let mut expected = installed.clone();
+    if record_query {
+        expected.message = DepartureMessage::QryQ02;
+    }
+    if *scope != expected {
         return Err(Refusal::ScopeMismatch);
     }
     applicability(scope)?;
@@ -185,6 +191,7 @@ fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result
         MachineDeparture::Hl7AbsentObr25MeansFinal(_)
         | MachineDeparture::Hl7AbsentObx11MeansFinal(_)
         | MachineDeparture::Hl7CategorizedOruResults(_)
+        | MachineDeparture::Hl7RecordDisplayQuery(_)
         | MachineDeparture::Hl7Msh16MessageCategory(_)
         | MachineDeparture::Hl7Utf8InV231(_)
         | MachineDeparture::Hl7CrLfTerminators(_)
@@ -219,7 +226,9 @@ fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result
     );
     if hl7
         && scope.message
-            != if category {
+            != if record_query {
+                DepartureMessage::QryQ02
+            } else if category {
                 DepartureMessage::OruR01
             } else {
                 DepartureMessage::OruR01Patient
@@ -247,6 +256,17 @@ fn validate_rule(
         MachineDeparture::Hl7AbsentObr25MeansFinal(_)
         | MachineDeparture::Hl7AbsentObx11MeansFinal(_) => {}
         MachineDeparture::Hl7Msh16MessageCategory(_) => validate_category_edition(scope.edition)?,
+        MachineDeparture::Hl7RecordDisplayQuery(_) => {
+            validate_category_edition(scope.edition)?;
+            if !m
+                .orders
+                .as_ref()
+                .and_then(|orders| orders.hl7.as_ref())
+                .is_some_and(|layout| layout.record_location.is_some())
+            {
+                return Err(Refusal::InactiveSetting);
+            }
+        }
         MachineDeparture::Hl7CategorizedOruResults(_) => {
             validate_category_edition(scope.edition)?;
             if !m

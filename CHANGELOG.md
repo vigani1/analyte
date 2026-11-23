@@ -6,6 +6,9 @@
   type and send cobas batch work lists. Replies carry the analyzer's original
   coordinates and encode any requested dilution per test. An unknown lookup
   gets a query error, and unconfirmed test-list replacement stays uncertain.
+- **HL7 barcode orders:** evidenced machine definitions can answer legacy
+  record queries with positional display pages. When the order cache is
+  unavailable or cannot answer a filter, the analyzer gets an explicit error.
 
 - **HL7 categorized results:** an evidenced machine definition can keep
   a numeric result and its qualitative call together, read separate

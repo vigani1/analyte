@@ -75,6 +75,12 @@ pub(crate) enum OrderError {
     /// HL7 order or response syntax was invalid.
     #[error(transparent)]
     Syntax(#[from] analyte_hl7::Error),
+    /// A continuation page is no longer eligible when it is due to be written.
+    #[error("HL7 continuation order can no longer be reserved")]
+    DisplayPageReservation,
+    /// A display page cannot fit the configured wire frame.
+    #[error(transparent)]
+    Framing(#[from] analyte_framing::hl7::Error),
     /// Shared order lookup, storage or settlement failed.
     #[error(transparent)]
     Shared(crate::orders::OrderError),

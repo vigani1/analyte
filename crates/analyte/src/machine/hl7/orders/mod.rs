@@ -16,7 +16,10 @@ use analyte_hl7::{
 };
 use analyte_model::{ReceiptId, SampleId};
 use analyte_store::{Handle, Lookup, MachineOrder};
-use std::time::{Duration, Instant};
+use std::{
+    collections::VecDeque,
+    time::{Duration, Instant},
+};
 
 /// Owns order reservations; framing, issuance, DSR correlation and reply waits belong to
 /// the dialog. Cancellation leaves reservations owned here for disconnect cleanup; restart
@@ -26,6 +29,7 @@ pub(crate) struct Hl7OrderLink<'a> {
     orders: &'a analyte_config::Hl7Orders,
     options: Options,
     active: Vec<MachineOrder>,
+    following_pages: VecDeque<crate::orders::Candidate>,
     reserving: Vec<analyte_store::MachineOrderKey>,
     owner: analyte_model::Identifier,
     exchange: Option<send::Exchange>,
@@ -36,6 +40,8 @@ pub(crate) struct Request<'a> {
     pub(crate) started: Instant,
     pub(crate) receipt: ReceiptId,
 }
+type DisplayRows = Vec<Vec<Vec<u8>>>;
+
 /// One parsed display query and the budget its lookup must meet.
 struct DisplayLookup<'q> {
     request: query::Request<'q>,
@@ -59,6 +65,7 @@ impl<'a> Hl7OrderLink<'a> {
             orders,
             options,
             active: Vec::new(),
+            following_pages: VecDeque::new(),
             reserving: Vec::new(),
             owner: analyte_model::Identifier::new(&uuid::Uuid::now_v7().to_string())?,
             exchange: None,
@@ -158,6 +165,17 @@ impl<'a> Hl7OrderLink<'a> {
         crate::cleanup::retain_cleanup(&mut result, cleanup);
         result
     }
+    fn profile(&self) -> query::Profile {
+        query_profile(self.orders)
+    }
+
+    fn reply_profile(&self) -> response::Profile {
+        match self.profile() {
+            query::Profile::Display => response::Profile::Hl7,
+            query::Profile::RecordDisplay => response::Profile::Hl7Numeric,
+        }
+    }
+
     pub(crate) async fn outcome(
         &mut self,
         store: &Handle,
@@ -165,7 +183,10 @@ impl<'a> Hl7OrderLink<'a> {
         sent: bool,
     ) -> Result<(), Error> {
         let mut result = Ok(());
-        for order in self.active.drain(..) {
+        if !sent {
+            self.following_pages.clear();
+        }
+        for order in &self.active {
             let identity = order.key.clone();
             let code = analyte_model::SourceText::new(code)?;
             let cleanup = store
@@ -210,8 +231,55 @@ impl<'a> Hl7OrderLink<'a> {
                 .map_err(Into::into);
             crate::cleanup::retain_cleanup(&mut result, cleanup);
         }
+        self.active.clear();
         result
     }
+
+    /// Rechecks a later page against the live cache after the previous ACK.
+    /// The first page is already reserved before QCK. Cancellation keeps the
+    /// reservation key owned by this link so connection cleanup can settle it.
+    pub(crate) async fn prepare_display_page(
+        &mut self,
+        store: &Handle,
+        machine: &Machine,
+        until: Instant,
+    ) -> Result<(), Error> {
+        if self.active.is_empty()
+            && let Some(candidate) = self.following_pages.pop_front()
+            && !self
+                .reserve_display(store, machine, vec![candidate], until)
+                .await?
+        {
+            return Err(Error::DisplayPageReservation);
+        }
+        Ok(())
+    }
+
+    async fn reserve_display(
+        &mut self,
+        store: &Handle,
+        machine: &Machine,
+        candidates: Vec<crate::orders::Candidate>,
+        until: Instant,
+    ) -> Result<bool, Error> {
+        self.reserving = candidates
+            .iter()
+            .map(|candidate| candidate.identity.clone())
+            .collect();
+        let reserved = sending::reserve_candidates(
+            store,
+            &machine.model,
+            candidates,
+            until,
+            &mut self.active,
+            Some(self.owner.clone()),
+            machine.destination_limits.freshness.as_secs(),
+        )
+        .await?;
+        self.reserving.clear();
+        Ok(reserved)
+    }
+
     pub(crate) async fn answer(
         &mut self,
         store: &Handle,
@@ -225,7 +293,7 @@ impl<'a> Hl7OrderLink<'a> {
             started,
             receipt,
         } = request;
-        let request = match query::Request::new(message) {
+        let request = match query::Request::with_profile(message, self.profile()) {
             Ok(request) => request,
             Err(error) => {
                 intake::failed_reading(store, machine, receipt, &error.to_string()).await?;
@@ -246,65 +314,98 @@ impl<'a> Hl7OrderLink<'a> {
             until,
             busy: dialog.orders_busy(),
         };
-        let (mut answer, lines, candidates) =
+        let (mut answer, pages, mut candidates) =
             self.lookup_display(store, machine, query, lookup).await?;
         if Instant::now() >= until {
             answer = CacheAnswer::Unavailable;
         }
-        let qck_metadata = response::response_metadata(response::Profile::Hl7);
-        let mut dsr_metadata = response::response_metadata(response::Profile::Hl7);
-        dsr_metadata.timestamp.clone_from(&qck_metadata.timestamp);
-        let mut dsr = None;
+        let qck_metadata = response::response_metadata(self.reply_profile());
+        let mut displays = VecDeque::new();
         if answer == CacheAnswer::Found {
-            let refs = lines.iter().map(Vec::as_slice).collect::<Vec<_>>();
-            match query::display(
-                request,
-                dsr_metadata.response()?,
-                qck_metadata.response()?.control_id,
-                &refs,
-                self.options,
-            ) {
-                Ok(message) => dsr = Some(message),
-                Err(_) => answer = CacheAnswer::Unavailable,
+            match self.render_displays(request, &qck_metadata, pages) {
+                Ok(messages) => displays = messages,
+                Err(error) => {
+                    intake::failed_reading(store, machine, receipt, &error.to_string()).await?;
+                    answer = CacheAnswer::Unavailable;
+                }
+            }
+            if Instant::now() >= until {
+                answer = CacheAnswer::Unavailable;
+                displays.clear();
             }
         }
         if answer == CacheAnswer::Found {
-            self.reserving = candidates
-                .iter()
-                .map(|candidate| candidate.identity.clone())
-                .collect();
-            if !sending::reserve_candidates(
-                store,
-                &machine.model,
-                candidates,
-                until,
-                &mut self.active,
-                Some(self.owner.clone()),
-                machine.destination_limits.freshness.as_secs(),
-            )
-            .await?
+            let following = if self.profile() == query::Profile::RecordDisplay {
+                candidates.split_off(candidates.len().min(1))
+            } else {
+                Vec::new()
+            };
+            if self
+                .reserve_display(store, machine, candidates, until)
+                .await?
             {
+                self.following_pages = following.into();
+            } else {
                 answer = CacheAnswer::Unavailable;
-                dsr = None;
+                displays.clear();
             }
-            self.reserving.clear();
         }
         let qck = query::acknowledgment(request, qck_metadata.response()?, answer, self.options)?;
         Ok(Some(analyte_dialog::hl7::DisplayReply {
             acknowledgment: qck,
-            display: dsr,
+            displays,
             query_deadline: until.duration_since(clock),
             failure_deadline: deadline()?.duration_since(clock),
             acknowledgment_wait: Duration::from_millis(u64::from(query.layout().acknowledgment_ms)),
         }))
     }
+    fn render_displays(
+        &self,
+        request: query::Request<'_>,
+        qck: &response::Metadata,
+        pages: DisplayRows,
+    ) -> Result<VecDeque<Message>, Error> {
+        let mut messages = VecDeque::new();
+        let count = pages.len();
+        for (index, lines) in pages.into_iter().enumerate() {
+            let mut metadata = response::response_metadata(self.reply_profile());
+            metadata.timestamp.clone_from(&qck.timestamp);
+            let message = match self.profile() {
+                query::Profile::Display => {
+                    let refs = lines.iter().map(Vec::as_slice).collect::<Vec<_>>();
+                    query::display(
+                        request,
+                        metadata.response()?,
+                        qck.response()?.control_id,
+                        &refs,
+                        self.options,
+                    )?
+                }
+                query::Profile::RecordDisplay => {
+                    let page = index.saturating_add(1);
+                    query::record_display(
+                        request,
+                        metadata.response()?,
+                        &lines,
+                        (page < count).then_some(page),
+                        self.options,
+                    )?
+                }
+            };
+            let limit = analyte_framing::hl7::Limit::new(self.stack.settings().frame_limit())?;
+            analyte_framing::hl7::encode(message.raw(), limit)?;
+            messages.push_back(message);
+        }
+        Ok(messages)
+    }
+
     async fn lookup_display(
         &self,
         store: &Handle,
         machine: &Machine,
         query: &analyte_config::Hl7Query,
         lookup: DisplayLookup<'_>,
-    ) -> Result<(CacheAnswer, Vec<Vec<u8>>, Vec<crate::orders::Candidate>), Error> {
+    ) -> Result<(CacheAnswer, DisplayRows, Vec<crate::orders::Candidate>), Error> {
         let DisplayLookup {
             request,
             receipt,
@@ -313,7 +414,8 @@ impl<'a> Hl7OrderLink<'a> {
         } = lookup;
         let layout = query.layout();
         let mut answer = CacheAnswer::Unavailable;
-        let mut lines = Vec::new();
+        let mut pages = Vec::new();
+        let mut total_rows = 0_usize;
         let mut candidates = Vec::new();
         let selected = select_sample(store, machine, request, receipt, layout).await?;
         if !busy
@@ -353,15 +455,12 @@ impl<'a> Hl7OrderLink<'a> {
                         {
                             Prepared::Skipped => continue,
                             Prepared::Mapped(candidate, mapped) => {
-                                if lines
-                                    .len()
-                                    .checked_add(mapped.len())
-                                    .is_none_or(|n| n > self.options.limits.segments)
-                                {
+                                total_rows = total_rows.saturating_add(mapped.len());
+                                if total_rows > self.options.limits.segments {
                                     answer = CacheAnswer::Unavailable;
                                     break;
                                 }
-                                lines.extend(mapped);
+                                pages.push(mapped);
                                 candidates.push(candidate);
                                 answer = CacheAnswer::Found;
                             }
@@ -374,7 +473,21 @@ impl<'a> Hl7OrderLink<'a> {
                 }
             }
         }
-        Ok((answer, lines, candidates))
+        if self.profile() == query::Profile::Display && !pages.is_empty() {
+            pages = vec![pages.into_iter().flatten().collect()];
+        }
+        Ok((answer, pages, candidates))
+    }
+}
+
+pub(crate) fn query_profile(orders: &analyte_config::Hl7Orders) -> query::Profile {
+    if orders
+        .query()
+        .is_some_and(|query| query.layout().record_location.is_some())
+    {
+        query::Profile::RecordDisplay
+    } else {
+        query::Profile::Display
     }
 }
 
@@ -387,14 +500,15 @@ fn sample(
         .iter()
         .map(|filter| (filter.field, filter.value.as_bytes()))
         .collect::<Vec<_>>();
-    query::specimen(
-        request,
-        &query::SpecimenSelector {
-            field: layout.sample_field,
-            suffix: layout.sample_suffix.as_bytes(),
-            filters: &filters,
-        },
-    )?
+    let selector = query::SpecimenSelector {
+        field: layout.sample_field,
+        suffix: layout.sample_suffix.as_bytes(),
+        filters: &filters,
+    };
+    match &layout.record_location {
+        Some(location) => query::record_specimen(request, &selector, location.as_bytes()),
+        None => query::specimen(request, &selector),
+    }?
     .map(|sample| SampleId::new(&sample))
     .transpose()
     .map_err(Into::into)

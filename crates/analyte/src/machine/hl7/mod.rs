@@ -68,7 +68,10 @@ impl<'a, 'm> Host<'a, 'm> {
         let pending = BTreeMap::new();
         let queries = match settings.orders() {
             Some(orders) if orders.query().is_some() || orders.send().is_some() => {
-                dialog.enable_orders(settings.settings().syntax().edition().into())?;
+                dialog.enable_order_profile(
+                    settings.settings().syntax().edition().into(),
+                    orders::query_profile(orders),
+                )?;
                 Some(orders::Hl7OrderLink::new(settings, orders, options)?)
             }
             Some(_) | None => None,
@@ -399,6 +402,17 @@ impl Host<'_, '_> {
         failures: &mut Failures<Error>,
     ) -> Result<(), Error> {
         let deadline = WriteDeadline::dialog(self.start, Some(until))?;
+        if part == analyte_dialog::hl7::ReplyPart::Dsr {
+            let absolute = self
+                .start
+                .checked_add(until)
+                .ok_or(Error::QueryClockOverflow)?;
+            self.queries
+                .as_mut()
+                .ok_or(Error::QueryServicesAbsent)?
+                .prepare_display_page(self.store, self.machine.machine(), absolute)
+                .await?;
+        }
         match custody::write(conn, bytes, deadline).await {
             Ok(()) => actions.extend(
                 self.dialog

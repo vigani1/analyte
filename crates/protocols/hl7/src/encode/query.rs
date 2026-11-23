@@ -1,5 +1,5 @@
 //! Builds legacy HL7 QCK/Q02 and DSR/Q03 display query replies (2.3.1 section 2.18 and 2.5.1 section 5.10).
-use crate::query::{Request, invalid, raw};
+use crate::query::{Profile, Request, invalid, raw};
 use crate::{AckCode, Message, Msh, Version};
 
 /// Trusted cache result; lookup failure has no successful empty representation.
@@ -57,9 +57,21 @@ pub fn acknowledgment(
         msh.version(),
         (b"QCK", b"Q02", b"QCK_Q02"),
     );
+    if request.profile == Profile::RecordDisplay {
+        output.extend_from_slice(b"ERR");
+        output.push(d.field);
+        output.extend_from_slice(if answer == CacheAnswer::Unavailable {
+            b"207"
+        } else {
+            b"0"
+        });
+        output.push(b'\r');
+    }
     output.extend_from_slice(b"QAK");
-    // Original-style queries have no QAK tag (2.3.1 §2.24.22.1).
     output.push(d.field);
+    if request.profile == Profile::RecordDisplay {
+        output.extend_from_slice(b"SR");
+    }
     output.push(d.field);
     output.extend_from_slice(status);
     output.push(b'\r');
@@ -81,7 +93,7 @@ pub fn display(
     lines: &[&[u8]],
     options: crate::Options,
 ) -> Result<Message, crate::Error> {
-    if response.control_id == qck_id {
+    if request.profile != Profile::Display || response.control_id == qck_id {
         return Err(invalid("MSH", 10));
     }
     if lines.is_empty() || lines.len() > options.limits.segments {
@@ -116,8 +128,80 @@ pub fn display(
         output.extend_from_slice(filter.raw());
         output.push(b'\r');
     }
+    encode_lines(&mut output, request, lines, options)?;
+    Message::parse(&output, options)
+}
+
+/// Builds one bounded positional display page with a continuation pointer.
+/// The caller provides a distinct control ID for each page.
+///
+/// # Errors
+/// Refuses missing required rows, invalid profile and unrepresentable data.
+pub fn record_display(
+    request: Request<'_>,
+    response: crate::Response<'_>,
+    lines: &[Vec<u8>],
+    continuation: Option<usize>,
+    options: crate::Options,
+) -> Result<Message, crate::Error> {
+    if request.profile != Profile::RecordDisplay
+        || !(29..=9999).contains(&lines.len())
+        || lines.len() > options.limits.segments
+        || lines.get(20).is_none_or(Vec::is_empty)
+        || lines.iter().skip(28).any(Vec::is_empty)
+    {
+        return Err(invalid("DSP", 0));
+    }
+    let d = request.message.delimiters();
+    let qck = acknowledgment(request, response, CacheAnswer::Found, options)?;
+    let mut output = Vec::new();
+    encode_response_segments(
+        &mut output,
+        &qck,
+        Version::V231,
+        (b"DSR", b"Q03", b"DSR_Q03"),
+    );
+    // YHLO LIS V1.1 section 2.4.2 places the barcode in DSP-21.
+    for (index, field) in request
+        .definition
+        .raw()
+        .split(|b| *b == d.field)
+        .enumerate()
+    {
+        if index != 0 {
+            output.push(d.field);
+        }
+        if index != 8 {
+            output.extend_from_slice(field);
+        }
+    }
+    output.push(b'\r');
+    if let Some(filter) = request.filter {
+        output.extend_from_slice(filter.raw());
+        output.push(b'\r');
+    }
+    encode_lines(&mut output, request, lines, options)?;
+    output.extend_from_slice(b"DSC");
+    output.push(d.field);
+    if let Some(pointer) = continuation {
+        output.extend_from_slice(pointer.to_string().as_bytes());
+    }
+    output.push(b'\r');
+    Message::parse(&output, options)
+}
+
+fn encode_lines(
+    output: &mut Vec<u8>,
+    request: Request<'_>,
+    lines: &[impl AsRef<[u8]>],
+    options: crate::Options,
+) -> Result<(), crate::Error> {
+    let d = request.message.delimiters();
     for (index, line) in lines.iter().enumerate() {
-        if line.len() > 300
+        let line = line.as_ref();
+        let assay = request.profile == Profile::RecordDisplay && index >= 28;
+        let maximum = if assay { 297 } else { 300 };
+        if line.len() > maximum
             || line
                 .iter()
                 .any(|b| !b.is_ascii() || b.is_ascii_control() || d.bytes().contains(b))
@@ -131,12 +215,15 @@ pub fn display(
         output.push(d.field);
         output.push(d.field);
         output.extend_from_slice(line);
+        if assay {
+            output.extend_from_slice(&[d.component; 3]);
+        }
         output.push(b'\r');
         if output.len() > options.limits.message_bytes {
             return Err(invalid("DSP", 0));
         }
     }
-    Message::parse(&output, options)
+    Ok(())
 }
 
 // Both query replies retain the acknowledgment fields and replace only MSH-9.

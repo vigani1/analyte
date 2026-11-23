@@ -199,6 +199,7 @@ fn compatibility(
                 (lowercase_checksum(machine, raw)?, "LIS01-A2 §§6.3.3, 8.3")
             }
             MachineDeparture::Hl7CategorizedOruResults(_)
+            | MachineDeparture::Hl7RecordDisplayQuery(_)
             | MachineDeparture::Hl7AbsentObr25MeansFinal(_)
             | MachineDeparture::Hl7AbsentObx11MeansFinal(_)
             | MachineDeparture::AstmAbsentH12MeansProduction(_)
