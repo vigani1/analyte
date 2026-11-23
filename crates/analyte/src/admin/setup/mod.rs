@@ -233,6 +233,8 @@ pub(crate) enum SetupError {
         "model {0} is not ready yet: facts or recordings are still missing (its README lists them)"
     )]
     BlockedDefinition(String),
+    #[error("{0}")]
+    DefinitionFile(#[from] Arc<definitions::FileError>),
     #[error(
         "model {0} is not ready yet, so it can only record: choose Record only (nothing is sent to a lab app) to keep its conversation"
     )]
@@ -466,11 +468,18 @@ fn level_and_state(definition: &Definition) -> (Hover, Status, Icon) {
         exact,
     };
     match &definition.state {
-        Shipped::Ready { level, .. } => (
-            hover(evidence_words(*level), format!("Evidence level: {level}")),
-            status(Tone::Good, "Ready"),
-            Icon::Ok,
-        ),
+        Shipped::Ready(source) => {
+            let (_, level) = source
+                .details
+                .identity
+                .as_ref()
+                .expect("ready definition has an identity");
+            (
+                hover(evidence_words(*level), format!("Evidence level: {level}")),
+                status(Tone::Good, "Ready"),
+                Icon::Ok,
+            )
+        }
         Shipped::Blocked { record } => (
             hover(
                 "Not tested yet",
@@ -486,13 +495,13 @@ fn level_and_state(definition: &Definition) -> (Hover, Status, Icon) {
             },
             Icon::Off,
         ),
-        Shipped::Unreadable(why) => (
+        Shipped::Unreadable { error, .. } => (
             hover(
                 format::NOT_APPLICABLE,
                 "Evidence level unknown: the definition cannot be read".into(),
             ),
             Status {
-                note: Some(format::sentence(why)),
+                note: Some(format::sentence(&error.to_string())),
                 ..status(Tone::Problem, "Cannot be read")
             },
             Icon::Problem,
@@ -602,8 +611,15 @@ fn definition_name(definition: &Definition) -> Hover {
     Hover {
         shown: definition.display.clone(),
         exact: match &definition.state {
-            Shipped::Ready { name, .. } => format!("{} (name {name})", definition.key),
-            Shipped::Blocked { .. } | Shipped::Unreadable(_) => definition.key.clone(),
+            Shipped::Ready(source) => {
+                let (name, _) = source
+                    .details
+                    .identity
+                    .as_ref()
+                    .expect("ready definition has an identity");
+                format!("{} (name {name})", definition.key)
+            }
+            Shipped::Blocked { .. } | Shipped::Unreadable { .. } => definition.key.clone(),
         },
     }
 }

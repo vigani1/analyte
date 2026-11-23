@@ -329,13 +329,25 @@ fn invalid(path: &str, key: &str, reason: &'static str) -> Error {
 }
 
 fn load<T: for<'de> Deserialize<'de>>(path: &str, text: &str) -> Result<T, Error> {
+    let value = parse_table(path, text)?;
+    load_table(path, value, Some(text))
+}
+
+fn parse_table(path: &str, text: &str) -> Result<toml::Table, Error> {
     if text.len() > MAX_FILE_BYTES {
         return Err(Error::FileSize { path: path.into() });
     }
-    let mut value: toml::Table = toml::from_str(text).map_err(|source| Error::Schema {
+    toml::from_str(text).map_err(|source| Error::Schema {
         path: path.into(),
         source,
-    })?;
+    })
+}
+
+fn load_table<T: for<'de> Deserialize<'de>>(
+    path: &str,
+    mut value: toml::Table,
+    original: Option<&str>,
+) -> Result<T, Error> {
     let machine = value.contains_key("protocol");
     let (supported, reason) = if machine {
         (2, "unsupported schema; use machine schema_version = 2")
@@ -389,17 +401,61 @@ fn load<T: for<'de> Deserialize<'de>>(path: &str, text: &str) -> Result<T, Error
             }
         }
     }
-    let parsed = if filled {
-        // Only a definition with keys supplied by choices needs the filled
-        // table; every other file keeps the positioned diagnostics.
-        toml::Value::Table(value).try_into()
-    } else {
-        toml::from_str(text)
+    let parsed = match original.filter(|_| !filled) {
+        // Runtime diagnostics keep source positions where no values were filled.
+        Some(text) => toml::from_str(text),
+        None => toml::Value::Table(value).try_into(),
     };
     parsed.map_err(|source| Error::Schema {
         path: path.into(),
         source,
     })
+}
+
+/// The parsed definition facts used to ask for site settings before a machine
+/// can run. Runtime validation still checks the completed settings stack.
+#[derive(Debug)]
+pub struct DefinitionDetails {
+    /// The identity and evidence of a complete definition; absent on a capture profile.
+    pub identity: Option<(analyte_model::Identifier, EvidenceLevel)>,
+    /// The definition's protocol key.
+    pub protocol: String,
+    /// The transport these settings describe.
+    pub kind: TransportKind,
+    /// The manual's serial settings, which the lab can override.
+    pub serial: Option<SerialValues>,
+    /// Choices the normal connection asks the lab to make.
+    pub choices: Vec<MachineChoice>,
+    /// Whether the definition requires a site polling interval.
+    pub asks_autolyser_poll: bool,
+    /// Whether the definition requires a site VIDAS patient namespace.
+    pub asks_vidas_patient_namespace: bool,
+    /// The analyzer mode the capture profile asks the lab to choose, if any.
+    pub analyzer_mode: Option<AnalyzerMode>,
+}
+
+impl DefinitionDetails {
+    /// Reads the typed setup facts from a machine definition or its record-only profile.
+    /// # Errors
+    /// Refuses oversized or malformed files, unsupported versions and invalid declared choices.
+    pub fn parse(path: &str, text: &str) -> Result<Self, Error> {
+        let table = parse_table(path, text)?;
+        if recording::is_record_file(&table) {
+            return recording::definition_details(path, table);
+        }
+        let document: MachineDocument = load_table(path, table, None)?;
+        choices::check(&document, path)?;
+        Ok(Self {
+            asks_autolyser_poll: uses_site_autolyser_poll(&document),
+            asks_vidas_patient_namespace: uses_site_vidas_namespace(&document),
+            identity: Some((document.name, document.evidence.level)),
+            protocol: document.protocol,
+            kind: document.transport.kind,
+            serial: document.transport.serial,
+            choices: document.choices,
+            analyzer_mode: None,
+        })
+    }
 }
 
 /// Parsed layers awaiting semantic validation; cannot be activated.
@@ -706,9 +762,14 @@ pub const AUTOLYSER_POLL_SECONDS: std::ops::RangeInclusive<u32> = 1..=300;
 /// Refuses malformed machine definitions.
 pub fn asks_autolyser_poll(path: &str, text: &str) -> Result<bool, Error> {
     let document: MachineDocument = load(path, text)?;
-    Ok(document
+    Ok(uses_site_autolyser_poll(&document))
+}
+
+fn uses_site_autolyser_poll(document: &MachineDocument) -> bool {
+    document
         .autolyser
-        .is_some_and(|settings| matches!(settings.poll_ms, schema::PollInterval::Site(_))))
+        .as_ref()
+        .is_some_and(|settings| matches!(settings.poll_ms, schema::PollInterval::Site(_)))
 }
 
 fn resolve_autolyser_poll(

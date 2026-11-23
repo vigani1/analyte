@@ -118,6 +118,7 @@ impl Step {
             SetupError::UnknownDefinition
             | SetupError::NoDefinitionYet
             | SetupError::BlockedDefinition(_)
+            | SetupError::DefinitionFile(_)
             | SetupError::RecordOnlyModel(_)
             | SetupError::Definitions(_) => Some(Self::Machine),
             SetupError::Connection(_)
@@ -356,7 +357,7 @@ fn render_machine(
             // A model not ready yet can still record, when it names its link.
             disabled: !matches!(
                 definition.state,
-                Shipped::Ready { .. } | Shipped::Blocked { record: Some(_) }
+                Shipped::Ready(_) | Shipped::Blocked { record: Some(_) }
             ),
         }
     }));

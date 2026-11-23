@@ -292,19 +292,6 @@ pub(in crate::admin::setup) fn saved(site: &toml::Table) -> Option<SerialValues>
     site.get("serial")?.clone().try_into().ok()
 }
 
-/// The serial values a definition file suggests, as written; none when it
-/// suggests none or cannot be read.
-pub(in crate::admin::setup) fn suggested(definition: &std::path::Path) -> Option<SerialValues> {
-    let text = crate::installation::config::read(definition).ok()?;
-    let table: toml::Table = text.parse().ok()?;
-    table
-        .get("transport")?
-        .get("serial")?
-        .clone()
-        .try_into()
-        .ok()
-}
-
 /// Fills each empty cable setting of `draft` from the saved site file, so the
 /// saved choice is kept unless changed, as every other saved choice is.
 pub(in crate::admin::setup) fn keep_saved(draft: &mut Draft, site: &toml::Table) {

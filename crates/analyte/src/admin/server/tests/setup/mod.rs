@@ -2417,6 +2417,41 @@ async fn test_with_no_bytes_says_nothing_received() -> Result<(), Error> {
     Ok(())
 }
 
+// AGENTS.md: keep definition errors specific; an unreadable transport is unknown.
+#[tokio::test(flavor = "multi_thread")]
+async fn setup_step_two_reports_definition_errors() -> Result<(), Error> {
+    let fixture = start_with(
+        "[admin]\nport = 8080\n[[machines]]\nid = 'machine-1'\nsite = 'site.toml'\n",
+        include_str!("../../../../../../../packaging/linux/starter/machine-1.site.toml"),
+    )
+    .await?;
+    let path = fixture.root().join("machines/example/broken/machine.toml");
+    std::fs::create_dir_all(&path)?;
+    let step = "/setup/machine-1/connection?definition=example/broken";
+    let response = fixture.get(step).await?;
+    assert!(response.starts_with("HTTP/1.1 409"), "{response}");
+    assert!(
+        response.contains("reading the machine definition"),
+        "{response}"
+    );
+    assert!(response.contains("machine.toml"), "{response}");
+
+    std::fs::remove_dir(&path)?;
+    std::fs::write(
+        &path,
+        include_str!("../../../../../../../machines/example/synthetic-astm/machine.toml")
+            .replace("kind = \"tcp_server\"", "kind = \"unknown-link\""),
+    )?;
+    let response = fixture.get(step).await?;
+    assert!(response.starts_with("HTTP/1.1 409"), "{response}");
+    assert!(
+        response.contains("the machine definition is invalid"),
+        "{response}"
+    );
+    assert!(response.contains("unknown-link"), "{response}");
+    Ok(())
+}
+
 // ADR 0034 decisions 1, 3 and 8: on the Setup page a model not ready yet is
 // set up to record only: step 2 asks the profile's own question and no lab
 // app, step 4 says nothing is sent to a lab app, and the save writes what

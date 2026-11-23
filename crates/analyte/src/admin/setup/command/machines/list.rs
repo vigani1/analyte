@@ -138,10 +138,15 @@ pub(in super::super) fn settings_rows(installation: &Installation) -> Result<Vec
                 differs_from_suggestion: chosen.differs(),
             })
             .collect();
-        let listens = definition.as_deref().is_some_and(|path| {
-            plan::kind_of(&crate::installation::config::folder(&config).join(path))
-                == Some(TransportKind::TcpServer)
-        });
+        let listens = definition
+            .as_deref()
+            .map(|path| {
+                let path = crate::installation::config::folder(&config).join(path);
+                crate::admin::setup::definitions::read(&path).map(|details| details.kind)
+            })
+            .transpose()
+            .map_err(|error| crate::admin::setup::SetupError::from(std::sync::Arc::new(error)))?
+            == Some(TransportKind::TcpServer);
         let allowed_peers = saved_peers(&table)
             .map(|peers| peers.split(", ").map(str::to_owned).collect::<Vec<_>>());
         machines.push(Listed {

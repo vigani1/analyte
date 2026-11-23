@@ -241,7 +241,12 @@ pub(super) fn saved(setup: &Setup, id: &str) -> Result<Draft, SetupError> {
         analyzer_mode: answer("analyzer_mode"),
         ..Draft::default()
     };
-    let kind = installed.definition.as_deref().and_then(plan::kind_of);
+    let kind = installed
+        .definition
+        .as_deref()
+        .map(|path| definitions::read(path).map(|details| details.kind))
+        .transpose()
+        .map_err(std::sync::Arc::new)?;
     // Also before a model is chosen: `machines add` may have kept cable settings.
     if matches!(kind, Some(TransportKind::Serial) | None) {
         cable::keep_saved(&mut draft, &table);
@@ -276,16 +281,18 @@ pub(super) fn keep_saved_choices(
 ) -> Result<(), SetupError> {
     let (_, installed) = site::installed(setup.config(), id)?;
     let list = definitions(&setup.seams)?;
-    let Ok(model) = plan::model_of(&list, draft, &installed) else {
-        return Ok(());
+    let model = match plan::model_of(&list, draft, &installed) {
+        Ok(model) => model,
+        Err(error @ SetupError::DefinitionFile(_)) => return Err(error),
+        Err(_) => return Ok(()),
     };
     let table = crate::installation::config::read(&installed.site)
         .ok()
         .and_then(|text| text.parse::<toml::Table>().ok())
         .unwrap_or_default();
-    choices::keep_saved(draft, &table, &choices::declared(&model.path));
+    choices::keep_saved(draft, &table, &model.details.choices);
     if !plan::recording::chosen(draft)
-        && plan::asks_autolyser_poll(&model.path)
+        && model.details.asks_autolyser_poll
         && draft.poll_seconds.is_none()
     {
         draft.poll_seconds = plan::saved_autolyser_poll(&table);

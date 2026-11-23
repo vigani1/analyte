@@ -8,11 +8,11 @@
 //! page tidies the folder key instead. A machine's model name ([`model_name`])
 //! never tidies folder names: outside a shipped model folder they say nothing
 //! about the model.
-use analyte_config::EvidenceLevel;
-use serde::Deserialize;
+use analyte_config::DefinitionDetails;
 use std::{
     io::Read as _,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 /// Most model folders listed; more are refused rather than cut.
@@ -76,13 +76,11 @@ pub(in crate::admin) fn model_name(definition: &Path, root: Option<&Path>) -> Op
     {
         return Some(display_name(folder, &format!("{vendor_name}/{model}")));
     }
-    match table(definition) {
-        Ok(document) => document
-            .get("name")
-            .and_then(toml::Value::as_str)
-            .and_then(readable),
-        Err(_) => None,
-    }
+    read(definition)
+        .ok()?
+        .identity
+        .as_ref()
+        .and_then(|(name, _)| readable(name.as_str()))
 }
 
 /// Whether `name` can be a vendor or model folder: lower-case letters, digits
@@ -110,18 +108,49 @@ fn tidy(key: &str) -> String {
 }
 
 pub(super) enum State {
-    /// A loadable `machine.toml` with its name and declared evidence level.
-    Ready {
+    /// A machine definition and its parsed setup facts.
+    Ready(Source),
+    /// No `machine.toml`; its capture profile can be chosen to record only (ADR 0034).
+    Blocked { record: Option<Source> },
+    /// A definition or capture profile that could not be read.
+    Unreadable {
         path: PathBuf,
-        name: String,
-        level: EvidenceLevel,
+        error: Arc<FileError>,
     },
-    /// No `machine.toml`: the README lists what is missing. `record` is its
-    /// `record.toml`, when it names the protocol and link, so the model can be
-    /// connected to record only (ADR 0034).
-    Blocked { record: Option<PathBuf> },
-    /// `machine.toml` exists but its name or evidence level could not be read.
-    Unreadable(String),
+}
+
+/// The file to use for a model and the setup facts it declares.
+pub(super) struct Source {
+    pub(super) path: PathBuf,
+    pub(super) details: Arc<DefinitionDetails>,
+}
+
+/// Why the setup facts could not be read from a definition or capture profile.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum FileError {
+    #[error("reading the machine definition {path} failed: {source}")]
+    Read {
+        path: PathBuf,
+        source: crate::installation::config::Error,
+    },
+    #[error("the machine definition is invalid: {0}")]
+    Parse(#[from] analyte_config::Error),
+    #[error("{0} is a capture profile; use it as record.toml, not machine.toml")]
+    CaptureProfile(PathBuf),
+    #[error("{0} is a complete definition; use it as machine.toml, not record.toml")]
+    CompleteDefinition(PathBuf),
+}
+
+/// Reads one bounded machine definition or capture profile.
+pub(super) fn read(path: &Path) -> Result<DefinitionDetails, FileError> {
+    let text = crate::installation::config::read(path).map_err(|source| FileError::Read {
+        path: path.to_owned(),
+        source,
+    })?;
+    Ok(DefinitionDetails::parse(
+        &path.display().to_string(),
+        &text,
+    )?)
 }
 
 /// Why the definitions folder could not be listed.
@@ -176,12 +205,14 @@ pub(super) fn list(root: &Path) -> Result<Vec<Definition>, ListError> {
             }
             let path = model_path.join("machine.toml");
             let record = model_path.join(analyte_config::RECORD_FILE);
-            let state = if path.is_file() {
-                head(&path)
-            } else {
-                State::Blocked {
-                    record: record.is_file().then_some(record),
-                }
+            let state = match path.try_exists() {
+                Ok(true) => load(path, true),
+                Ok(false) => match record.try_exists() {
+                    Ok(true) => load(record, false),
+                    Ok(false) => State::Blocked { record: None },
+                    Err(error) => unreadable(record, error),
+                },
+                Err(error) => unreadable(path, error),
             };
             let key = format!("{vendor}/{model}");
             definitions.push(Definition {
@@ -194,48 +225,41 @@ pub(super) fn list(root: &Path) -> Result<Vec<Definition>, ListError> {
     Ok(definitions)
 }
 
-/// A definition file as a TOML table, read up to the loader's size limit; the
-/// error says why it could not be read.
-fn table(path: &Path) -> Result<toml::Table, String> {
-    let mut text = String::new();
-    let limit = u64::try_from(analyte_config::MAX_FILE_BYTES).unwrap_or(u64::MAX);
-    std::fs::File::open(path)
-        .and_then(|file| file.take(limit).read_to_string(&mut text))
-        .map_err(|error| error.to_string())?;
-    text.parse::<toml::Table>()
-        .map_err(|_| "not valid TOML".to_owned())
-}
-
-/// Reads only the definition's name and evidence level for display.
-fn head(path: &Path) -> State {
-    let document = match table(path) {
-        Ok(document) => document,
-        Err(reason) => return State::Unreadable(reason),
-    };
-    match toml::Value::Table(document).try_into::<Header>() {
-        Ok(header) => State::Ready {
-            path: path.to_owned(),
-            name: header.name,
-            level: header.evidence.level,
-        },
-        Err(error) => State::Unreadable(error.to_string()),
+fn unreadable(path: PathBuf, error: std::io::Error) -> State {
+    State::Unreadable {
+        error: Arc::new(FileError::Read {
+            path: path.clone(),
+            source: error.into(),
+        }),
+        path,
     }
 }
 
-#[derive(Deserialize)]
-struct Header {
-    name: String,
-    evidence: HeaderEvidence,
-}
-
-#[derive(Deserialize)]
-struct HeaderEvidence {
-    level: EvidenceLevel,
+fn load(path: PathBuf, complete: bool) -> State {
+    let details = read(&path).and_then(|details| match (complete, &details.identity) {
+        (true, None) => Err(FileError::CaptureProfile(path.clone())),
+        (false, Some(_)) => Err(FileError::CompleteDefinition(path.clone())),
+        (true, Some(_)) | (false, None) => Ok(Arc::new(details)),
+    });
+    match details {
+        Ok(details) if complete => State::Ready(Source { path, details }),
+        Ok(details) => State::Blocked {
+            record: Some(Source { path, details }),
+        },
+        Err(error) => State::Unreadable {
+            path,
+            error: Arc::new(error),
+        },
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{State, display_name, list, model_name, tidy};
+
+    fn example() -> &'static str {
+        include_str!("../../../../../machines/example/synthetic-astm/machine.toml")
+    }
 
     // machines/README.md: a model folder without machine.toml is blocked; the
     // shipped tree lists the synthetic example as ready.
@@ -246,7 +270,8 @@ mod tests {
         let state = |key: &str| definitions.iter().find(|d| d.key == key).map(|d| &d.state);
         assert!(matches!(
             state("example/synthetic-astm"),
-            Some(State::Ready { name, level, .. }) if name == "generic-synthetic" && *level == super::EvidenceLevel::Documented
+            Some(State::Ready(source)) if source.details.identity.as_ref().is_some_and(|(name, level)|
+                name.as_str() == "generic-synthetic" && *level == analyte_config::EvidenceLevel::Documented)
         ));
         // Each first-lab model names its protocol and link, so it can record only.
         for key in [
@@ -283,10 +308,12 @@ mod tests {
     fn unknown_evidence_level_is_reported() -> Result<(), crate::Error> {
         let folder = tempfile::tempdir()?;
         let path = folder.path().join("machine.toml");
-        std::fs::write(&path, "name = 'demo'\n[evidence]\nlevel = 'unknown'\n")?;
+        let definition = example().replace("level = \"documented\"", "level = \"unknown\"");
+        std::fs::write(&path, definition)?;
         assert!(matches!(
-            super::head(&path),
-            State::Unreadable(why) if why.contains("unknown variant") && why.contains("unknown")
+            super::load(path, true),
+            State::Unreadable { error, .. } if error.to_string().contains("unknown variant")
+                && error.to_string().contains("unknown")
         ));
         Ok(())
     }
@@ -320,7 +347,7 @@ mod tests {
         std::fs::create_dir_all(&outside)?;
         std::fs::write(outside.join("README.md"), "# Some other title\n")?;
         let definition = outside.join("machine.toml");
-        std::fs::write(&definition, "name = \"generic-synthetic\"\n")?;
+        std::fs::write(&definition, example())?;
         assert_eq!(
             model_name(&definition, Some(&root)).as_deref(),
             Some("generic-synthetic")
