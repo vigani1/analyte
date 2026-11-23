@@ -357,3 +357,59 @@ fn compatibility_inventory_validates_each_setting() {
         assert!(validate(&value).is_ok(), "{tag}: {:?}", validate(&value));
     }
 }
+
+// ADR 0015; YHLO LIS Protocol Manual V1.1 section 2.3.1.
+#[test]
+fn msh16_category_requires_the_v231_oru_scope_and_specific_evidence() -> Result<(), Error> {
+    let declaration = DECLARATION
+        .rewrite("astm_frame_limit", "hl7_msh16_message_category")
+        .rewrite("protocol=\"astm\"", "protocol=\"hl7\",edition=\"v231\"")
+        .rewrite("astm_results", "oru_r01")
+        .rewrite("compatibility", "msh16_message_category");
+    let base = include_str!("../examples/hl7.toml").rewrite("v251", "v231");
+    let configured = base.rewrite("deviations = []", &declaration);
+    for (raw, enabled) in [(&base, false), (&configured, true)] {
+        let config = Draft::load(
+            ("machine", raw),
+            ("site", SITE),
+            ("overrides", "schema_version=1"),
+        )?
+        .validate()?;
+        assert!(matches!(
+            config.effective().stack().hl7_options_source(),
+            Some(analyte_config::Hl7OptionsSource::Syntax(syntax))
+                if syntax.msh16_message_category() == enabled
+        ));
+    }
+
+    for (changed, reason) in [
+        (configured.rewrite("v231", "v251"), R::EditionMismatch),
+        (
+            configured.rewrite("oru_r01", "oru_r01_patient"),
+            R::MessageMismatch,
+        ),
+        (
+            configured.rewrite("machine_to_host", "host_to_machine"),
+            R::DirectionMismatch,
+        ),
+        (
+            configured.rewrite(
+                "guarantee=\"msh16_message_category\"",
+                "guarantee=\"compatibility\"",
+            ),
+            R::MissingRuleEvidence,
+        ),
+    ] {
+        let result = Draft::load(
+            ("machine", &changed),
+            ("site", SITE),
+            ("overrides", "schema_version=1"),
+        )
+        .and_then(Draft::validate);
+        assert!(
+            matches!(result, Err(Error::Departure { reason: actual, .. }) if actual == reason),
+            "{result:?}"
+        );
+    }
+    Ok(())
+}
