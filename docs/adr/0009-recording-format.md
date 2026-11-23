@@ -39,3 +39,13 @@ exact.
 - Only synthetic or de-identified recordings enter the repository; real
   captures stay in the protected store.
 - A new format version needs a new ADR, and old recordings stay readable.
+
+## Amendment: model replay settings (2026-11-23)
+
+A repository model can place an optional `replay.toml` beside its definition,
+keyed by recording filename. Entries supply the site's `choices` (ADR 0032)
+or `recording` answers (ADR 0034), and can declare a known missing final
+reply by event index, failure and reason. The harness still replays the
+conversation and fails when a marked reply starts arriving. See the
+[machine folder guide](../../machines/README.md). The sidecar belongs to
+repository tests. The version 1 capture header and events are unchanged.
