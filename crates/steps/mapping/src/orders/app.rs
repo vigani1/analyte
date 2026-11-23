@@ -9,20 +9,18 @@ pub fn map(order: &analyte_contract::Order) -> Result<super::AppOrder, analyte_m
         .tests
         .iter()
         .map(|test| {
-            Ok(NamespacedId {
-                namespace: Identifier::new(test.namespace.as_str())?,
-                value: Identifier::new(test.value.as_str())?,
+            Ok(super::AppOrderTest {
+                code: NamespacedId {
+                    namespace: Identifier::new(test.namespace.as_str())?,
+                    value: Identifier::new(test.value.as_str())?,
+                },
+                name: test
+                    .name
+                    .as_ref()
+                    .map(|n| SourceText::new(n.as_str()))
+                    .transpose()?,
+                dilution: test.dilution_ratio,
             })
-        })
-        .collect::<Result<Vec<_>, analyte_model::TextError>>()?;
-    let test_names = fields
-        .tests
-        .iter()
-        .map(|test| {
-            test.name
-                .as_ref()
-                .map(|n| SourceText::new(n.as_str()))
-                .transpose()
         })
         .collect::<Result<Vec<_>, analyte_model::TextError>>()?;
     let patient_text = |value: Option<&analyte_contract::Text>| {
@@ -38,12 +36,6 @@ pub fn map(order: &analyte_contract::Order) -> Result<super::AppOrder, analyte_m
         sample_origin: patient_text(fields.sample_origin.as_ref())?,
         sample: SampleId::new(fields.sample_id.as_str())?,
         tests,
-        test_names,
-        test_dilutions: fields
-            .tests
-            .iter()
-            .map(|t| t.dilution_ratio.map(std::num::NonZeroU16::get))
-            .collect(),
         patient: fields
             .patient
             .as_ref()

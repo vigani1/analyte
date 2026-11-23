@@ -296,8 +296,8 @@ pub fn map_order(
     fields.extend([("si", ""), ("ci", order.sample.as_str())]);
     let mut requests = Vec::new();
     let mut total_bytes = 0usize;
-    for (index, test) in order.tests.iter().enumerate() {
-        let code = codes::map_test(settings.tables().test_system(), test)?;
+    for test in &order.tests {
+        let code = codes::map_test(settings.tables().test_system(), &test.code)?;
         // Guide C p. 4-6: reject codes that the analyzer would truncate.
         if code.is_empty()
             || code.len() > 4
@@ -305,8 +305,10 @@ pub fn map_order(
         {
             return Err(OrderError::AssayCode);
         }
-        let required = installed.dilution_required_assays.contains(&test.value);
-        let dilution = match (required, order.test_dilutions.get(index).copied().flatten()) {
+        let required = installed
+            .dilution_required_assays
+            .contains(&test.code.value);
+        let dilution = match (required, test.dilution.map(std::num::NonZeroU16::get)) {
             (true, Some(value @ 1..=999)) => Some(value.to_string()),
             (true, None) => return Err(OrderError::MissingDilution),
             (true, Some(_)) => return Err(OrderError::DilutionRange),

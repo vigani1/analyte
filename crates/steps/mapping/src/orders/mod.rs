@@ -10,7 +10,8 @@ pub use crate::law::{
 
 pub use app::map as app_order;
 
-use analyte_model::{NamespacedId, SampleId, SamplePosition};
+use analyte_model::{NamespacedId, SampleId, SamplePosition, SourceText};
+use std::num::NonZeroU16;
 
 /// Explicit app priority, translated only by the outbound priority table.
 #[derive(Debug, Clone, Copy)]
@@ -33,17 +34,23 @@ impl AppOrderPriority {
     }
 }
 
+/// One requested test with the app's exact code, name and dilution.
+#[derive(Clone)]
+pub struct AppOrderTest {
+    /// Exact machine code and its code system.
+    pub code: NamespacedId,
+    /// Name supplied by the lab app, when present.
+    pub name: Option<SourceText>,
+    /// Denominator of the requested 1:N dilution, when present.
+    pub dilution: Option<NonZeroU16>,
+}
+
 /// Host-adapted app order; identities and clinical strings are copied exactly.
 pub struct AppOrder {
     /// Exact sample identifier, including case and leading zeros.
     pub sample: SampleId,
     /// Requested tests, each a machine code in the machine's code system.
-    pub tests: Vec<NamespacedId>,
-    /// The lab app's name for each test, in the order of `tests`; `None`
-    /// where it gave none. Never derived from the code.
-    pub test_names: Vec<Option<analyte_model::SourceText>>,
-    /// Explicit dilution ratio denominator for each test, with absent entries left empty.
-    pub test_dilutions: Vec<Option<u16>>,
+    pub tests: Vec<AppOrderTest>,
     /// Explicit priority from the app.
     pub priority: AppOrderPriority,
     /// Position supplied by the app, never invented by the bridge.
@@ -51,13 +58,13 @@ pub struct AppOrder {
     /// Optional exact patient identifier; the namespace is checked before encoding.
     pub patient: Option<NamespacedId>,
     /// Optional name supplied for the analyzer.
-    pub patient_name: Option<analyte_model::SourceText>,
+    pub patient_name: Option<SourceText>,
     /// Optional date of birth as supplied by the app.
-    pub patient_birth_date: Option<analyte_model::SourceText>,
+    pub patient_birth_date: Option<SourceText>,
     /// Optional sex code in the installed analyzer language.
-    pub patient_sex_code: Option<analyte_model::SourceText>,
+    pub patient_sex_code: Option<SourceText>,
     /// Optional sample origin, distinct from specimen medium.
-    pub sample_origin: Option<analyte_model::SourceText>,
+    pub sample_origin: Option<SourceText>,
     /// The machine's own specimen code in its specimen code system (ADR 0030),
     /// never substituted for origin metadata.
     pub specimen_type: Option<NamespacedId>,
@@ -66,18 +73,27 @@ pub struct AppOrder {
 impl AppOrder {
     /// The lab app's name for `test`, from its first occurrence in `tests`.
     #[must_use]
-    pub fn test_name(&self, test: &NamespacedId) -> Option<&analyte_model::SourceText> {
+    pub fn test_name(&self, test: &NamespacedId) -> Option<&SourceText> {
         self.tests
             .iter()
-            .position(|t| t == test)
-            .and_then(|index| self.test_names.get(index))
-            .and_then(Option::as_ref)
+            .find(|t| &t.code == test)
+            .and_then(|t| t.name.as_ref())
+    }
+
+    pub(super) fn require_no_dilution(&self) -> Result<(), OrderMappingError> {
+        if self.tests.iter().any(|test| test.dilution.is_some()) {
+            return Err(OrderMappingError::UnsupportedDilution);
+        }
+        Ok(())
     }
 }
 
 /// Specific mapping refusal; diagnostic details belong in protected order events.
 #[derive(Debug, thiserror::Error)]
 pub enum OrderMappingError {
+    /// The destination cannot carry explicit per-test dilution.
+    #[error("unsupported-dilution")]
+    UnsupportedDilution,
     /// This machine has no outbound capability.
     #[error("outbound orders are disabled")]
     Disabled,

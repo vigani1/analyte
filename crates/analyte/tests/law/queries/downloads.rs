@@ -372,3 +372,47 @@ async fn wire_deadline_does_not_cancel_raw_custody() -> Result<(), Error> {
     reference.close().await?;
     Ok(())
 }
+
+// Contract v1, Order tests.
+#[tokio::test]
+async fn query_rejects_dilution_without_sending_work() -> Result<(), Error> {
+    let mut document = serde_json::to_value(order("order-1", "000Ab12", Some("law"), 1)?)?;
+    document
+        .get_mut("tests")
+        .and_then(|tests| tests.get_mut(0))
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or("synthetic test")?
+        .insert("dilution_ratio".into(), 5.into());
+    let (temp, path, reference, running, mut peer) = setup(
+        vec![analyte_contract::decode(&serde_json::to_vec(&document)?)?],
+        &definition(),
+        false,
+    )
+    .await?;
+    send(&mut peer, query(CONTAINER, "dilution").as_bytes()).await?;
+    let reply = packet(&mut peer).await?;
+    assert_eq!(field(&reply, b"QAK", 2)?, b"AE");
+    quiet(&mut peer).await?;
+    assert_eq!(count(&path, "machine_order_items")?, 0);
+    wait_state(&path, "done", 1).await?;
+    let body: Vec<u8> = rusqlite::Connection::open(temp.path().join("receiver.db"))?.query_row(
+        "SELECT body FROM deliveries WHERE kind='order-events'",
+        [],
+        |row| row.get(0),
+    )?;
+    let body: serde_json::Value = serde_json::from_slice(&body)?;
+    assert_eq!(
+        body.get("state").and_then(serde_json::Value::as_str),
+        Some("rejected")
+    );
+    assert!(
+        body.get("source_status")
+            .ok_or("source status")?
+            .as_str()
+            .ok_or("source status")?
+            .contains("unsupported-dilution")
+    );
+    running.stop().await?;
+    reference.close().await?;
+    Ok(())
+}

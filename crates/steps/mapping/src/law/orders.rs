@@ -26,9 +26,8 @@ pub fn map_order(
 }
 impl Command {
     /// Exact app tests for the host's atomic AWOS reservation.
-    #[must_use]
-    pub fn tests(&self) -> &[analyte_model::NamespacedId] {
-        &self.app.tests
+    pub fn tests(&self) -> impl Iterator<Item = &analyte_model::NamespacedId> {
+        self.app.tests.iter().map(|test| &test.code)
     }
     /// Explicit assigning namespace retained beside each store-generated identity.
     #[must_use]
@@ -66,6 +65,9 @@ pub fn map_work(
     let (first, _) = commands.first().ok_or(Error::EmptyWork)?;
     let mut wire = Vec::new();
     for (command, items) in commands {
+        if action == law::WorkAction::New {
+            command.app.require_no_dilution()?;
+        }
         let sample = validate_field(command.app.sample.as_str())?;
         let specimen = command
             .app

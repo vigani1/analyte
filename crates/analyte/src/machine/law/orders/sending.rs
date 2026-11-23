@@ -239,7 +239,7 @@ impl LawOrderLink {
                     | analyte_store::OrderError::ItemIdentityTooLong),
                 ) => {
                     self.reserving.clear();
-                    if !unsolicited {
+                    if !unsolicited && !is_unsupported_dilution(&error) {
                         return Err(error.into());
                     }
                     admission::reject(
@@ -253,6 +253,9 @@ impl LawOrderLink {
                         &LawDetail::OrderPreflight(error.to_string()).to_string(),
                     )
                     .await?;
+                    if !unsolicited {
+                        return Err(error.into());
+                    }
                     continue;
                 }
                 Err(error) => return Err(error.into()),
@@ -285,11 +288,19 @@ impl LawOrderLink {
     }
 }
 
+// A queried order normally fails the exchange without a durable mapping refusal.
+fn is_unsupported_dilution(error: &analyte_store::OrderError) -> bool {
+    let analyte_store::OrderError::DeliveryBuild(cause) = error else {
+        return false;
+    };
+    matches!(
+        cause.downcast_ref::<Error>(),
+        Some(Error::Mapping(analyte_mapping::law::WireError::Shared(
+            analyte_mapping::OrderMappingError::UnsupportedDilution
+        )))
+    )
+}
+
 fn groups(command: &Command) -> Vec<Vec<analyte_model::NamespacedId>> {
-    command
-        .tests()
-        .iter()
-        .cloned()
-        .map(|test| vec![test])
-        .collect()
+    command.tests().cloned().map(|test| vec![test]).collect()
 }

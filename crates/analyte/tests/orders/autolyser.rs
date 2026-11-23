@@ -574,3 +574,16 @@ async fn disabled_download_leaves_trusted_orders_unsent() -> Result<(), Error> {
     service.stop().await?;
     reference.close().await
 }
+
+// Contract v1: Order tests.
+#[tokio::test]
+async fn dilution_is_rejected_before_insertion() -> Result<(), Error> {
+    let mut value = order()?;
+    value
+        .get_mut("tests")
+        .and_then(|tests| tests.get_mut(0))
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or("synthetic test")?
+        .insert("dilution_ratio".into(), 5.into());
+    rejection(value, "rejected: unsupported-dilution").await
+}

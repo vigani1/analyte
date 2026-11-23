@@ -73,6 +73,14 @@ async fn setup_with_patient_requirement(
     }
     *value.get_mut("id").ok_or("id")? = serde_json::json!(id);
     *value.get_mut("tests").ok_or("tests")? = serde_json::json!([{"namespace":"synthetic","value":"TEST"},{"namespace":"synthetic","value":"TEST"}]);
+    if id == "diluted" {
+        value
+            .get_mut("tests")
+            .and_then(|tests| tests.get_mut(1))
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or("synthetic test")?
+            .insert("dilution_ratio".into(), 5.into());
+    }
     value.as_object_mut().ok_or("order")?.insert(
         "specimen_type".into(),
         serde_json::json!({"namespace":"L","value":"SER"}),
@@ -578,5 +586,31 @@ async fn full_group_ei_overflow_rejects_before_reservation() -> Result<(), Error
         service.stop().await?;
         reference.close().await?;
     }
+    Ok(())
+}
+
+// Contract v1: Order tests.
+#[tokio::test]
+async fn dilution_rejects_entire_order_before_sending() -> Result<(), Error> {
+    let (_temp, path, reference, service, mut peer) =
+        setup_with_id("v251", "diluted", false, 30000).await?;
+    outcome(&path, "Rejected").await?;
+    let code: String =
+        database(&path)?.query_row("SELECT source_code FROM machine_orders", [], |row| {
+            row.get(0)
+        })?;
+    assert!(code.contains("unsupported-dilution"), "{code}");
+    let items: i64 =
+        database(&path)?.query_row("SELECT count(*) FROM machine_order_items", [], |row| {
+            row.get(0)
+        })?;
+    assert_eq!(items, 0);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(200), peer.read_u8())
+            .await
+            .is_err()
+    );
+    service.stop().await?;
+    reference.close().await?;
     Ok(())
 }
