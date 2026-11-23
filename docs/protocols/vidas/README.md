@@ -30,7 +30,7 @@ There are no configuration defaults. Supply every framing setting explicitly:
   punctuation restrictions belong to the host's order policy.
 - ACK, interbyte, whole-session and durable-commit deadlines; site retry count
   and backoff. Retry settings record site policy, but never trigger a resend.
-  Timeout, collision, NAK, disconnect and unexpected input stop and park. No
+  Timeout, collision, a peer refusal, disconnect and unexpected input stop and park. No
   undocumented abort sequence is emitted. Reconcile before a new conversation.
 
 The checksum span/case, suffix treatment, chunking, timers and retry behavior
@@ -48,7 +48,11 @@ read splitting and merging therefore do not change boundaries.
 Reserve storage capacity before admitting upload ENQ. `Store` is a request;
 only a matching durable commit may produce `Stored`. A commit failure never
 emits packet ACK. Normal Literal then waits for ETX and EOT; Alternate already
-consumed ETX. Preserve incomplete durable receipts across disconnect/restart;
+consumed ETX. For a bad checksum, retain the rejected packet at the same reply
+point and send NAK (BCI Link LIS guide 161150-486 C pp. 3-1 to 3-4). The receiver
+then waits for a fresh STX under the existing interbyte and whole-session
+deadlines. The guide gives no packet retry count. Preserve incomplete durable
+receipts across disconnect/restart;
 never infer that timeout means the peer received nothing. Host owns bounded
 shutdown and suffix validation of control events. The dialog owns all timers,
 reports its next absolute deadline and expires it before accepting new input.
