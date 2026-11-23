@@ -255,15 +255,9 @@ async fn replay_model(folder: &Path, model: &Path, definition: &Path) -> Result<
     Ok(())
 }
 
-// Roche cobas e 411 HIM v2.3 Tables 11-17 and section 17 (pp. 48-50).
-async fn replay_structured_orders(
-    mode: &str,
-    header: &Header,
-    events: &[Event],
-) -> Result<(), Error> {
-    let temp = tempfile::tempdir()?;
-    let path = config(temp.path(), true)?;
-    let definition = analyte_fixtures::definition_path(temp.path(), "astm");
+fn structured_config(root: &Path, mode: &str, send_ahead: bool) -> Result<Fixture, Error> {
+    let path = config(root, true)?;
+    let definition = analyte_fixtures::definition_path(root, "astm");
     let text = std::fs::read_to_string(&definition)?;
     let mut order_settings: toml::Table =
         include_str!("../../../core/config/examples/orders.toml").parse()?;
@@ -271,7 +265,7 @@ async fn replay_structured_orders(
         .get_mut("orders")
         .and_then(toml::Value::as_table_mut)
         .ok_or("orders table")?;
-    orders.insert("send_ahead".into(), false.into());
+    orders.insert("send_ahead".into(), send_ahead.into());
     orders
         .get_mut("query")
         .and_then(toml::Value::as_table_mut)
@@ -286,6 +280,9 @@ async fn replay_structured_orders(
         .ok_or("ASTM table")?;
     astm.insert("profile".into(), mode.into());
     if mode == "cobas" {
+        if send_ahead {
+            astm.insert("batch_container".into(), "MC".into());
+        }
         astm.insert("receiver".into(), "cobas-e411".into());
         astm.insert("action_code".into(), "A".into());
         astm.insert(
@@ -300,27 +297,48 @@ async fn replay_structured_orders(
         format!("{text}\n{}", toml::to_string(&order_settings)?),
     )?;
 
-    let reference = Reference::start(
-        &temp.path().join("receiver.db"),
-        TcpListener::bind("127.0.0.1:0").await?,
-        false,
-    )
-    .await?;
-    let doc = serde_json::json!({
-        "id": "order-structured", "version": 1, "state": "requested",
+    Ok(path)
+}
+
+fn structured_order(id: &str, assay: &str) -> serde_json::Value {
+    serde_json::json!({
+        "id": id, "version": 1, "state": "requested",
         "sample_id": "009184",
         "tests": [
             { "namespace": "synthetic", "value": "271", "dilution_ratio": 50 },
-            { "namespace": "synthetic", "value": "802" }
+            { "namespace": "synthetic", "value": assay }
         ],
         "specimen_type": {"namespace": "synthetic", "value": "2"},
         "priority": "routine", "target_analyzers": ["astm"],
         "expires_at": null, "tombstone": false
-    });
-    reference
-        .receiver
-        .seed(vec![analyte_contract::decode(&serde_json::to_vec(&doc)?)?])
-        .await?;
+    })
+}
+
+async fn structured_reference(root: &Path, docs: &[serde_json::Value]) -> Result<Reference, Error> {
+    let reference = Reference::start(
+        &root.join("receiver.db"),
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    let orders = docs
+        .iter()
+        .map(|doc| -> Result<_, Error> { Ok(analyte_contract::decode(&serde_json::to_vec(doc)?)?) })
+        .collect::<Result<Vec<_>, _>>()?;
+    reference.receiver.seed(orders).await?;
+    Ok(reference)
+}
+
+// Roche cobas e 411 HIM v2.3 Tables 11-17 and section 17 (pp. 48-50).
+async fn replay_structured_orders(
+    mode: &str,
+    header: &Header,
+    events: &[Event],
+) -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = structured_config(temp.path(), mode, false)?;
+    let reference =
+        structured_reference(temp.path(), &[structured_order("order-structured", "802")]).await?;
     let running = Running::start(&path, &reference.url, "synthetic-api").await?;
     let result = async {
         wait_feed(&path).await?;
@@ -333,6 +351,110 @@ async fn replay_structured_orders(
             1,
         )
         .await?;
+        Ok::<_, Error>(())
+    }
+    .await;
+    running.stop().await?;
+    reference.close().await?;
+    result
+}
+
+// Roche cobas e 411 HIM v2.3 Tables 11-17; AGENTS.md clinical rule 9.
+#[tokio::test]
+async fn structured_queries_without_a_sample_return_query_error() -> Result<(), Error> {
+    for mode in ["cobas", "elecsys"] {
+        assert_structured_query_error(mode, "", &[structured_order("order-structured", "802")])
+            .await?;
+    }
+    Ok(())
+}
+
+// Roche cobas e 411 HIM v2.3 section 17; Analyte ORDERS.md, structured ASTM orders.
+#[tokio::test]
+async fn structured_queries_refuse_two_lists_for_one_sample() -> Result<(), Error> {
+    let orders = [
+        structured_order("first-list", "802"),
+        structured_order("second-list", "803"),
+    ];
+    for mode in ["cobas", "elecsys"] {
+        assert_structured_query_error(mode, "009184", &orders).await?;
+    }
+    Ok(())
+}
+
+async fn assert_structured_query_error(
+    mode: &str,
+    sample: &str,
+    orders: &[serde_json::Value],
+) -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = structured_config(temp.path(), mode, false)?;
+    let reference = structured_reference(temp.path(), orders).await?;
+    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
+    let result = async {
+        wait_feed(&path).await?;
+        let mut peer = connect(&path, "astm").await?;
+        let coordinates = if mode == "cobas" {
+            format!("^^{sample}^0083^@19^04^^S1^MC")
+        } else {
+            format!("^{sample}^0083^@19^04^^SAMPLE^REDUCED")
+        };
+        let query = format!("H|\\^&||||||||||P||\rQ|1|{coordinates}||ALL||||||||O\rL|1|N\r");
+        astm(&mut peer, query.as_bytes()).await?;
+        let reply = receive_astm_orders(&mut peer).await?;
+        let text = std::str::from_utf8(&reply)?;
+        let records = text.split_terminator('\r').collect::<Vec<_>>();
+        let [header, terminator] = records.as_slice() else {
+            return Err(format!("{mode}: expected H and L records, got {records:?}").into());
+        };
+        assert!(header.starts_with("H|"), "{mode}: {header}");
+        assert_eq!(*terminator, "L|1|Q", "{mode}");
+        let reserved: i64 =
+            database(&path)?
+                .query_row("SELECT count(*) FROM machine_orders", [], |row| row.get(0))?;
+        assert_eq!(
+            reserved, 0,
+            "{mode}: no order was eligible for this response"
+        );
+        Ok::<_, Error>(())
+    }
+    .await;
+    running.stop().await?;
+    reference.close().await?;
+    result
+}
+
+// Roche cobas e 411 HIM v2.3 section 17; AGENTS.md clinical rule 8.
+// ASTM frame ACKs do not establish what the analyzer did with a batch.
+#[tokio::test]
+async fn cobas_send_ahead_without_application_confirmation_stays_uncertain() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = structured_config(temp.path(), "cobas", true)?;
+    let reference =
+        structured_reference(temp.path(), &[structured_order("order-structured", "802")]).await?;
+    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
+    let result = async {
+        wait_feed(&path).await?;
+        let mut peer = connect(&path, "astm").await?;
+        let reply = receive_astm_orders(&mut peer).await?;
+        let text = std::str::from_utf8(&reply)?;
+        assert!(text.contains("|TSDWN^BATCH|"), "{text:?}");
+        assert!(text.contains("\rO|1|009184|"), "{text:?}");
+        assert!(text.ends_with("\rL|1|N\r"), "{text:?}");
+        wait_database_count(
+            &path,
+            "SELECT count(*) FROM machine_orders WHERE order_id=?1 AND state != 'Sending'",
+            ["order-structured"],
+            1,
+        )
+        .await?;
+        let (state, reason): (String, String) = database(&path)?.query_row(
+            "SELECT state, source_code FROM machine_orders WHERE order_id=?1",
+            ["order-structured"],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(state, "Uncertain");
+        assert_eq!(reason, "ASTM-transfer-confirmed-replacement-unverified");
         Ok::<_, Error>(())
     }
     .await;
