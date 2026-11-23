@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.1.0 - 2026-11-23
+
+First draft release. **Status:** every protocol is built and tested from its
+official documents and synthetic recordings (evidence level documented). No
+machine has been qualified against a real analyzer or in a lab pilot yet. The
+Windows installer and programs are not code-signed, so Windows SmartScreen
+warns before running the installer.
+
 ### Program
 
 - **Record only** (ADR 0034): any model, including the first lab's six that
@@ -25,7 +35,6 @@
 - `analyte captures list` and `analyte captures export` list and copy the
   recorded conversations, audited first, with a reminder that they contain
   patient data and must be de-identified before sharing.
-
 - A machine definition can declare the choices a lab makes (ADR 0032): modes
   the analyzer offers on its own screen, and its software version, whose band
   decides version-specific facts such as the VIDAS sample ID limit. Each value
@@ -41,7 +50,6 @@
   differ from the manual. A choice cannot change evidence or departures.
 - The synthetic example `vidas_choices.toml` shows a mode choice and a
   software version band.
-
 - A lab chooses a serial machine's cable settings (baud rate, data bits,
   parity, stop bits, flow control) on the Setup page's step 2, from the
   standard values, filled in with the manual's suggestion and marked where they
@@ -53,17 +61,6 @@
 - A machine definition may leave out a serial value its manual does not state;
   Analyte refuses to run it until the lab chooses one, and never assumes it.
   Baud rates are limited to the standard list, 300 to 115200.
-
-## 0.1.0 - 2026-11-22
-
-First draft release. **Status:** every protocol is built and tested from its
-official documents and synthetic recordings (evidence level documented). No
-machine has been qualified against a real analyzer or in a lab pilot yet. The
-Windows installer and programs are not code-signed, so Windows SmartScreen
-warns before running the installer.
-
-### Program
-
 - Rust workspace with separate transport, framing, dialog, syntax, mapping and
   shared result layers. Protocol work covers ASTM, HL7 v2 over MLLP, IHE LAW,
   POCT01-A2, VIDAS Literal and Autolyser within the documented protocol scopes.
