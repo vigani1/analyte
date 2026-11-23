@@ -94,6 +94,7 @@ pub fn program(path: &Fixture, url: &str) -> Result<Program, Error> {
     }
     program.set_loopback_destination_for_test("demo", url.into())?;
     program.set_loopback_store_budget_for_test("demo", analyte_fixtures::STORE_BUDGET)?;
+    program.set_shutdown_io_budget_for_test(analyte_fixtures::STORE_BUDGET)?;
     Ok(program)
 }
 
@@ -331,7 +332,7 @@ pub fn database(path: &Path) -> Result<rusqlite::Connection, Error> {
             .join("data/analyte.db"),
         rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )?;
-    connection.busy_timeout(Duration::from_secs(1))?;
+    connection.busy_timeout(analyte_fixtures::STORE_BUDGET)?;
     Ok(connection)
 }
 

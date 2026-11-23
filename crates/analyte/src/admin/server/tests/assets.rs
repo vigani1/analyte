@@ -96,7 +96,7 @@ async fn every_static_file_is_public_typed_and_cached_by_version() -> Result<(),
     assert!(String::from_utf8(refused)?.starts_with("HTTP/1.1 401"));
     drop(state);
     stop.send_replace(true);
-    tokio::time::timeout(Duration::from_secs(5), owner).await???;
+    tokio::time::timeout(analyte_fixtures::HANG_GUARD, owner).await???;
     let mut store = Arc::try_unwrap(store).map_err(|_| "admin retained store")?;
     store.shutdown(fixture_deadline()?).await?;
     Ok(())
