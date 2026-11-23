@@ -233,14 +233,16 @@ fn report(
     }
 }
 
+pub(crate) const SHUTDOWN_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
+
 impl Capture {
     /// Called by the host after all transport owners exit. Cancellation retains ownership.
-    /// A stuck OS write cannot be cancelled: terminate visibly after five seconds,
+    /// A stuck OS write cannot be cancelled: terminate visibly at the deadline,
     /// as with the service watchdog, rather than detach it or block a runtime worker.
-    pub(crate) async fn close(&mut self) {
+    pub(crate) async fn close(&mut self, budget: std::time::Duration) {
         self.failures.take();
         let until = tokio::time::Instant::now()
-            .checked_add(std::time::Duration::from_secs(5))
+            .checked_add(budget)
             .unwrap_or_else(tokio::time::Instant::now);
         loop {
             let finished = self
@@ -253,7 +255,8 @@ impl Capture {
             if tokio::time::Instant::now() >= until {
                 tracing::error!(
                     machine = self.machine,
-                    "capture shutdown exceeded five seconds; terminating host"
+                    ?budget,
+                    "capture shutdown exceeded its budget; terminating host"
                 );
                 std::process::exit(3);
             }
@@ -343,7 +346,7 @@ mod tests {
         );
         release.send(())?;
         let mut capture = Arc::try_unwrap(capture).map_err(|_| "capture owner")?;
-        capture.close().await;
+        capture.close(SHUTDOWN_BUDGET).await;
         Ok(())
     }
 
@@ -439,7 +442,7 @@ mod tests {
         drop(dialog);
         owner.join().map_err(|_| "serial test owner panic")??;
         result?;
-        runtime.block_on(capture.close());
+        runtime.block_on(capture.close(SHUTDOWN_BUDGET));
         drop(capture);
         let file = std::fs::read_dir(root.path().join("data/captures/serial"))?
             .next()
