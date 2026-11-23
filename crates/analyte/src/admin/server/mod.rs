@@ -51,6 +51,7 @@ pub(super) struct Machine {
     pub(super) rules: Vec<super::machines::Rule>,
     /// The running settings version: the digest of its effective configuration.
     pub(super) digest: [u8; 32],
+    pub(super) software: Option<analyte_config::software_version::Check>,
     /// The model's name for people, read once at startup from its definition
     /// (`setup::model_name`); none when the definition gives none.
     pub(super) model: Option<String>,
@@ -211,32 +212,7 @@ pub(crate) async fn prepare(
         .unwrap_or_else(|| super::setup::Seams::system(&program.source_path));
     #[cfg(not(feature = "test-hooks"))]
     let seams = super::setup::Seams::system(&program.source_path);
-    let machines: Vec<_> = program
-        .machines()
-        .iter()
-        .map(|m| {
-            let effective = m.snapshot().effective();
-            Ok(Machine {
-                rules: super::machines::rules(&m.snapshot)?,
-                digest: m.snapshot().digest(),
-                id: m.id().clone(),
-                running: Arc::new(AtomicBool::new(true)),
-                status: m.status.subscribe(),
-                // A small bounded README read per machine, once, before serving.
-                model: super::setup::model_name(&m.definition, seams.definitions.as_deref()),
-                connection: Connection::of(
-                    crate::machine::link::status::Link::of(effective.stack()),
-                    &effective.site().endpoint,
-                ),
-                allowed_peers: effective.site().allowed_peers.clone(),
-                cable: super::setup::cable::of(effective.stack()).map(|serial| {
-                    super::setup::cable::summary(serial, effective.serial_suggestion())
-                }),
-                choices: super::setup::choices::summary(effective.choices()),
-                lab_app: effective.site().lab_app_name().cloned(),
-            })
-        })
-        .collect::<Result<Vec<_>, Error>>()?;
+    let machines = running_machines(program, &seams)?;
     let owners = machines
         .iter()
         .map(|m| (m.id.as_str().to_owned(), m.running.clone()))
@@ -397,6 +373,47 @@ const WRITE_BUDGET: Duration = Duration::from_secs(10);
 /// Kept after a budget ends to write its answer before the connection closes.
 pub(super) const ANSWER_TIME: Duration = Duration::from_millis(250);
 
+fn running_machines(program: &Program, seams: &super::setup::Seams) -> Result<Vec<Machine>, Error> {
+    program
+        .machines()
+        .iter()
+        .map(|m| {
+            let effective = m.snapshot().effective();
+            Ok(Machine {
+                rules: super::machines::rules(&m.snapshot)?,
+                digest: m.snapshot().digest(),
+                software: effective.machine().software_version().cloned(),
+                id: m.id().clone(),
+                running: Arc::new(AtomicBool::new(true)),
+                status: m.status.subscribe(),
+                // A small bounded README read per machine, once, before serving.
+                model: super::setup::model_name(&m.definition, seams.definitions.as_deref()),
+                connection: Connection::of(
+                    crate::machine::link::status::Link::of(effective.stack()),
+                    &effective.site().endpoint,
+                ),
+                allowed_peers: effective.site().allowed_peers.clone(),
+                cable: super::setup::cable::of(effective.stack()).map(|serial| {
+                    super::setup::cable::summary(serial, effective.serial_suggestion())
+                }),
+                choices: super::setup::choices::summary(effective.choices()),
+                lab_app: effective.site().lab_app_name().cloned(),
+            })
+        })
+        .collect()
+}
+
+fn machine_routes() -> Router<Arc<Context>> {
+    Router::new()
+        .route("/machines", get(super::machines::list))
+        .route("/machines.json", get(super::machines::live))
+        .route("/machines/{id}", get(super::machines::detail))
+        .route(
+            "/machines/{id}/confirm-software",
+            post(super::machines::software_version::submit),
+        )
+}
+
 fn router(state: Arc<Context>) -> Router {
     Router::new()
         .route("/", get(super::overview::show))
@@ -414,9 +431,7 @@ fn router(state: Arc<Context>) -> Router {
         .route("/settings", get(super::more::settings))
         .route("/activity", get(super::activity::activity))
         .route("/events", get(live::events))
-        .route("/machines", get(super::machines::list))
-        .route("/machines.json", get(super::machines::live))
-        .route("/machines/{id}", get(super::machines::detail))
+        .merge(machine_routes())
         .route(
             "/receipts/{id}/departures",
             get(super::machines::departures::receipt),

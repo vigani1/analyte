@@ -138,6 +138,9 @@ pub enum Error {
     /// A synthetic store wait must remain bounded behind a loopback override.
     #[error("test store budget requires a loopback override and 1 through 60 seconds")]
     InvalidTestStoreBudget,
+    /// The synthetic shutdown I/O budget must stay within fixture limits.
+    #[error("test shutdown I/O budget must be 5 through 60 seconds")]
+    InvalidTestShutdownIoBudget,
     /// A required installation setting or relationship is refused.
     #[error("unknown test destination")]
     UnknownTestDestination,
@@ -232,6 +235,7 @@ impl Error {
             | Self::StoreRecordLimitTooSmall
             | Self::MissingShutdownListeners
             | Self::TestListenerMismatch
+            | Self::InvalidTestShutdownIoBudget
             | Self::InvalidTestStoreBudget
             | Self::InvalidTestPolling
             | Self::UnknownTestDestination

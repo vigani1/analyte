@@ -5,3 +5,4 @@ pub(crate) mod parked;
 pub(crate) mod query;
 
 pub(crate) mod notifications;
+pub(crate) mod software_version;

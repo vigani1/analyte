@@ -40,7 +40,7 @@ async fn close_waits_for_store_destruction() -> Result<(), crate::Error> {
         crate::test_startup_deadline()?,
     )
     .await?;
-    let close = close_store(Arc::new(store));
+    let close = close_store(Arc::new(store), OWNER_SHUTDOWN_BUDGET);
     tokio::pin!(close);
     tokio::select! {
         result = &mut close => panic!("close returned before store destruction: {result:?}"),

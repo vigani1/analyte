@@ -44,6 +44,7 @@ Set-Alias analyte "C:\Program Files\Analyte\analyte.exe"   # only without the PA
 | Check a program file before using it | `analyte check-config C:\ProgramData\Analyte\config\analyte.toml` |
 | Technical health lines for support | `analyte status C:\ProgramData\Analyte\config\analyte.toml` |
 | Active alerts, each with its reason and fix | `analyte alerts list` |
+| Confirm that you checked the current settings for the exact software version shown on the machine's warning. The action is audited. | `analyte --actor NAME confirm-software MACHINE VERSION` |
 | Where the log is and its last lines (the log holds no patient data) | `analyte logs --tail 100` |
 | What Analyte stored, newest first (the Activity page) | `analyte --actor it-anna activity --limit 50` |
 

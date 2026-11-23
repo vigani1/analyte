@@ -80,6 +80,7 @@ impl Recorder {
         )?;
         let mut program = Program::load(&path)?;
         program.set_loopback_listener_for_test("recorder", listener.try_clone()?)?;
+        program.set_shutdown_io_budget_for_test(analyte_fixtures::STORE_BUDGET)?;
         // No lab app: there is no key to find and none is asked for.
         let secrets = analyte::installation::secrets::Environment::load_with(&program, |_| None)?;
         let space = Arc::new(AtomicU64::new(u64::MAX));
@@ -225,9 +226,11 @@ impl Recorder {
     async fn finish(self, stack: [&str; 4], open_parked: i64) -> Result<Finished, Error> {
         self.kept_everything().await?;
         self.nothing_else(open_parked)?;
-        drop(self.peer);
+        // Leave the peer connected so the service must close transport before
+        // finishing the recorder, including its final disconnect event.
         self.stop.send(()).map_err(|()| "service ended early")?;
         tokio::time::timeout(HANG_GUARD, self.task).await???;
+        drop(self.peer);
         let folder = self.directory.path().join("data/captures/recorder");
         let mut files = std::fs::read_dir(&folder)?
             .map(|entry| entry.map(|entry| entry.path()))
@@ -240,6 +243,10 @@ impl Recorder {
         assert_eq!(header.evidence, Evidence::Machine);
         assert_eq!(header.de_identification, "NOT de-identified");
         assert_eq!(header.stack, stack);
+        assert_eq!(
+            events.last().and_then(|event| event.link),
+            Some(recording::Link::Disconnect)
+        );
         let bytes = |direction| {
             events
                 .iter()

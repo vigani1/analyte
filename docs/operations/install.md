@@ -236,9 +236,17 @@ See [the full Windows procedure](../../packaging/windows/README.md) for ACL
 review, script execution policy and installation refusals.
 
 Stop with `Stop-Service Analyte`. Wait for Stopped before maintenance.
-Shutdown is bounded. A deadline exit is code 3; Windows can still show a normal
-stop. Inspect the log for remaining component IDs. Do not delete journals or
-resend uncertain machine orders after an interrupted stop.
+Analyte shares its stop allowance with recording flushes. The default is 30
+seconds. On a slow PC, set `-ShutdownTimeoutSecs` when installing the Windows
+service, or use `--shutdown-timeout-secs` for a foreground run. Both accept 30
+to 300 seconds. Windows can impose a shorter limit during OS shutdown, so stop
+the service explicitly before planned restarts or shutdowns.
+
+A deadline exit is code 3. Windows can still show Stopped. Inspect the log for
+remaining components and named captures. Analyte tries to mark unfinished
+captures as failed in the protected data directory. A blocked disk can prevent
+the marker write, so check the log before using a capture from an interrupted
+stop. Keep the journals and review uncertain machine orders before resending.
 
 The packaged `packaging/windows/uninstall.ps1` removes the service, its
 firewall rule and its PATH entry. Data, configuration, backups, credentials
@@ -283,7 +291,10 @@ Follow the [systemd procedure](../../packaging/linux/README.md) with the
 extracted binary. It uses `/etc/analyte` for config, `/var/lib/analyte` for data
 and a dedicated `analyte` account; the unit lets the service write only those two
 folders. Use `sudo systemctl stop analyte.service` for maintenance and
-`sudo journalctl -u analyte.service` for diagnostics.
+`sudo journalctl -u analyte.service` for diagnostics. When increasing
+`--shutdown-timeout-secs`, set systemd's `TimeoutStopSec` at least five seconds
+longer. The shipped unit allows 35 seconds for Analyte's default of 30.
+systemd reports a deadline exit (code 3) as a failure.
 
 For supervised commissioning outside a service:
 

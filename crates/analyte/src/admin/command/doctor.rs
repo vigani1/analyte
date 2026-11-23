@@ -213,7 +213,7 @@ async fn installation(program: &Program) -> Vec<Check> {
     let mut checks = Vec::new();
     let (engine_checks, running, answer) = engine(program).await;
     checks.extend(engine_checks);
-    let (store_checks, lists) = tokio::time::timeout(CHECK_TIME, store(program))
+    let (store_checks, lists) = tokio::time::timeout(CHECK_TIME, store(program, answer.is_none()))
         .await
         .unwrap_or_else(|_| {
             let late = format!(
@@ -349,7 +349,7 @@ type OrderLists = Vec<(String, Result<analyte_store::Health, String>)>;
 /// Whether the store opens, which also checks the data directory's access
 /// list, and while it is open when each lab app's last complete order list
 /// came. A store that does not exist yet is never created here.
-async fn store(program: &Program) -> (Vec<Check>, OrderLists) {
+async fn store(program: &Program, check_software: bool) -> (Vec<Check>, OrderLists) {
     let file = program.data_directory().join("analyte.db");
     if !file.is_file() {
         return (
@@ -364,6 +364,11 @@ async fn store(program: &Program) -> (Vec<Check>, OrderLists) {
     match crate::open_system_store(program).await {
         Ok(mut store) => {
             let lists = order_lists(program, &store).await;
+            let mut software = if check_software {
+                software_checks(program, &store).await
+            } else {
+                Vec::new()
+            };
             let closed = match crate::deadline() {
                 Ok(until) => store.shutdown(until).await.map_err(|error| chain(&error)),
                 Err(error) => Err(chain(&error)),
@@ -376,7 +381,8 @@ async fn store(program: &Program) -> (Vec<Check>, OrderLists) {
                     "run analyte doctor again; if it repeats, run analyte logs",
                 ),
             };
-            (vec![check], lists)
+            software.insert(0, check);
+            (software, lists)
         }
         Err(error) => (
             vec![fail(
@@ -390,6 +396,45 @@ async fn store(program: &Program) -> (Vec<Check>, OrderLists) {
             )],
             Vec::new(),
         ),
+    }
+}
+
+/// Reads stored software warnings when no live verdict is available.
+async fn software_checks(program: &Program, store: &analyte_store::Handle) -> Vec<Check> {
+    let selected = program
+        .machines()
+        .iter()
+        .filter_map(|machine| {
+            let check = machine
+                .snapshot()
+                .effective()
+                .machine()
+                .software_version()?
+                .clone();
+            Some((machine.id().clone(), check))
+        })
+        .collect();
+    let result = async {
+        crate::admin::machines::software_version::warnings(store, crate::deadline()?, selected)
+            .await
+    }
+    .await;
+    match result {
+        Ok(warnings) => warnings
+            .into_iter()
+            .map(|(machine, text)| {
+                warn(
+                    format!("Machine {} software", machine.as_str()),
+                    text,
+                    "check the machine's settings",
+                )
+            })
+            .collect(),
+        Err(error) => vec![warn(
+            "Machine software",
+            chain(&error),
+            "check the store and run analyte doctor again",
+        )],
     }
 }
 

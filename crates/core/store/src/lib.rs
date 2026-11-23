@@ -27,6 +27,7 @@ mod sql_types;
 
 pub use alerts::{AlertKey, AlertState, AlertTransition, Undeliverable};
 pub use operator::notifications::{AlertEndpointStatus, AlertEventId, AlertFailure, PendingAlert};
+pub use operator::software_version::SoftwareWarning;
 pub use transfers::{FrameSequence, TransferOutcome};
 
 pub use reprocess::Reprocess;
@@ -37,7 +38,7 @@ pub use delivery_operator::{
 };
 /// Schema version this build creates and migrates to; readers wait for it
 /// before using tables added by the latest migration.
-pub const SCHEMA_VERSION: i64 = 19;
+pub const SCHEMA_VERSION: i64 = 20;
 pub use delivery::feed::OrderRefusal;
 pub use machine_orders::{CANCEL_CONFLICT_REASON, MODEL_UNKNOWN_REASON};
 pub use machine_orders::{

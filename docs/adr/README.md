@@ -46,3 +46,4 @@ later one changes says "Changed by" in its status line and beside the part.
 | [0033](0033-machine-model-and-published-schema.md) | Deliveries name the machine model; the contract is published as a schema (changes ADR 0008) |
 | [0034](0034-record-only-connections.md)         | Record-only connections for the first lab visit (extends ADR 0010) |
 | [0035](0035-machine-result-identity-recipes.md) | Machine result identity recipes (extends ADR 0003) |
+| [0036](0036-machine-software-version-warning.md) | Warn when a machine reports unexpected software |

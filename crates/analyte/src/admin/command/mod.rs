@@ -73,6 +73,15 @@ pub enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Confirm that the current settings were checked for the reported version.
+    ConfirmSoftware {
+        /// Machine ID from the Machines page.
+        #[arg(value_parser = Identifier::new)]
+        machine: Identifier,
+        /// Exact software version shown in the warning.
+        #[arg(value_parser = Identifier::new)]
+        version: Identifier,
+    },
     /// Where the engine's log is, and its last lines. The log holds no patient
     /// data: Analyte logs names, counts and IDs, never messages or values.
     Logs {
@@ -104,6 +113,9 @@ pub async fn run(config: &Path, actor: Identifier, command: Command) -> Result<E
     let shown = match command {
         Command::Overview { json } => return overview::run(&Program::load(config)?, json).await,
         Command::Doctor { json } => return doctor::run(config, json).await,
+        Command::ConfirmSoftware { machine, version } => {
+            pages::confirm_software(&Program::load(config)?, actor, machine, version).await
+        }
         Command::Logs { tail } => logs::run(&Program::load(config)?, tail.into()).await,
         Command::Activity {
             limit,

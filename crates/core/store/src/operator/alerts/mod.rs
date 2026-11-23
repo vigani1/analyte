@@ -13,6 +13,8 @@ pub enum AlertKey {
     OldestUndelivered,
     /// Last durable message or journaled frame from this machine.
     MachineSilent(Identifier),
+    /// Analyzer software reports differ from checked settings.
+    MachineSoftwareVersionChanged(Identifier),
     /// Free bytes relative to the configured reserve.
     DiskReserve,
     /// Oldest or untrusted destination order cache.
@@ -239,6 +241,7 @@ impl Store {
                 )
                 .optional()?
                 .and_then(|time| now.checked_sub(time).filter(|age| *age >= 0)),
+            AlertKey::MachineSoftwareVersionChanged(_) => return Err(Error::InvalidOperatorInput),
             AlertKey::DiskReserve => return Ok(Some(self.space.available(&self.path)?)),
             AlertKey::OrderCacheStale => {
                 if destinations.is_empty() {

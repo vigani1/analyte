@@ -15,6 +15,18 @@
 {%- for notice in notices %}
 {% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
 {%- endfor %}
+{%- if let Some(warning) = software %}
+{% call feedback::alert(warning.tone, "Check the machine’s software version", warning.text) %}{% endcall %}
+<p>First seen {{ warning.first_seen }}</p>
+{%- if let Some(form) = warning.confirm %}
+<form method="post" action="{{ form.action }}">
+<input type="hidden" name="csrf" value="{{ form.csrf }}">
+<input type="hidden" name="version" value="{{ form.version.as_str() }}">
+<input type="hidden" name="first_seen" value="{{ warning.first_seen }}">
+<button type="submit">Settings checked for this version</button>
+</form>
+{%- endif %}
+{%- endif %}
 {%- if let Some(todo) = todo %}
 {% call feedback::whattodo(todo.text, todo.href, todo.label) %}{% endcall %}
 {%- endif %}

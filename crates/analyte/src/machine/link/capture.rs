@@ -9,7 +9,10 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     thread,
+    time::Duration,
 };
+
+use tokio::time::Instant;
 
 struct State {
     threads: Vec<(PathBuf, thread::JoinHandle<()>)>,
@@ -23,6 +26,7 @@ pub(crate) struct Capture {
     header: Header,
     machine: String,
     failures: Option<std::sync::mpsc::SyncSender<(PathBuf, String)>>,
+    marker_worker: Option<thread::JoinHandle<()>>,
 }
 
 impl Capture {
@@ -50,10 +54,11 @@ impl Capture {
         };
         Some(Self {
             failures: Some(failures),
+            marker_worker: Some(marker_worker),
             state: Arc::new(Mutex::new(State {
-                threads: vec![(directory.clone(), marker_worker)],
+                threads: Vec::new(),
             })),
-            directory: root.join("captures").join(machine.id.as_str()),
+            directory,
             reserve,
             header: Header {
                 version: 1,
@@ -107,7 +112,7 @@ impl Capture {
                 }
             }
             state.threads = pending;
-            if state.threads.len() >= 16 {
+            if state.threads.len() >= 15 {
                 report(
                     &failures,
                     &machine,
@@ -178,7 +183,7 @@ fn prepare(directory: &Path) -> io::Result<()> {
 
 fn failure(directory: &Path, machine: &str, path: &Path, reason: &str) {
     // Rule 10: only recorder diagnostics and opaque filenames, never bytes or settings.
-    tracing::error!(machine, capture = %path.display(), reason, "conversation capture failed; clinical traffic continues");
+    tracing::error!(machine, capture = %path.display(), reason, "conversation capture failed");
     let text = format!(
         "capture={} failed: {reason}\n",
         path.file_name().unwrap_or_default().to_string_lossy()
@@ -234,48 +239,109 @@ fn report(
 }
 
 impl Capture {
-    /// Called by the host after all transport owners exit. Cancellation retains ownership.
-    /// A stuck OS write cannot be cancelled: terminate visibly after five seconds,
-    /// as with the service watchdog, rather than detach it or block a runtime worker.
-    pub(crate) async fn close(&mut self) {
-        self.failures.take();
-        let until = tokio::time::Instant::now()
-            .checked_add(std::time::Duration::from_secs(5))
-            .unwrap_or_else(tokio::time::Instant::now);
+    /// Drains all captures against one cutoff after the transport owners exit.
+    /// Cancellation retains ownership. On timeout the armed process watchdog
+    /// enforces the final deadline while the marker workers try to flag the files.
+    pub(crate) async fn close_all(captures: &mut [Self], deadline: Instant) {
         loop {
-            let finished = self
-                .state
-                .lock()
-                .is_ok_and(|state| state.threads.iter().all(|(_, worker)| worker.is_finished()));
-            if finished {
-                break;
+            let mut finished = true;
+            for capture in &mut *captures {
+                finished &= capture.reap();
             }
-            if tokio::time::Instant::now() >= until {
+            if finished {
+                return;
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                for capture in captures {
+                    capture.flag_unfinished();
+                }
+                // The watchdog performs the platform stop notification and exits
+                // with code 3 even if a recorder or marker write is still blocked.
+                std::future::pending::<()>().await;
+                return;
+            }
+            let next_poll = now
+                .checked_add(Duration::from_millis(1))
+                .unwrap_or(deadline);
+            tokio::time::sleep_until(deadline.min(next_poll)).await;
+        }
+    }
+
+    fn reap(&mut self) -> bool {
+        let Ok(mut state) = self.state.lock() else {
+            return false;
+        };
+        for (_, worker) in state
+            .threads
+            .extract_if(.., |(_, worker)| worker.is_finished())
+        {
+            if worker.join().is_err() {
+                tracing::error!(machine = self.machine, "capture worker panicked");
+            }
+        }
+        if !state.threads.is_empty() {
+            return false;
+        }
+        drop(state);
+        self.failures.take();
+        if self
+            .marker_worker
+            .as_ref()
+            .is_some_and(|worker| !worker.is_finished())
+        {
+            return false;
+        }
+        if let Some(worker) = self.marker_worker.take()
+            && worker.join().is_err()
+        {
+            tracing::error!(machine = self.machine, "capture marker worker panicked");
+        }
+        true
+    }
+
+    fn flag_unfinished(&mut self) {
+        if let Ok(state) = self.state.lock() {
+            for (path, _) in &state.threads {
                 tracing::error!(
                     machine = self.machine,
-                    "capture shutdown exceeded five seconds; terminating host"
+                    capture = %path.display(),
+                    "capture shutdown exceeded its budget; terminating host"
                 );
-                std::process::exit(3);
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-        }
-        if let Ok(mut state) = self.state.lock() {
-            for (_, worker) in state.threads.drain(..) {
-                if worker.join().is_err() {
-                    tracing::error!(machine = self.machine, "capture worker panicked");
+                if self.failures.as_ref().is_none_or(|sender| {
+                    sender
+                        .try_send((path.clone(), "capture shutdown deadline reached".into()))
+                        .is_err()
+                }) {
+                    tracing::error!(
+                        machine = self.machine,
+                        "capture failure marker queue unavailable"
+                    );
                 }
             }
         }
+        if self
+            .marker_worker
+            .as_ref()
+            .is_some_and(|worker| !worker.is_finished())
+        {
+            tracing::error!(
+                machine = self.machine,
+                "capture marker worker still active at shutdown cutoff"
+            );
+        }
+        self.failures.take();
     }
 }
 impl Drop for Capture {
     fn drop(&mut self) {
         // Host ownership must survive machine-task cancellation. An unclosed owner
         // is a host lifecycle defect; never silently detach workers.
-        if self
-            .state
-            .lock()
-            .is_ok_and(|state| !state.threads.is_empty())
+        if self.marker_worker.is_some()
+            || self
+                .state
+                .lock()
+                .map_or(true, |state| !state.threads.is_empty())
         {
             tracing::error!(
                 machine = self.machine,
@@ -309,26 +375,7 @@ mod tests {
         entered.await?;
         let (sender, _receiver) = std::sync::mpsc::sync_channel(1);
         sender.try_send((PathBuf::new(), "occupied".to_owned()))?;
-        let header = Header {
-            version: 1,
-            stack: std::array::from_fn(|_| "synthetic".into()),
-            machine: None,
-            software: None,
-            evidence: Evidence::Synthetic,
-            de_identification: "synthetic".into(),
-            source: "test".into(),
-            exceptions: Vec::new(),
-        };
-        let capture = Arc::new(Capture {
-            state: Arc::new(Mutex::new(State {
-                threads: vec![(PathBuf::new(), worker)],
-            })),
-            directory: PathBuf::new(),
-            reserve: 0,
-            header,
-            machine: "synthetic".into(),
-            failures: Some(sender),
-        });
+        let capture = Arc::new(capture_with_worker(PathBuf::new(), worker, Some(sender)));
         let machine_capture = capture.clone();
         let task = tokio::spawn(async move {
             let mut factory = machine_capture.factory();
@@ -343,7 +390,173 @@ mod tests {
         );
         release.send(())?;
         let mut capture = Arc::try_unwrap(capture).map_err(|_| "capture owner")?;
-        capture.close().await;
+        Capture::close_all(
+            std::slice::from_mut(&mut capture),
+            Instant::now() + Duration::from_secs(5),
+        )
+        .await;
+        Ok(())
+    }
+
+    fn capture_with_worker(
+        path: PathBuf,
+        worker: thread::JoinHandle<()>,
+        failures: Option<std::sync::mpsc::SyncSender<(PathBuf, String)>>,
+    ) -> Capture {
+        Capture {
+            state: Arc::new(Mutex::new(State {
+                threads: vec![(path, worker)],
+            })),
+            directory: PathBuf::new(),
+            reserve: 0,
+            header: Header {
+                version: 1,
+                stack: std::array::from_fn(|_| "synthetic".into()),
+                machine: None,
+                software: None,
+                evidence: Evidence::Synthetic,
+                de_identification: "synthetic".into(),
+                source: "test".into(),
+                exceptions: Vec::new(),
+            },
+            machine: "synthetic".into(),
+            failures,
+            marker_worker: None,
+        }
+    }
+
+    // ADR 0009: the final event can be synchronized beyond the former five-second limit.
+    #[tokio::test]
+    async fn slow_capture_finishes_and_replays() -> Result<(), crate::Error> {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+        let root = tempfile::tempdir()?;
+        let path = root.path().join("slow.rec.jsonl");
+        let (tap, worker) = recording::recording(path.clone(), 4)?;
+        let at = std::time::Instant::now();
+        tap.record(recording::Kind::In, at, b"result")?;
+        tap.record(recording::Kind::Out, at, b"ack")?;
+        tap.record(recording::Kind::Close, at, b"shutdown")?;
+
+        let (start, gate) = std::sync::mpsc::channel();
+        let worker = thread::spawn(move || {
+            let mut writes = 0;
+            worker
+                .run_guarded(|| {
+                    writes += 1;
+                    if writes == 4 {
+                        gate.recv_timeout(Duration::from_secs(10))
+                            .map_err(io::Error::other)?;
+                        thread::sleep(Duration::from_millis(5_200));
+                    }
+                    Ok(())
+                })
+                .unwrap_or_else(|error| panic!("synthetic recorder failed: {error}"));
+        });
+        let mut capture = [capture_with_worker(path.clone(), worker, None)];
+        let watchdog = crate::runtime::shutdown::Watchdog::new(Duration::from_secs(30), None)?;
+        let deadline = watchdog.arm();
+        drop(tap);
+        start.send(())?;
+        Capture::close_all(&mut capture, (deadline - Duration::from_secs(5)).into()).await;
+        let (header, events) =
+            recording::read(&std::fs::read(path)?[..], recording::Limits::default())?;
+        assert_eq!(events.len(), 3);
+        assert_eq!(
+            events.last().and_then(|event| event.link),
+            Some(recording::Link::Disconnect)
+        );
+
+        let (mut machine, mut host) = tokio::io::duplex(32);
+        let peer = async {
+            let mut bytes = [0; 6];
+            host.read_exact(&mut bytes).await?;
+            assert_eq!(&bytes, b"result");
+            host.write_all(b"ack").await?;
+            assert_eq!(host.read(&mut bytes).await?, 0);
+            Ok::<_, io::Error>(())
+        };
+        let replay = analyte_sim::replay(
+            &mut machine,
+            &events,
+            &header.exceptions,
+            Duration::from_secs(2),
+        );
+        let (replayed, replied) =
+            tokio::time::timeout(Duration::from_secs(3), async { tokio::join!(replay, peer) })
+                .await?;
+        replayed?;
+        replied?;
+        Ok(())
+    }
+
+    // ADR 0009 and AGENTS.md concurrency: a blocked writer is flagged and cannot
+    // keep the process alive. The child isolates the production code-3 exit.
+    #[test]
+    fn stuck_capture_is_marked_and_exits_by_watchdog() -> Result<(), crate::Error> {
+        const CHILD: &str = "ANALYTE_STUCK_CAPTURE_ROOT";
+        if let Some(root) = std::env::var_os(CHILD) {
+            let directory = PathBuf::from(root).join("captures/synthetic");
+            tracing_subscriber::fmt().with_writer(io::stderr).init();
+            let worker = thread::spawn(|| {
+                loop {
+                    thread::park();
+                }
+            });
+            let (sender, receiver) = std::sync::mpsc::sync_channel::<(PathBuf, String)>(16);
+            let mut capture = [capture_with_worker(
+                directory.join("stuck.rec.jsonl"),
+                worker,
+                Some(sender),
+            )];
+            capture[0].marker_worker = Some(thread::spawn(move || {
+                for (path, reason) in receiver {
+                    failure(&directory, "synthetic", &path, &reason);
+                }
+            }));
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?;
+            let watchdog = crate::runtime::shutdown::Watchdog::new(Duration::from_secs(2), None)?;
+            let _component = watchdog.component("capture".into());
+            let deadline = watchdog.arm();
+            runtime.block_on(Capture::close_all(
+                &mut capture,
+                (deadline - Duration::from_millis(1500)).into(),
+            ));
+            return Err("stuck capture unexpectedly closed".into());
+        }
+
+        let root = tempfile::tempdir()?;
+        let started = std::time::Instant::now();
+        let mut child = std::process::Command::new(std::env::current_exe()?)
+            .args([
+                "--exact",
+                "machine::link::capture::tests::stuck_capture_is_marked_and_exits_by_watchdog",
+                "--nocapture",
+            ])
+            .env(CHILD, root.path())
+            .stderr(std::process::Stdio::piped())
+            .spawn()?;
+        while child.try_wait()?.is_none() {
+            if started.elapsed() >= Duration::from_secs(8) {
+                child.kill()?;
+                child.wait()?;
+                return Err("capture watchdog did not terminate the child".into());
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        let output = child.wait_with_output()?;
+        assert_eq!(output.status.code(), Some(3));
+        let log = String::from_utf8(output.stderr)?;
+        assert!(log.contains("capture shutdown exceeded its budget"));
+        assert!(log.contains("shutdown bound exceeded"));
+        for marker in ["capture-synthetic.failure", "stuck.rec.jsonl.failed"] {
+            assert!(
+                std::fs::read_to_string(root.path().join(marker))?
+                    .contains("capture shutdown deadline reached")
+            );
+        }
         Ok(())
     }
 
@@ -439,7 +652,13 @@ mod tests {
         drop(dialog);
         owner.join().map_err(|_| "serial test owner panic")??;
         result?;
-        runtime.block_on(capture.close());
+        runtime.block_on(async {
+            Capture::close_all(
+                std::slice::from_mut(&mut capture),
+                Instant::now() + Duration::from_secs(5),
+            )
+            .await;
+        });
         drop(capture);
         let file = std::fs::read_dir(root.path().join("data/captures/serial"))?
             .next()
