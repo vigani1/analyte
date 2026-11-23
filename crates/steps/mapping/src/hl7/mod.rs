@@ -109,6 +109,7 @@ fn map_checked(
     let mut output = grouping::message(
         &source,
         &crate::RecordSettings {
+            absent_astm_processing: false,
             mappings,
             limits: syntax.limits(),
         },

@@ -55,21 +55,25 @@ pub fn declared(path: &str, text: &str) -> Result<Vec<MachineChoice>, Error> {
     Ok(document.choices)
 }
 
-/// The `[vidas]` settings a choice may own, as TOML keys.
-const VIDAS_KEYS: [&str; 2] = ["alternate", "sample_limit"];
+/// TOML sections and keys which can be supplied by a choice.
+const BLOCK_KEYS: [(&str, &str); 6] = [
+    ("vidas", "alternate"),
+    ("vidas", "sample_limit"),
+    ("autolyser", "controls"),
+    ("autolyser", "recover_last_on_poll"),
+    ("autolyser", "download"),
+    ("syntax", "encoding"),
+];
 
 /// Checks the raw definition before the schema reads it, and returns whether
-/// it changed it. A choice cannot change evidence or departures (ADR 0015),
-/// and a setting a choice selects is written only in the choice: the
-/// definition's own `[mappings]` or `[vidas]` key beside it is refused. So
-/// that `[vidas]` still reads, each key a choice owns is filled from that
-/// choice's first value; every combination replaces it before any check or
-/// stack sees it.
+/// it changed it. Evidence and scope are declared outside the choices.
+/// Required keys picked by a choice are read from its first value and
+/// replaced with the selected values before validating any stack.
 pub(crate) fn prepare(raw: &mut toml::Table, path: &str) -> Result<bool, Error> {
     let Some(choices) = raw.get("choices").and_then(toml::Value::as_array) else {
         return Ok(false);
     };
-    let mut owned: Vec<(&'static str, toml::Value)> = Vec::new();
+    let mut owned: Vec<(&str, &str, toml::Value)> = Vec::new();
     let mut owns_mappings = false;
     for choice in choices {
         let values = choice
@@ -102,9 +106,14 @@ pub(crate) fn prepare(raw: &mut toml::Table, path: &str) -> Result<bool, Error> 
             continue;
         };
         owns_mappings |= first.get("mappings").is_some();
-        for key in VIDAS_KEYS {
-            if let Some(value) = first.get("vidas").and_then(|vidas| vidas.get(key)) {
-                owned.push((key, value.clone()));
+        for (section, key) in BLOCK_KEYS {
+            let value = if section == "syntax" {
+                first.get(key)
+            } else {
+                first.get(section).and_then(|table| table.get(key))
+            };
+            if let Some(value) = value {
+                owned.push((section, key, value.clone()));
             }
         }
     }
@@ -115,21 +124,25 @@ pub(crate) fn prepare(raw: &mut toml::Table, path: &str) -> Result<bool, Error> 
             "a choice selects the mappings; write them only in the choice's values, so one place decides them",
         ));
     }
-    let Some(vidas) = raw.get_mut("vidas").and_then(toml::Value::as_table_mut) else {
-        return Ok(false);
-    };
-    for (key, _) in &owned {
-        if vidas.contains_key(*key) {
+    for (section, key, _) in &owned {
+        if raw
+            .get(*section)
+            .and_then(|table| table.get(*key))
+            .is_some()
+        {
             return Err(invalid(
                 path,
-                &format!("vidas.{key}"),
+                &format!("{section}.{key}"),
                 "a choice selects this setting; write it only in the choice's values, so one place decides it",
             ));
         }
     }
-    let changed = !owned.is_empty();
-    for (key, value) in owned {
-        vidas.entry(key).or_insert(value);
+    let mut changed = false;
+    for (section, key, value) in owned {
+        if let Some(table) = raw.get_mut(section).and_then(toml::Value::as_table_mut) {
+            table.entry(key).or_insert(value);
+            changed = true;
+        }
     }
     Ok(changed)
 }
@@ -188,7 +201,39 @@ pub(crate) fn check(document: &MachineDocument, path: &str) -> Result<(), Error>
             }
         }
     }
+    for declaration in &document.choice_departures {
+        let count = document
+            .choice_departures
+            .iter()
+            .filter(|d| {
+                d.tag() == declaration.tag()
+                    && d.declaration().scope.mode == declaration.declaration().scope.mode
+            })
+            .count();
+        if count != 1
+            || !choices
+                .iter()
+                .flat_map(|choice| &choice.values)
+                .any(|value| {
+                    value.value.as_str() == declaration.declaration().scope.mode.as_str()
+                        && references(value, declaration.tag())
+                })
+        {
+            return Err(invalid(
+                path,
+                "choice_departures",
+                "each scoped declaration must be unique and selected by its mode",
+            ));
+        }
+    }
     Ok(())
+}
+
+fn references(value: &ChoiceValue, tag: &str) -> bool {
+    value
+        .departures
+        .as_ref()
+        .is_some_and(|rules| rules.iter().any(|rule| rule.as_str() == tag))
 }
 
 /// Checks one declared choice and returns the building blocks it selects.
@@ -218,7 +263,7 @@ fn check_choice(
         return Err(invalid(
             path,
             &key,
-            "each value selects at least one building block: mappings, orders or vidas",
+            "each value selects at least one building block",
         ));
     }
     for (index, value) in choice.values.iter().enumerate() {
@@ -236,6 +281,36 @@ fn check_choice(
                 path,
                 &value_key,
                 "every value of a choice selects the same building blocks, so each value states its whole effect",
+            ));
+        }
+        if let Some(rules) = &value.departures {
+            if choice.kind != ChoiceKind::Mode || document.departure_scope.is_none() {
+                return Err(invalid(
+                    path,
+                    &value_key,
+                    "departures require a mode choice and an installed departure_scope",
+                ));
+            }
+            for (at, rule) in rules.iter().enumerate() {
+                if rules.iter().take(at).any(|earlier| earlier == rule)
+                    || !document.choice_departures.iter().any(|d| {
+                        d.tag() == rule.as_str()
+                            && d.declaration().scope.mode.as_str() == value.value.as_str()
+                    })
+                {
+                    return Err(invalid(
+                        path,
+                        &value_key,
+                        "select each departure once and only from declarations for this mode",
+                    ));
+                }
+            }
+        }
+        if value.autolyser.is_some() && document.autolyser.is_none() {
+            return Err(invalid(
+                path,
+                &value_key,
+                "Autolyser choices require an [autolyser] table",
             ));
         }
         if value.orders == Some(OrdersSwitch::On) && document.orders.is_none() {
@@ -394,10 +469,42 @@ pub(crate) fn applied(document: &MachineDocument, combination: &[usize]) -> Mach
             apply(&mut applied, value);
         }
     }
+    applied.choice_departures.clear();
     applied
 }
 
 fn apply(document: &mut MachineDocument, value: &ChoiceValue) {
+    if let (Some(_), Some(scope)) = (&value.departures, &mut document.departure_scope) {
+        // An offered mode is an installed fact. The remaining scope comes
+        // from the definition and must match the declaration during validation.
+        if let Ok(mode) = analyte_model::Identifier::new(value.value.as_str()) {
+            scope.mode = mode;
+        }
+        document.deviations.extend(
+            document
+                .choice_departures
+                .iter()
+                .filter(|d| {
+                    d.declaration().scope.mode.as_str() == value.value.as_str()
+                        && references(value, d.tag())
+                })
+                .cloned(),
+        );
+    }
+    if let Some(encoding) = value.encoding {
+        document.syntax.encoding = encoding;
+    }
+    if let (Some(choice), Some(settings)) = (&value.autolyser, &mut document.autolyser) {
+        if let Some(controls) = choice.controls {
+            settings.controls = controls;
+        }
+        if let Some(recover) = choice.recover_last_on_poll {
+            settings.recover_last_on_poll = recover;
+        }
+        if let Some(download) = choice.download {
+            settings.download = download;
+        }
+    }
     if let Some(mappings) = &value.mappings {
         document.mappings = Some(mappings.clone());
     }
@@ -454,7 +561,15 @@ pub(crate) fn refuse_overrides(
             let replaced = match block {
                 ChoiceBlock::Mappings => overrides.mappings.is_some(),
                 ChoiceBlock::Orders => overrides.orders.is_some(),
-                ChoiceBlock::VidasAlternate | ChoiceBlock::VidasSampleLimit => false,
+                ChoiceBlock::Departures => {
+                    overrides.deviations.is_some() || overrides.departure_scope.is_some()
+                }
+                ChoiceBlock::Encoding => overrides.syntax.is_some(),
+                ChoiceBlock::AutolyserControls
+                | ChoiceBlock::AutolyserRecovery
+                | ChoiceBlock::AutolyserDownload
+                | ChoiceBlock::VidasAlternate
+                | ChoiceBlock::VidasSampleLimit => false,
             };
             if replaced {
                 return Err(Error::ChoiceOverridden {

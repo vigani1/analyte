@@ -597,6 +597,14 @@ fn render_connection(
         } else {
             choice_fields(&model.path, &current_site, draft)
         },
+        autolyser_poll_seconds: (!records_only && super::plan::asks_autolyser_poll(&model.path))
+            .then(|| {
+                draft
+                    .poll_seconds
+                    .clone()
+                    .or_else(|| super::plan::saved_autolyser_poll(&current_site))
+                    .unwrap_or_default()
+            }),
         lab_apps,
         recording: records_only.then(|| recording_questions(&model.path, &current_site, draft)),
         analyzer_mode: if records_only {

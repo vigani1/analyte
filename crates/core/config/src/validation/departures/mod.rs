@@ -188,7 +188,9 @@ fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result
         | MachineDeparture::Hl7CrLfTerminators(_)
         | MachineDeparture::Hl7LfTerminators(_)
         | MachineDeparture::Hl7PreserveUnsupportedEscapes(_) => true,
-        MachineDeparture::AstmPackedRecordsInFrame(_)
+        MachineDeparture::AstmAbsentH12MeansProduction(_)
+        | MachineDeparture::AstmRepeatEnqAfterLostAck(_)
+        | MachineDeparture::AstmPackedRecordsInFrame(_)
         | MachineDeparture::AstmFrameLimit(_)
         | MachineDeparture::AstmReceiveTimeout(_)
         | MachineDeparture::AstmSendTimeout(_)
@@ -222,16 +224,10 @@ fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result
     match departure {
         MachineDeparture::Hl7AbsentObr25MeansFinal(_)
         | MachineDeparture::Hl7AbsentObx11MeansFinal(_) => {}
-        MachineDeparture::AstmPackedRecordsInFrame(_) => {
-            if !m.choice().has_astm_link() {
-                return Err(Refusal::ProtocolMismatch);
-            }
-            if scope.direction != DepartureDirection::MachineToHost {
-                return Err(Refusal::DirectionMismatch);
-            }
-            if scope.message != DepartureMessage::AstmResults {
-                return Err(Refusal::MessageMismatch);
-            }
+        MachineDeparture::AstmPackedRecordsInFrame(_)
+        | MachineDeparture::AstmAbsentH12MeansProduction(_)
+        | MachineDeparture::AstmRepeatEnqAfterLostAck(_) => {
+            validate_astm_upload(m, departure, scope)?;
         }
         MachineDeparture::Hl7Utf8InV231(_) => {
             if !m
@@ -260,6 +256,29 @@ fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result
                 return Err(Refusal::InactiveSetting);
             }
         }
+    }
+    Ok(())
+}
+
+fn validate_astm_upload(
+    machine: &ParsedMachine<'_>,
+    departure: &MachineDeparture,
+    scope: &DepartureScope,
+) -> Result<(), Refusal> {
+    if !machine.choice().has_astm_link() {
+        return Err(Refusal::ProtocolMismatch);
+    }
+    if scope.direction != DepartureDirection::MachineToHost {
+        return Err(Refusal::DirectionMismatch);
+    }
+    if scope.message != DepartureMessage::AstmResults
+        || (matches!(departure, MachineDeparture::AstmRepeatEnqAfterLostAck(_))
+            && machine
+                .orders
+                .as_ref()
+                .is_some_and(|orders| orders.query.is_some()))
+    {
+        return Err(Refusal::MessageMismatch);
     }
     Ok(())
 }

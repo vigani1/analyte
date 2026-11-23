@@ -143,7 +143,9 @@ fn discharge(
         MachineDeparture::Hl7AbsentObx11MeansFinal(_) => {
             DepartureMeaning::FinalObservationFromDocumentation
         }
-        MachineDeparture::AstmPackedRecordsInFrame(_)
+        MachineDeparture::AstmAbsentH12MeansProduction(_)
+        | MachineDeparture::AstmRepeatEnqAfterLostAck(_)
+        | MachineDeparture::AstmPackedRecordsInFrame(_)
         | MachineDeparture::Hl7Utf8InV231(_)
         | MachineDeparture::Hl7CrLfTerminators(_)
         | MachineDeparture::Hl7LfTerminators(_)

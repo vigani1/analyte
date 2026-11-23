@@ -103,6 +103,12 @@ pub(in crate::admin) const fn departure(rule: &analyte_config::MachineDeparture)
             "Leaves a result's status empty when the result is final; ",
             "Analyte reads only an empty result status as final.",
         ),
+        D::AstmAbsentH12MeansProduction(_) => {
+            "Empty H.12 in a documented upload is treated as production."
+        }
+        D::AstmRepeatEnqAfterLostAck(_) => {
+            "One repeated ENQ before any frame can recover a lost establishment ACK."
+        }
         D::AstmPackedRecordsInFrame(_) => concat!(
             "Puts several records in one frame; Analyte reads each record after ",
             "the frame's check passes.",

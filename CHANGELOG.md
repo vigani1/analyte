@@ -2,7 +2,10 @@
 
 ## Unreleased
 
-Nothing yet.
+- Model definitions can ask for documented encoding and Autolyser settings,
+  require the lab's polling interval, and activate evidenced departures by
+  mode. Normal ASTM definitions can opt into the Biolyte empty processing ID
+  and one lost establishment acknowledgment retry.
 
 ## 0.1.0 - 2026-11-23
 

@@ -29,7 +29,9 @@ impl Orders {
         } else if machine.choice().has_vidas_assay_codes() {
             Some(machine.vidas.as_ref().is_some_and(|v| v.download))
         } else if machine.choice().has_autolyser_orders() {
-            Some(machine.autolyser.as_ref().is_some_and(|a| a.download))
+            // The Autolyser's mode gates work-list transmission independently
+            // of the installed order layout. Validate the layout in every mode.
+            Some(true)
         } else if machine.choice().has_hl7_records() {
             self.validate_hl7(machine, path)?;
             return Ok(());

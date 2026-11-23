@@ -32,7 +32,14 @@ No workflows are enabled until specimen and QC classification are established.
 
 ## Departures
 
-No tolerance added. The p.86 frame description contains one record ending in
+Appendix VI section 7.1.12 identifies H.12 as unused in the upload. A normal
+definition can declare the scoped empty-H.12 production interpretation.
+Appendix VI section 2.1 documents one ENQ retry after 15 seconds without a reply.
+The scoped retry departure acknowledges that second ENQ before any frame
+arrives and keeps the original receive deadline. Both rules require a
+definition and installed scope before activation.
+
+The p.86 frame description contains one record ending in
 CR per ETX frame; the research does not establish packed-frame support.
 Confirm actual output with a capture. Analyte refuses multiple records per
 frame under LIS01-A2 §§3.3.2/6.3.1.1; do not enable packed-frame tolerance.

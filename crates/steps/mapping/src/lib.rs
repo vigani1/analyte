@@ -68,6 +68,7 @@ impl TryFrom<StackChoice> for FieldSyntax {
 
 struct RecordSettings<'a> {
     mappings: &'a analyte_config::Mappings,
+    absent_astm_processing: bool,
     limits: &'a analyte_config::SyntaxLimits,
 }
 
@@ -356,6 +357,7 @@ impl Output {
                     | DepartureMeaning::WireCompatibility
                     | DepartureMeaning::ControlCharacterKept
                     | DepartureMeaning::CharsetFromDefinition
+                    | DepartureMeaning::ProductionFromDocumentation
                     | DepartureMeaning::ZoneFromSite => false,
                 })
             || !self.uncoded.is_empty()

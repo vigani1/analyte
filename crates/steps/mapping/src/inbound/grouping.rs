@@ -11,7 +11,11 @@ use analyte_model::{
     ResultIdentity, ResultPart, ResultValue, SampleIdentity,
 };
 
-fn processing(source: &Source<'_>, output: &mut Output) -> Result<ProcessingMode, Error> {
+fn processing(
+    source: &Source<'_>,
+    output: &mut Output,
+    absent_astm_processing: bool,
+) -> Result<ProcessingMode, Error> {
     let (field, mode) = match source.syntax {
         // LIS02 section 6.12: H-12 is one whole code, so a composite or
         // repeated label never counts as its first component.
@@ -23,6 +27,9 @@ fn processing(source: &Source<'_>, output: &mut Output) -> Result<ProcessingMode
                 ProcessingId::Training => Some(ProcessingMode::Training),
                 ProcessingId::Debug => Some(ProcessingMode::Debug),
                 ProcessingId::QualityControl => Some(ProcessingMode::QualityControl),
+                ProcessingId::Other(_) if raw.is_empty() && absent_astm_processing => {
+                    Some(ProcessingMode::Production)
+                }
                 ProcessingId::Other(_) => None,
             };
             (12, mode)
@@ -73,7 +80,7 @@ pub(crate) fn message(
             .map(|observation| (observation.segment_index(), observation))
             .collect::<std::collections::BTreeMap<_, _>>()
     });
-    let mode = processing(source, &mut output)?;
+    let mode = processing(source, &mut output, config.absent_astm_processing)?;
     map_comments(source, &mut output)?;
     // Group only resolved identities, within the same source order occurrence.
     let mut groups: Vec<(usize, Option<ObservationIdentity>)> = Vec::new();

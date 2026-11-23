@@ -26,6 +26,7 @@ pub struct AutolyserStack {
     pub(super) settings: super::StackSettings<StreamTransport, SyntaxLimits, CodeTables>,
     /// Required installed protocol policy.
     pub(super) policy: Autolyser,
+    poll_ms: u32,
     /// Explicit outbound capability; omission disables it.
     pub(super) orders: Option<AutolyserOrders>,
 }
@@ -54,6 +55,12 @@ impl AutolyserOrders {
 }
 
 impl AutolyserStack {
+    /// The resolved, bounded interval between report polls.
+    #[must_use]
+    pub fn poll_ms(&self) -> u32 {
+        self.poll_ms
+    }
+
     /// Protocol behavior selected by configuration and checked at load time.
     #[must_use]
     pub fn policy(&self) -> &Autolyser {
@@ -71,6 +78,17 @@ pub(super) fn build(
     timeouts: DialogTimeouts,
     path: &str,
 ) -> Result<AutolyserStack, Error> {
+    let policy = machine
+        .autolyser
+        .clone()
+        .ok_or_else(|| invalid(path, "autolyser", "Autolyser stack requires policy"))?;
+    let crate::schema::PollInterval::Milliseconds(poll_ms) = policy.poll_ms else {
+        return Err(invalid(
+            path,
+            "autolyser.poll_ms",
+            "the site poll interval must be resolved",
+        ));
+    };
     Ok(AutolyserStack {
         settings: super::StackSettings {
             transport: stream(&machine.transport, path)?,
@@ -79,10 +97,7 @@ pub(super) fn build(
             syntax: limits(&machine.syntax),
             codes: code_tables(machine, path)?,
         },
-        policy: machine
-            .autolyser
-            .clone()
-            .ok_or_else(|| invalid(path, "autolyser", "Autolyser stack requires policy"))?,
+        poll_ms,
         orders: machine
             .orders
             .as_ref()
@@ -103,10 +118,11 @@ pub(super) fn build(
                             "Autolyser orders require clone behavior",
                         )
                     })?,
-                    send_ahead: orders.send_ahead,
+                    send_ahead: orders.send_ahead && policy.download,
                 })
             })
             .transpose()?,
+        policy,
     })
 }
 

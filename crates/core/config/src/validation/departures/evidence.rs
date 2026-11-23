@@ -49,6 +49,10 @@ pub(super) fn validate(
     let required = match departure {
         MachineDeparture::Hl7AbsentObr25MeansFinal(_) => DepartureGuarantee::AbsentObr25Final,
         MachineDeparture::Hl7AbsentObx11MeansFinal(_) => DepartureGuarantee::AbsentObx11Final,
+        MachineDeparture::AstmAbsentH12MeansProduction(_) => {
+            DepartureGuarantee::AbsentProcessingIdProduction
+        }
+        MachineDeparture::AstmRepeatEnqAfterLostAck(_) => DepartureGuarantee::RepeatEnq,
         MachineDeparture::AstmPackedRecordsInFrame(_) => DepartureGuarantee::PackedRecords,
         MachineDeparture::Hl7Utf8InV231(_)
         | MachineDeparture::Hl7CrLfTerminators(_)

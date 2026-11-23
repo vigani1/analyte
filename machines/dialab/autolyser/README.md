@@ -42,6 +42,12 @@ work list. No workflows are enabled. A is not an automatic retry. Missing
 immutable run identity, timestamps and units must not be invented. Work lists
 require explicit patient namespace, clone, specimen medium and cup position.
 
+## Implementation gaps
+
+Normal definitions can now ask for controls layout, last-response recovery,
+work-list permission and the lab's poll interval without a default. The
+expected layout and installed settings still need to be confirmed.
+
 ## Departures
 
 No guessed 8N1, variable-protocol script or TCP alternative added. Source

@@ -196,6 +196,8 @@ fn compatibility(
             }
             MachineDeparture::Hl7AbsentObr25MeansFinal(_)
             | MachineDeparture::Hl7AbsentObx11MeansFinal(_)
+            | MachineDeparture::AstmAbsentH12MeansProduction(_)
+            | MachineDeparture::AstmRepeatEnqAfterLostAck(_)
             | MachineDeparture::AstmPackedRecordsInFrame(_)
             | MachineDeparture::AstmFrameLimit(_)
             | MachineDeparture::AstmReceiveTimeout(_)
