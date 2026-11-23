@@ -227,11 +227,12 @@ pub(crate) fn vidas(
     raw: &[u8],
     settings: &analyte_config::VidasStack,
 ) -> Result<analyte_mapping::Output, Error> {
+    use analyte_config::VidasResultControlLabels;
+    use analyte_vidas::syntax::{ControlLabels, Message};
+
     let packet =
         analyte_framing::vidas::decode(raw, crate::machine::vidas::settings::framing(settings)?)?;
     let limit = crate::machine::vidas::settings::sample_limit(settings);
-    use analyte_config::VidasResultControlLabels;
-    use analyte_vidas::syntax::{ControlLabels, Message};
     let labels = match settings.policy().result_control_labels {
         VidasResultControlLabels::PcSlots => ControlLabels::PcSlots,
         VidasResultControlLabels::AppendixB => ControlLabels::AppendixB,
