@@ -8,50 +8,45 @@ pub(crate) fn options_from_values(
     escapes: Escapes,
     limits: &SyntaxLimits,
 ) -> analyte_hl7::Options {
-    options_with_limits(
-        encoding,
-        terminator,
-        escapes,
-        analyte_hl7::Limits {
-            message_bytes: limits.bytes(),
-            segments: limits.records(),
-            fields: limits.fields(),
-            repetitions: limits.repetitions(),
-        },
-    )
-}
-
-/// The parser options for these settings and resource limits.
-pub(crate) fn options_with_limits(
-    encoding: Encoding,
-    terminator: Terminator,
-    escapes: Escapes,
-    limits: analyte_hl7::Limits,
-) -> analyte_hl7::Options {
     analyte_hl7::Options {
         allow_utf8_in_v231: false,
+        control: analyte_hl7::ControlProfile::Standard,
         header_zone: analyte_hl7::HeaderZone::Required,
         charset: match encoding {
             Encoding::Ascii => analyte_hl7::Charset::Ascii,
             Encoding::Latin1 => analyte_hl7::Charset::Latin1,
             Encoding::Utf8 => analyte_hl7::Charset::Utf8,
         },
-        terminator: match terminator {
-            Terminator::Cr => analyte_hl7::Terminator::Cr,
-            Terminator::CrLf => analyte_hl7::Terminator::CrLf,
-            Terminator::Lf => analyte_hl7::Terminator::Lf,
-        },
+        terminator: wire_terminator(terminator),
         escapes: match escapes {
             Escapes::Reject => analyte_hl7::EscapePolicy::Reject,
             Escapes::Preserve => analyte_hl7::EscapePolicy::Preserve,
         },
-        limits,
+        limits: analyte_hl7::Limits {
+            message_bytes: limits.bytes(),
+            segments: limits.records(),
+            fields: limits.fields(),
+            repetitions: limits.repetitions(),
+        },
+    }
+}
+
+pub(super) fn wire_terminator(terminator: Terminator) -> analyte_hl7::Terminator {
+    match terminator {
+        Terminator::Cr => analyte_hl7::Terminator::Cr,
+        Terminator::CrLf => analyte_hl7::Terminator::CrLf,
+        Terminator::Lf => analyte_hl7::Terminator::Lf,
     }
 }
 
 pub(crate) fn options(syntax: &analyte_config::Hl7Syntax) -> analyte_hl7::Options {
     analyte_hl7::Options {
         allow_utf8_in_v231: syntax.allow_utf8_in_v231(),
+        control: if syntax.msh16_message_category() {
+            analyte_hl7::ControlProfile::Msh16MessageCategory
+        } else {
+            analyte_hl7::ControlProfile::Standard
+        },
         ..options_from_values(
             syntax.encoding(),
             syntax.terminator(),

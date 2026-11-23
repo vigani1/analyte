@@ -144,6 +144,7 @@ fn discharge(
             DepartureMeaning::FinalObservationFromDocumentation
         }
         MachineDeparture::AstmPackedRecordsInFrame(_)
+        | MachineDeparture::Hl7Msh16MessageCategory(_)
         | MachineDeparture::Hl7Utf8InV231(_)
         | MachineDeparture::Hl7CrLfTerminators(_)
         | MachineDeparture::Hl7LfTerminators(_)
