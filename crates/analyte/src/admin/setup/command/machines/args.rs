@@ -149,7 +149,6 @@ impl Choice {
             let kept = Draft {
                 definition: draft.definition.take(),
                 lab_app: draft.lab_app.take(),
-                allowed_peers: draft.allowed_peers.take(),
                 mode: draft.mode.take(),
                 poll_seconds: draft.poll_seconds.take(),
                 controls: draft.controls.take(),
@@ -217,7 +216,7 @@ pub(super) fn draft(setup: &Setup, id: &str, choice: Choice) -> Result<Draft, Se
     let (_, installed) = site::installed(setup.config(), id)?;
     let site = site::read_document(&installed.site)?;
     let mut draft = choice.over(saved(setup, id, &installed, &site)?);
-    keep_saved_choices(setup, &installed, site.table(), &mut draft)?;
+    keep_saved(setup, &installed, site.table(), &mut draft)?;
     Ok(draft)
 }
 
@@ -239,7 +238,6 @@ fn saved(
     let mut draft = Draft {
         definition: installed.definition.as_ref().map(|_| KEEP.to_owned()),
         lab_app: plan::current_lab_app(running(setup, id), table),
-        allowed_peers: saved_peers(table),
         // A record-only machine stays record-only until --connect-normally (ADR 0034).
         mode: site
             .records_only()
@@ -282,8 +280,9 @@ fn saved(
 /// Fills each of the draft model's own choices not given with `--choice`
 /// from the saved site file, as step 2 starts from them; a saved choice the
 /// model does not declare (another model's) is left behind. Nothing is
-/// filled while the model is unknown; the plan refuses that by itself.
-fn keep_saved_choices(
+/// filled while the model is unknown; the plan refuses that by itself. Only
+/// a listening model can inherit a saved list of allowed devices.
+fn keep_saved(
     setup: &Setup,
     installed: &site::Installed,
     table: &toml::Table,
@@ -296,6 +295,9 @@ fn keep_saved_choices(
         Err(_) => return Ok(()),
     };
     choices::keep_saved(draft, table, &model.details.choices);
+    if model.details.kind == TransportKind::TcpServer && draft.allowed_peers.is_none() {
+        draft.allowed_peers = saved_peers(table);
+    }
     if !plan::recording::chosen(draft)
         && model.details.asks_autolyser_poll
         && draft.poll_seconds.is_none()
@@ -307,7 +309,7 @@ fn keep_saved_choices(
 
 /// The devices a site file lets connect, as `--allowed-peer` takes them;
 /// none when it names none (ADR 0026).
-pub(super) fn saved_peers(table: &toml::Table) -> Option<String> {
+fn saved_peers(table: &toml::Table) -> Option<String> {
     let listed: Vec<&str> = table
         .get("allowed_peers")?
         .as_array()?
