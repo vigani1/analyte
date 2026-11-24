@@ -47,9 +47,9 @@ The shipped capture profile uses Analyte's 10 s transport-operation and
 60 s session bounds and 5 s acknowledgment, byte-gap and commit bounds.
 These are engineering limits. Guide C pp. 3-1–3-4 describes responses and
 mentions retries but gives no numeric serial timeout or retry schedule.
-A/B simulator retry examples are script arguments. The normal loader
-requires retry count, backoff and deadlines and offers no site choice for
-them. Confirm the installed behavior before qualifying a normal profile.
+A/B simulator retry examples are script arguments. A normal definition
+requires explicit deadlines. Confirm the installed behavior before
+qualifying a normal profile.
 
 ## Supported workflows
 
@@ -83,7 +83,7 @@ listed below so they can be fixed at their owning boundary.
 | --- | --- | --- |
 | Serial transport | Guide C pp. 2-2, 3-8, 4-1; appendix A | The PC menu can offer baud rates outside Analyte's standard list, four data bits, forced parity and 1.5 stop bits. Analyte cannot select those combinations. Confirm an overlapping setting, the actual connector and cable wiring. |
 | Framing | Guide C pp. 3-1, 3-6–3-7, C-4 | BCI can add CR/LF after selected control characters; Analyte requires one uniform suffix policy. The unsuffixed checksum is clear. Captures are needed to confirm the exact span with selective suffixes. |
-| Dialog and custody | Guide C pp. 3-1–3-4 | BCI expects negative responses when the receiver cannot accept a session or a checksum or parity check fails. The [bad-checksum replay](recordings/literal-bad-checksum.rec.jsonl) expects a NAK after the rejected packet is stored. Readiness refusal, parity reporting and retry behavior still need verification on the installed link. Retry configuration never replays orders. |
+| Dialog and custody | Guide C pp. 3-1–3-4 | BCI expects negative responses when the receiver cannot accept a session or a checksum or parity check fails. The [bad-checksum replay](recordings/literal-bad-checksum.rec.jsonl) expects a NAK after the rejected packet is stored. Readiness refusal, parity reporting and retry behavior still need verification on the installed link. Analyte never retries or replays orders. |
 | Dialog and orders | Guide C pp. 3-2 to 3-4, 4-6, 10-2 to 10-3 | One ENQ/EOT session carries the assay packets for a single order. Each packet requires its own transport ACK. The PC can still refuse unknown assays or dilution settings, coalesce repeats, or prompt for demographic changes. Installed main and sub-assay codes belong to the lab app (ADR 0029). |
 | Config and orders | ADR 0032, Guide C pp. 4-4 to 4-6, Manual F pp. 10-7 to 10-9 | An order-enabled definition can collect the lab namespace in Setup. The mapper sends supplied demographics and origin, and requires a dilution for each assay configured to expect one. Confirm the installed PC's enabled fields and assay settings before enabling this workflow. |
 | Syntax and encoding | Guide C pp. 4-1–4-8, B-1; Manual F pp. 10-7–10-8 | Analyte accepts the printable ASCII subset and fixed pipe/field conventions only. Guide C's ASCII instruction and its ISO-8859-1/UTF-8 codepage appendix need to be reconciled with actual captures. Manual F describes installed field selection, fixed width, case transformation and separator settings. Required omissions or padded structural fields can fail parsing. Dates, times and dilution stay as text without validating the installed date format or dilution range. |
