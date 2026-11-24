@@ -409,10 +409,29 @@ impl Overall {
     }
 }
 
-/// Every thing that needs someone now, most urgent first; empty means all is well.
-/// Direct measurements come first; an alert adds a line only for what they do not
-/// already say.
+/// Every thing that needs someone now, in Overview display order.
+/// Measured lines come first, then uncovered alerts in the order they were read.
+/// Software alerts are listed in the alerts card; the verdict uses the machine's
+/// current software warning from the measured facts.
 pub(super) fn things(facts: &Facts) -> Vec<Thing> {
+    let mut list = measured_things(facts);
+    for alert in &facts.alerts {
+        if matches!(alert.key, AlertKey::MachineSoftwareVersionChanged(_)) {
+            continue;
+        }
+        let thing = from_alert(alert);
+        if !list
+            .iter()
+            .any(|listed| listed.subject.covers(&thing.subject))
+        {
+            list.push(thing);
+        }
+    }
+    list
+}
+
+/// The lines based on current observations, in their fixed display order.
+fn measured_things(facts: &Facts) -> Vec<Thing> {
     let mut list = Vec::new();
     if facts.disk_full {
         list.push(Thing::new(
@@ -493,18 +512,6 @@ pub(super) fn things(facts: &Facts) -> Vec<Thing> {
     }
     list.extend(facts.open.iter().map(open));
     list.extend(software_attention(facts));
-    for alert in &facts.alerts {
-        if matches!(alert.key, AlertKey::MachineSoftwareVersionChanged(_)) {
-            continue;
-        }
-        let thing = from_alert(alert);
-        if !list
-            .iter()
-            .any(|listed| listed.subject.covers(&thing.subject))
-        {
-            list.push(thing);
-        }
-    }
     list
 }
 
@@ -944,6 +951,48 @@ mod tests {
                 "Cannot send to lab app demo: not set up any more, 4 waiting",
             ]
         );
+    }
+
+    // Overview follows the measured issues first, then the remaining alerts.
+    #[test]
+    fn measured_lines_keep_their_order_and_take_precedence_over_alerts() {
+        let machine = id("analyzer");
+        let facts = Facts {
+            paused: vec![(id("demo"), 2)],
+            stopped: vec![machine.clone()],
+            unlinked: vec![(machine.clone(), "Port not open", "Check the cable.".into())],
+            software: vec![(
+                machine.clone(),
+                "Check the version in machine settings.".into(),
+            )],
+            alerts: vec![
+                alert(AlertKey::MachineSoftwareVersionChanged(machine), None),
+                alert(
+                    AlertKey::MachineSoftwareVersionChanged(id("old-analyzer")),
+                    None,
+                ),
+                alert(AlertKey::OrderCacheStale, None),
+                alert(AlertKey::DiskReserve, Some(10)),
+            ],
+            ..Facts::default()
+        };
+        let list = things(&facts);
+        assert_eq!(
+            list.iter().map(Thing::reason).collect::<Vec<_>>(),
+            [
+                Reason::SendingPaused,
+                Reason::MachineStopped,
+                Reason::MachineSoftwareVersionChanged,
+                Reason::OrderListStale,
+                Reason::DiskLow,
+            ]
+        );
+        assert!(list.iter().any(|item| {
+            item.reason() == Reason::MachineSoftwareVersionChanged
+                && item.text == "Check the version in machine settings."
+                && item.fix.href() == "/machines"
+        }));
+        assert_eq!(Overall::of(&list), Overall::Problem);
     }
 
     // Owner request 2026-11-19 (overview item 1): the red line counts the things

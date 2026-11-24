@@ -96,7 +96,7 @@ impl Need {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Answer {
     pub(crate) verdict: Verdict,
-    /// Every thing that needs someone, most urgent first; empty when all is
+    /// Every thing that needs someone, in Overview display order; empty when all is
     /// good or the state is unknown.
     pub(crate) needs: Vec<Need>,
     /// Why the state is unknown: what the engine could not read.
