@@ -8,6 +8,8 @@
   names the affected key when the engine is stopped.
 - `analyte doctor` reports a watched-folder check as failed after eight
   seconds if the folder cannot be checked in time, even on a stalled share.
+- Setup and `analyte machines set --dry-run` now report the same machine
+  configuration errors as startup, before Save writes any settings.
 
 ## 0.1.0 - 2026-11-23
 
