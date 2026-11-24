@@ -134,10 +134,19 @@ impl ModelId {
     /// # Errors
     /// Rejects an empty, over-long or non-key part; nothing is tidied.
     pub fn new(vendor: &str, model: &str) -> Result<Self, InvalidModel> {
-        if !model_part(vendor) || !model_part(model) {
+        if !Self::valid_part(vendor) || !Self::valid_part(model) {
             return Err(InvalidModel);
         }
         Ok(Self(format!("{vendor}/{model}")))
+    }
+
+    /// Whether `part` can be a vendor or model folder name, as shipped.
+    #[must_use]
+    pub fn valid_part(part: &str) -> bool {
+        (1..=MODEL_PART_BYTES).contains(&part.len())
+            && part
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
     }
 
     /// Reads the `vendor/model` text form.
@@ -160,14 +169,6 @@ impl ModelId {
     pub fn vendor(&self) -> &str {
         self.0.split_once('/').map_or("", |(vendor, _)| vendor)
     }
-}
-
-/// Whether `part` can be a vendor or model folder name, as shipped.
-fn model_part(part: &str) -> bool {
-    (1..=MODEL_PART_BYTES).contains(&part.len())
-        && part
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 impl schemars::JsonSchema for ModelId {

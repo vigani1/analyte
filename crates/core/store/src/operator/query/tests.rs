@@ -281,7 +281,7 @@ fn order_events_are_deliveries_reset_clears_only_cursor() -> TestResult {
         payload: b"original event".to_vec(),
         contract_version: 1,
     };
-    store.enqueue_order_event(&event, 2)?;
+    queue_order_event(&mut store, &event, 2)?;
     let delivery = store
         .claim_destination(2, &app)?
         .ok_or("event was not queued")?;
@@ -486,7 +486,7 @@ fn attempt(
         payload: b"event".to_vec(),
         contract_version: 1,
     };
-    store.enqueue_order_event(&event, now)?;
+    queue_order_event(store, &event, now)?;
     let claim = store
         .claim_destination(now, destination)?
         .ok_or(DeliveryError::Corruption)?;

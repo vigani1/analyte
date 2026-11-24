@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 analyte-astm.workspace = true
+analyte-contract.workspace = true
 analyte-model = { workspace = true }
 analyte-framing = { workspace = true }
 analyte-hl7 = { workspace = true }

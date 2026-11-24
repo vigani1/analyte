@@ -181,21 +181,39 @@ fn unfinished_work_blocks_order_purge() -> TestResult {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("store.db"))?;
         store.configure_retention_key(Some(DigestKey::new([3; 32])), true)?;
-        let id = order_seed(&mut store, "Done")?;
+        let id = if guard == "event" {
+            cached(&mut store, "order", "sample")?;
+            crate::machine_orders::tests::seed_order(
+                &mut store,
+                crate::MachineOrderKey {
+                    destination: Identifier::new("app")?,
+                    order: Identifier::new("order")?,
+                    machine: Identifier::new("synthetic-machine")?,
+                },
+                analyte_model::OrderState::Accepted,
+                100,
+            )?
+        } else {
+            order_seed(&mut store, "Done")?
+        };
         match guard {
             "item" => {
                 store.db.execute("INSERT INTO machine_order_items(machine_order,item_index,tests,coverage_known,placer,state) VALUES (?1,1,'[]',0,'placer','Uncertain')",[id])?;
             }
             "event" => {
-                store.enqueue_order_event(
-                    &crate::OrderEventDelivery {
-                        id: DeliveryId::try_from(uuid::Uuid::now_v7())?,
-                        order_id: Identifier::new("order")?,
-                        destination: Identifier::new("app")?,
-                        payload: b"synthetic".to_vec(),
-                        contract_version: 1,
-                    },
+                let event = crate::OrderEventDelivery {
+                    id: DeliveryId::try_from(uuid::Uuid::now_v7())?,
+                    order_id: Identifier::new("order")?,
+                    destination: Identifier::new("app")?,
+                    payload: b"synthetic".to_vec(),
+                    contract_version: 1,
+                };
+                store.transition_order(
+                    id,
+                    analyte_model::OrderState::Done,
+                    analyte_model::SourceText::new("synthetic")?,
                     100,
+                    |_| Ok(event),
                 )?;
             }
             "receipt" => {

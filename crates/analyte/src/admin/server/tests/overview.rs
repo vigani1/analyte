@@ -552,10 +552,23 @@ pub(super) fn queue(
         payload: b"synthetic-order-message".to_vec(),
         contract_version: 1,
     };
-    store.enqueue_order_event(&event, now)?;
+    let destination = event.destination.clone();
+    let key = analyte_store::MachineOrderKey {
+        destination: destination.clone(),
+        order: event.order_id.clone(),
+        machine: Identifier::new("synthetic-machine")?,
+    };
+    let id = analyte_fixtures::orders::reserve(store, &key, now)?;
+    store.transition_order(
+        id,
+        OrderState::Sent,
+        analyte_model::SourceText::new("synthetic")?,
+        now,
+        |_| Ok(event),
+    )?;
     if delivered {
         let claim = store
-            .claim_destination(now, &event.destination)?
+            .claim_destination(now, &destination)?
             .ok_or(FixtureError::UnknownDelivery)?;
         store.attempted(claim.id, &analyte_store::Attempt::Done, now)?;
     }
@@ -811,7 +824,7 @@ fn assert_lab_app_nodes(page: &str) {
     assert!(!page.contains("Cannot send to lab app old-lab: its API key"));
     assert!(page.contains(concat!(
         "<p class=\"todo__title\">Cannot send to lab app old-lab: keys missing, 1 waiting</p>",
-        "<p class=\"todo__detail\">Lab app old-lab: 1 result or order message is kept ",
+        "<p class=\"todo__detail\">Removed machine synthetic-machine: 1 result or order message is kept ",
         "and never deleted.</p>"
     )));
 }

@@ -11,17 +11,6 @@ use analyte_config::{ChoiceKind, ChoiceName, ChoiceSelections, Chosen, MachineCh
 /// The prefix of a choice's form field: `choice.<name>`.
 pub(in crate::admin::setup) const FIELD: &str = "choice.";
 
-/// The choices the definition file at `definition` declares; none when it
-/// declares none or cannot be read (the loader then says why).
-pub(in crate::admin::setup) fn declared(definition: &std::path::Path) -> Vec<MachineChoice> {
-    crate::installation::config::read(definition)
-        .ok()
-        .and_then(|text| {
-            analyte_config::declared_choices(&definition.display().to_string(), &text).ok()
-        })
-        .unwrap_or_default()
-}
-
 /// The values a site file chooses, as written; none when it writes none.
 pub(in crate::admin::setup) fn saved(site: &toml::Table) -> Vec<(String, String)> {
     site.get("choices")

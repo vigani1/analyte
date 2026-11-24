@@ -246,10 +246,10 @@ fn problem(text: &str) -> io::Result<()> {
 
 /// How changes take effect, said after every change, as the page says it.
 fn restart_note() -> io::Result<()> {
-    say(concat!(
-        "Analyte uses these settings after it restarts. On Windows run ",
-        "Restart-Service Analyte in an administrator PowerShell, or press Restart ",
-        "now on the Setup page."
+    say(&format!(
+        "{} On Windows run Restart-Service Analyte in an administrator PowerShell, \
+         or press Restart now on the Setup page.",
+        super::RESTART_REQUIRED
     ))
 }
 

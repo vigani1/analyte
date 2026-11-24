@@ -835,6 +835,38 @@ async fn list_says_which_devices_each_machine_accepts() -> Result<(), Error> {
     Ok(())
 }
 
+// ADR 0002: the effective settings include explicit local overrides.
+#[tokio::test(flavor = "multi_thread")]
+async fn list_describes_the_connection_loaded_with_overrides() -> Result<(), Error> {
+    let install = install()?;
+    install.set_up().await?;
+    std::fs::write(
+        install.root.join("serial.override.toml"),
+        "schema_version = 1\nendpoint = 'COM99'\n",
+    )?;
+    let program = std::fs::read_to_string(&install.config)?;
+    let definition_line = "definition = \"machines/example/serial-astm/machine.toml\"";
+    assert!(program.contains(definition_line), "{program}");
+    std::fs::write(
+        &install.config,
+        program.rewrite(
+            definition_line,
+            &format!("{definition_line}\noverrides = 'serial.override.toml'"),
+        ),
+    )?;
+    let installation = super::Installation::load(&install.config, install.seams())?;
+    let machines = machines::settings_rows(&installation)?;
+    let machine = machines
+        .iter()
+        .find(|row| row.id == "cobas-1")
+        .ok_or("missing machine")?;
+    assert_eq!(
+        serde_json::to_value(machine)?["connection"],
+        "endpoint = COM99"
+    );
+    Ok(())
+}
+
 // ADR 0026 decision 2: `machines test` of a listening machine names the
 // device that connected; in a script it only says the command that accepts
 // only that device, and writes nothing.
@@ -1622,5 +1654,56 @@ async fn record_only_takes_the_cobas_protocol_type_from_the_command_line() -> Re
         .await;
     assert!(unoffered.is_err(), "{unoffered:?}");
     assert_eq!(install.settings()?, before);
+    Ok(())
+}
+
+// ADR 0034: record-only detection uses the same size bound as site loading.
+#[tokio::test]
+async fn machine_commands_report_an_oversized_record_only_site() -> Result<(), Error> {
+    let install = install()?;
+    install.machines(&["add", "cobas-1"]).await?;
+    let site = install.root.join("cobas-1.site.toml");
+    let contents = format!(
+        "[recording]\n#{}",
+        "x".repeat(analyte_config::MAX_FILE_BYTES)
+    );
+    std::fs::write(&site, contents)?;
+    for outcome in [
+        install.machines(&["list"]).await,
+        install.machines(&["set", "cobas-1", "--dry-run"]).await,
+    ] {
+        let error = outcome
+            .err()
+            .ok_or("command ignored an oversized site file")?;
+        assert!(matches!(
+            error,
+            Failure::Setup(SetupError::SiteRead {
+                path,
+                source,
+            }) if path == site
+                && matches!(*source, crate::installation::config::Error::ConfigurationTooLarge)
+        ));
+    }
+    Ok(())
+}
+
+// AGENTS.md: unreadable site settings cannot be treated as empty settings.
+#[tokio::test]
+async fn machine_and_lab_app_commands_report_an_unreadable_site() -> Result<(), Error> {
+    let install = install()?;
+    install.machines(&["add", "cobas-1"]).await?;
+    let site = install.root.join("cobas-1.site.toml");
+    std::fs::remove_file(&site)?;
+    for outcome in [
+        install.machines(&["list"]).await,
+        install.machines(&["set", "cobas-1", "--dry-run"]).await,
+        install.lab_apps(&["list"], [API_KEY, SIGNING_KEY]).await,
+    ] {
+        let error = outcome.err().ok_or("command ignored a missing site file")?;
+        assert!(matches!(
+            error,
+            Failure::Setup(SetupError::SiteRead { path, .. }) if path == site
+        ));
+    }
     Ok(())
 }

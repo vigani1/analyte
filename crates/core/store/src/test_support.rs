@@ -29,6 +29,39 @@ pub(crate) fn order_model() -> Identifier {
     Identifier::new("example/synthetic").expect("a valid model key")
 }
 
+/// Seeds a synthetic sending order, then commits its event through the real
+/// transition. Seeding the order alone leaves the feed state under test intact.
+pub(crate) fn queue_order_event(
+    store: &mut Store,
+    event: &OrderEventDelivery,
+    now: i64,
+) -> Result<(), OrderError> {
+    let key = MachineOrderKey {
+        destination: event.destination.clone(),
+        order: event.order_id.clone(),
+        machine: Identifier::new(&format!("synthetic-{}", uuid::Uuid::now_v7()))
+            .map_err(StorageError::Text)?,
+    };
+    let order =
+        machine_orders::tests::seed_order(store, key, analyte_model::OrderState::Sending, now)?;
+    store.transition_order(
+        order,
+        analyte_model::OrderState::Sent,
+        analyte_model::SourceText::new("synthetic").map_err(StorageError::Text)?,
+        now,
+        |_| {
+            Ok(OrderEventDelivery {
+                id: event.id,
+                destination: event.destination.clone(),
+                order_id: event.order_id.clone(),
+                payload: event.payload.clone(),
+                contract_version: event.contract_version,
+            })
+        },
+    )?;
+    Ok(())
+}
+
 pub(crate) fn open(path: &Path) -> Result<Store, MaintenanceError> {
     Store::open(path, limits(), Box::new(Space(u64::MAX)))
 }
