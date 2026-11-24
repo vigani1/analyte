@@ -7,7 +7,9 @@
 //! the previous files are put back. Saving, adding and removing a machine all
 //! write through [`commit`].
 use super::SetupError;
-use crate::installation::config::{Program, folder, read};
+use crate::installation::config::{
+    Error as Installation, Program, folder, read, store_record_bytes, validate_machine,
+};
 use analyte_config::{Destination, Endpoint, LabApps, Validated};
 use analyte_model::Identifier;
 use std::{
@@ -18,6 +20,8 @@ use std::{
 
 /// One `[[machines]]` entry of the program file, with paths resolved.
 pub(super) struct Installed {
+    id: Identifier,
+    capture: bool,
     /// Absent while the machine waits for setup.
     pub(super) definition: Option<PathBuf>,
     placement: Placement,
@@ -46,6 +50,8 @@ pub(super) struct EntrySpans {
     pub(super) definition: Option<toml::Spanned<String>>,
     pub(super) site: toml::Spanned<String>,
     overrides: Option<String>,
+    #[serde(default)]
+    capture: bool,
 }
 
 /// Reads the program file and its entries as written.
@@ -68,12 +74,25 @@ pub(super) fn installed(config: &Path, id: &str) -> Result<(String, Installed), 
         None => Placement::Insert(site_line(&text, entry.site.span().start)?),
     };
     let installed = Installed {
+        id: Identifier::new(entry.id.get_ref()).map_err(SetupError::InvalidName)?,
+        capture: entry.capture,
         definition: entry.definition.map(|d| base.join(d.get_ref())),
         placement,
         site: base.join(entry.site.get_ref()),
         overrides: entry.overrides.map(|path| base.join(path)),
     };
     Ok((text, installed))
+}
+
+impl Installed {
+    /// Keeps the existing path when both paths lead to the same file. Model
+    /// identity depends on the path left in the program file (ADR 0033).
+    pub(super) fn definition_to_save(&self, proposed: PathBuf) -> PathBuf {
+        match &self.definition {
+            Some(current) if same_file(current, &proposed) => current.clone(),
+            _ => proposed,
+        }
+    }
 }
 
 /// The start of the line holding the `site` value at `value`; the definition of
@@ -289,24 +308,30 @@ pub(super) fn moved(lab_apps: &LabApps, lab_app: Destination) -> Result<LabApps,
 }
 
 /// Validates `definition` with `site_text`, the installed overrides and
-/// `lab_apps`, exactly as the program loader does for one machine; nothing is written.
+/// `lab_apps`, exactly as the program loader does for one machine. Writes nothing.
 pub(super) fn validate(
+    program: &str,
     installed: &Installed,
     definition: &Path,
     site_text: &str,
     lab_apps: &LabApps,
 ) -> Result<Validated, SetupError> {
-    let overrides = installed
-        .overrides
-        .as_ref()
-        .map(|path| read(path))
-        .transpose()?;
-    Ok(analyte_config::load_machine(
-        (&definition.display().to_string(), &read(definition)?),
-        (&installed.site.display().to_string(), site_text),
-        overrides.as_deref().map(|text| ("overrides", text)),
+    let checked = validate_machine(
+        (&installed.id, installed.capture),
+        definition,
+        (&installed.site, Some(site_text)),
+        installed.overrides.as_deref(),
+        store_record_bytes(program)?,
         lab_apps,
-    )?)
+    )
+    .map_err(|error| {
+        if let Installation::Config(error) = error {
+            SetupError::Config(error)
+        } else {
+            SetupError::Installation(error)
+        }
+    })?;
+    Ok(checked.snapshot)
 }
 
 /// The program text with this entry's `definition` replaced, or added on its own
@@ -370,11 +395,7 @@ pub(super) fn apply(
     if let Some(text) = lab_apps {
         changes.push((crate::installation::config::lab_apps::path(config), text));
     }
-    if installed
-        .definition
-        .as_deref()
-        .is_none_or(|current| !same_file(definition, current))
-    {
+    if installed.definition.as_deref() != Some(definition) {
         changes.push((
             config.to_owned(),
             with_definition(program, config, installed, definition)?,
@@ -517,6 +538,136 @@ fn restore(changes: &[(PathBuf, String)], backups: &[Option<PathBuf>]) {
 
 #[cfg(test)]
 mod tests {
+    use super::{Program, SetupError};
+    use crate::installation::config::Error as Installation;
+    use analyte_fixtures::ConfigEdit as _;
+
+    const ASTM: &str = include_str!("../../../../core/config/examples/astm.toml");
+    const HL7: &str = include_str!("../../../../core/config/examples/hl7.toml");
+    const SITE: &str = include_str!("../../../../core/config/examples/site.toml");
+
+    fn assert_refused(
+        (definition, definition_text): (&str, &str),
+        (id, capture): (&str, bool),
+        site_text: &str,
+        refuses: fn(&Installation) -> bool,
+    ) -> Result<(), crate::Error> {
+        let directory = tempfile::tempdir()?;
+        let root = directory.path();
+        let config = root.join("analyte.toml");
+        let program = analyte_fixtures::program(&format!(
+            "[[machines]]\nid = '{id}'\ncapture = {capture}\ndefinition = '{definition}'\nsite = 'site.toml'\n"
+        ));
+        std::fs::write(&config, &program)?;
+        let definition = root.join(definition);
+        std::fs::create_dir_all(definition.parent().ok_or("definition folder")?)?;
+        std::fs::write(&definition, definition_text)?;
+        let site = root.join("site.toml");
+        let original = format!("# Original settings\n{SITE}");
+        std::fs::write(&site, &original)?;
+        let (program, installed) = super::installed(&config, id)?;
+        let result = super::validate(
+            &program,
+            &installed,
+            &definition,
+            site_text,
+            &analyte_config::LabApps::none("lab-apps.toml"),
+        );
+        let error = match result {
+            Err(SetupError::Installation(error)) => error,
+            Err(other) => return Err(other.into()),
+            Ok(_) => return Err("setup accepted the input".into()),
+        };
+        assert!(refuses(&error), "{error}");
+        assert_eq!(std::fs::read_to_string(&config)?, program);
+        assert_eq!(std::fs::read_to_string(&site)?, original);
+        assert_eq!(std::fs::read_dir(root)?.count(), 3);
+
+        std::fs::write(&site, site_text)?;
+        let startup = Program::load(&config)
+            .err()
+            .ok_or("startup accepted the input")?;
+        assert!(refuses(&startup), "{startup}");
+        assert_eq!(error.to_string(), startup.to_string());
+        Ok(())
+    }
+
+    // AGENTS.md "One way per thing": Setup and startup enforce the same checksum policy.
+    #[test]
+    fn setup_refuses_lowercase_astm_checksums() -> Result<(), crate::Error> {
+        let declaration = include_str!("../../../../core/config/tests/fixtures/departure.toml")
+            .rewrite("astm_frame_limit", "astm_lowercase_checksum_hex");
+        let definition = ASTM.rewrite("deviations = []", &declaration).rewrite(
+            "checksum_hex = \"strict\"",
+            "checksum_hex = \"accept_lowercase\"",
+        );
+        assert_refused(
+            (analyte_fixtures::DEFINITION, &definition),
+            ("lab-one", false),
+            &SITE.rewrite("127.0.0.1:5600", "COM3"),
+            |error| matches!(error, Installation::UnsupportedChecksumMode),
+        )
+    }
+
+    // AGENTS.md "One way per thing": Setup and startup enforce the same operation deadline.
+    #[test]
+    fn setup_refuses_operation_timeouts_over_sixty_seconds() -> Result<(), crate::Error> {
+        let definition = HL7.rewrite(
+            "operation_timeout_ms = 10000",
+            "operation_timeout_ms = 60001",
+        );
+        assert_refused(
+            (analyte_fixtures::DEFINITION, &definition),
+            ("lab-one", false),
+            SITE,
+            |error| matches!(error, Installation::ReceiveTimeoutTooLong),
+        )
+    }
+
+    // AGENTS.md "One way per thing": Setup and startup enforce the same store capacity.
+    #[test]
+    fn setup_refuses_machine_data_larger_than_the_store_record_limit() -> Result<(), crate::Error> {
+        let definition = HL7.rewrite("bytes = 1048576", "bytes = 4194304");
+        assert_refused(
+            (analyte_fixtures::DEFINITION, &definition),
+            ("lab-one", false),
+            SITE,
+            |error| matches!(error, Installation::StoreRecordLimitTooSmall),
+        )
+    }
+
+    // AGENTS.md "One way per thing" and ADR 0034: both ways of capturing need a plain name.
+    #[test]
+    fn setup_refuses_non_plain_capture_names() -> Result<(), crate::Error> {
+        let refuses = |error: &Installation| matches!(error, Installation::InvalidCaptureMachineId);
+        assert_refused(
+            (analyte_fixtures::DEFINITION, HL7),
+            ("lab.one", true),
+            SITE,
+            refuses,
+        )?;
+        assert_refused(
+            (
+                "test/synthetic/record.toml",
+                "recording_schema_version = 1\nprotocol = 'hl7'\n[transport]\nkind = 'tcp_server'\n",
+            ),
+            ("lab.one", false),
+            "schema_version = 1\nretention = 'keep'\nendpoint = '127.0.0.1:5600'\n[recording]\n",
+            refuses,
+        )
+    }
+
+    // ADR 0033: the definition's folders must supply a valid model key.
+    #[test]
+    fn setup_refuses_definitions_outside_a_valid_model_folder() -> Result<(), crate::Error> {
+        assert_refused(
+            ("test/invalid_model/machine.toml", HL7),
+            ("lab-one", false),
+            SITE,
+            |error| matches!(error, Installation::DefinitionOutsideModelFolder { .. }),
+        )
+    }
+
     // Owner request 2026-11-18 (setup page): changing the definition edits only
     // that value in the program file and keeps comments.
     #[test]

@@ -24,39 +24,7 @@ async fn query(peer: &mut TcpStream, sample: &str) -> Result<Vec<u8>, Error> {
         format!("H|\\^&|||SYN|||||||P|1\rQ|1|^{sample}||ALL||||||||O\rL|1|N\r").as_bytes(),
     )
     .await?;
-    receive_orders(peer).await
-}
-
-async fn receive_orders(peer: &mut TcpStream) -> Result<Vec<u8>, Error> {
-    tokio::time::timeout(HANG_GUARD, async {
-        assert_eq!(peer.read_u8().await?, 5);
-        peer.write_all(b"\x06").await?;
-        let mut payload = Vec::new();
-        loop {
-            let byte = peer.read_u8().await?;
-            if byte == 4 {
-                return Ok::<_, Error>(payload);
-            }
-            assert_eq!(byte, 2);
-            let mut frame = vec![byte];
-            while !frame.ends_with(b"\r\n") {
-                if frame.len() > 64000 {
-                    return Err("oversized frame".into());
-                }
-                frame.push(peer.read_u8().await?);
-            }
-            let end = frame
-                .iter()
-                .position(|b| matches!(b, 3 | 23))
-                .ok_or("missing frame ending")?;
-            payload.extend_from_slice(frame.get(2..end).ok_or("invalid frame")?);
-            if payload.len() > 1_048_576 {
-                return Err("oversized reply".into());
-            }
-            peer.write_all(b"\x06").await?;
-        }
-    })
-    .await?
+    receive_astm_orders(peer).await
 }
 
 /// Waits until a cached order exists and a complete, trusted feed pass has been
@@ -217,7 +185,7 @@ async fn transfer_ack_means_sent_not_accepted() -> Result<(), Error> {
     let reference = seeded_reference(temp.path()).await?;
     let service = Running::start(&path, &reference.url, "synthetic-api").await?;
     let mut peer = connect(&path, "astm").await?;
-    let received = receive_orders(&mut peer).await?;
+    let received = receive_astm_orders(&mut peer).await?;
     analyte_astm::parse(&received, analyte_astm::Limits::default())?;
     assert!(received.windows(7).any(|w| w == b"000Ab12"));
     machine_state(&path, "Sent", 1).await?;
@@ -264,7 +232,7 @@ async fn deadline_counts_transfer_and_cancel_gets_nothing() -> Result<(), Error>
         }
     }
     peer.write_all(b"\x04").await?;
-    assert!(receive_orders(&mut peer).await?.ends_with(b"L|1|Q\r"));
+    assert!(receive_astm_orders(&mut peer).await?.ends_with(b"L|1|Q\r"));
     astm(
         &mut peer,
         b"H|\\^&|||SYN|||||||P|1\rQ|1|^000Ab12||||||||||A\rL|1|N\r",
@@ -398,7 +366,7 @@ async fn astm_context_exchange(
     if !send {
         assert_astm_context(&query(&mut peer, "000Ab12").await?, expected)?;
     } else if rejection.is_none() {
-        assert_astm_context(&receive_orders(&mut peer).await?, expected)?;
+        assert_astm_context(&receive_astm_orders(&mut peer).await?, expected)?;
     }
     if let Some(code) = rejection {
         machine_state(&path, "Rejected", 1).await?;
@@ -609,7 +577,7 @@ async fn nonproduction_queries_never_reserve_or_send() -> Result<(), Error> {
                 .as_bytes(),
         )
         .await?;
-        let reply = receive_orders(&mut peer).await?;
+        let reply = receive_astm_orders(&mut peer).await?;
         assert!(reply.ends_with(b"L|1|Q\r"));
         assert!(!reply.windows(2).any(|w| w == b"O|"));
         assert_eq!(

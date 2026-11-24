@@ -54,28 +54,62 @@ fn qualitative_code_and_cutoff_keep_distinct_meanings() -> TestResult {
         (CARET, CARET_PATIENT, "SYN^1^0"),
         (SLASH, SLASH_PATIENT, "SYN/2/not"),
     ] {
+        for (token, reaction) in [
+            ("-1", QualitativeReaction::Negative),
+            ("0", QualitativeReaction::Borderline),
+            ("1", QualitativeReaction::Positive),
+        ] {
+            let original = format!("{token}^0.900");
+            let output = upload(
+                layout,
+                order,
+                &format!("R|1|^^^{code}|{original}\r"),
+                "N",
+                Some("coded"),
+            )?;
+            let part = first(&output)?;
+            let value = part.values.as_slice().first().ok_or("value")?;
+            assert_eq!(value.original.as_str(), original);
+            assert_eq!(value.parsed(), &ValueInterpretation::Qualitative(reaction));
+            let cutoff = part
+                .details
+                .as_ref()
+                .and_then(|details| details.cutoff_index.as_ref())
+                .ok_or("cutoff")?;
+            assert!(
+                matches!(cutoff.parsed(), ValueInterpretation::Numeric(n) if n.number.as_str() == "0.900")
+            );
+        }
+    }
+    Ok(())
+}
+
+// Roche e 411 HIM v2.3 section 6 Table 18; AGENTS.md clinical rules 2 and 5.
+#[test]
+fn undeclared_qualitative_tokens_are_retained_as_unsupported() -> TestResult {
+    for token in ["2", "+1"] {
+        let original = format!("{token}^0.900");
         let output = upload(
-            layout,
-            order,
-            &format!("R|1|^^^{code}|0^0.900\r"),
+            SLASH,
+            SLASH_PATIENT,
+            &format!("R|1|^^^SYN/2/not|{original}\r"),
             "N",
             Some("coded"),
         )?;
-        let part = first(&output)?;
-        let value = part.values.as_slice().first().ok_or("value")?;
-        assert_eq!(value.original.as_str(), "0^0.900");
+        let value = first(&output)?.values.as_slice().first().ok_or("value")?;
+        assert_eq!(value.original.as_str(), original);
         assert!(matches!(
             value.parsed(),
-            ValueInterpretation::Qualitative(QualitativeReaction::Borderline)
+            ValueInterpretation::Unsupported { source_type, .. }
+                if source_type.as_str() == "ASTM R.4"
         ));
-        let cutoff = part
-            .details
-            .as_ref()
-            .and_then(|details| details.cutoff_index.as_ref())
-            .ok_or("cutoff")?;
         assert!(
-            matches!(cutoff.parsed(), ValueInterpretation::Numeric(n) if n.number.as_str() == "0.900")
+            output
+                .findings
+                .iter()
+                .any(|finding| finding.problem == Problem::UnsupportedValue)
         );
+        assert!(output.requires_parking());
     }
     Ok(())
 }

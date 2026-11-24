@@ -84,7 +84,10 @@ async fn the_command_route_stores_keys_as_the_lab_apps_page_does() -> Result<(),
         assert!(!answer.contains(COMMAND_API_KEY) && !answer.contains(COMMAND_SIGNING_KEY));
     }
     assert_eq!(fixture.stored()?.value("spare-api"), None);
-    let answer = fixture.command(&bearer, &body("it-test", "")).await?;
+    // ADR 0028: a valid request above the server's default 1 KiB limit still
+    // fits the command route's larger bound.
+    let json = format!("{}{}", body("it-test", ""), " ".repeat(2048));
+    let answer = fixture.command(&bearer, &json).await?;
     assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
     for part in [
         "\"saved\":{\"lines\":[\"spare is added.\"",

@@ -1182,12 +1182,11 @@ async fn restart_now_is_audited_and_stops_the_server() -> Result<(), Error> {
     Ok(())
 }
 
-// Owner request 2026-11-18 (setup page): choosing another shipped definition
-// changes only that entry's `definition` in the program file, with a backup; a
-// choice the whole program then refuses (here the store record bound) puts every
-// previous file back.
+// AGENTS.md "One way per thing": steps 3 and 4 and the save enforce the
+// program loader's store record bound before they write anything. A valid
+// model change still edits the entry's definition and backs up the program.
 #[tokio::test(flavor = "multi_thread")]
-async fn definition_change_edits_program_and_rolls_back_on_refusal() -> Result<(), Error> {
+async fn definition_change_checks_store_limit_before_writing() -> Result<(), Error> {
     let fixture = start().await?;
     let root = fixture.config.parent().ok_or("root")?;
     let big = root.join("machines/example/big-hl7");
@@ -1206,14 +1205,27 @@ async fn definition_change_edits_program_and_rolls_back_on_refusal() -> Result<(
             ("tcp_port", "5600"),
         ])
         .await?;
-    let refused = fixture.post("/setup/synthetic", &too_big).await?;
-    assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
-    assert!(
-        refused.contains("previous files were put back"),
-        "{refused}"
-    );
+    let query = "definition=example%2Fbig-hl7&host=127.0.0.1&tcp_port=5600&lab_app=demo";
+    for refused in [
+        fixture
+            .get(&format!("/setup/synthetic/test?{query}"))
+            .await?,
+        fixture
+            .get(&format!("/setup/synthetic/save?{query}"))
+            .await?,
+        fixture.post("/setup/synthetic", &too_big).await?,
+    ] {
+        assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
+        assert!(
+            refused.contains(
+                "Store record limit is smaller than machine message or effective config."
+            ),
+            "{refused}"
+        );
+    }
     assert_eq!(std::fs::read_to_string(&fixture.config)?, program_before);
     assert_eq!(std::fs::read_to_string(&fixture.site)?, site_before);
+    assert!(fixture.backups()?.is_empty());
     let body = fixture
         .form(&[
             ("definition", "example/network-hl7"),
@@ -2480,6 +2492,17 @@ async fn setup_page_saves_a_record_only_machine_without_a_lab_app() -> Result<()
         .map(|(name, value)| format!("{name}={}", encode(&value)))
         .collect::<Vec<_>>()
         .join("&");
+    let site_before = std::fs::read(&fixture.site)?;
+    let refused = fixture
+        .post("/setup/machine-1", &format!("{body}&lab_app=demo"))
+        .await?;
+    assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
+    assert!(
+        refused
+            .contains("A record-only machine sends nothing to a lab app; leave the lab app empty."),
+        "{refused}"
+    );
+    assert_eq!(std::fs::read(&fixture.site)?, site_before);
     let saved = fixture.post("/setup/machine-1", &body).await?;
     assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
     assert!(
