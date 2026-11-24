@@ -248,11 +248,13 @@ fn test_state(view: &listen::View, connection: &Connection, id: &str, now: Times
 /// POST /setup/listen/stop: end the test now and discard its bytes.
 pub(in crate::admin) async fn listen_stop(
     State(state): State<Arc<Context>>,
+    Extension(session): Extension<Arc<Session>>,
     Form(_): Form<Csrf>,
 ) -> Response {
-    if let Ok(slot) = state.setup.listen.lock()
-        && let Some(test) = slot.as_ref()
-    {
+    let Ok(slot) = state.setup.listen.lock() else {
+        return refused(&state, Some(&session), None, &SetupError::ListenState);
+    };
+    if let Some(test) = slot.as_ref() {
         test.session.stop();
     }
     see_other("/setup/listen")

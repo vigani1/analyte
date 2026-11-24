@@ -338,6 +338,8 @@ pub(super) enum Tested {
     },
     /// None ran with these choices since Analyte started.
     NotRun,
+    /// The last test could not be read after the settings were saved.
+    Unavailable,
     /// A watched folder has nothing to listen on.
     Folder,
 }

@@ -1121,19 +1121,29 @@ async fn listen_test_counts_bytes_and_never_shows_them() -> Result<(), Error> {
 #[tokio::test(flavor = "multi_thread")]
 async fn poisoned_test_state_is_shown_as_unavailable() -> Result<(), Error> {
     let fixture = start().await?;
+    let setup = fixture.get("/setup/synthetic").await?;
+    let token = csrf(&setup)?;
     fixture
         .state
         .upgrade()
         .ok_or("server state gone")?
         .setup
         .poison_listen();
-    let page = fixture.get("/setup/listen").await?;
-    assert!(page.starts_with("HTTP/1.1 409"), "{page}");
-    assert!(
-        page.contains("The connection test state is unavailable; restart the service."),
-        "{page}"
-    );
-    assert!(!page.contains("No test has been started"), "{page}");
+    let stopped = fixture
+        .post("/setup/listen/stop", &format!("csrf={}", encode(&token)))
+        .await?;
+    let reviewed = fixture
+        .get("/setup/synthetic/save?definition=example%2Fserial-astm&port=name%3ACOM3&lab_app=demo")
+        .await?;
+    let viewed = fixture.get("/setup/listen").await?;
+    for page in [stopped, reviewed, viewed] {
+        assert!(page.starts_with("HTTP/1.1 409"), "{page}");
+        assert!(
+            page.contains("The connection test state is unavailable; restart the service."),
+            "{page}"
+        );
+        assert!(!page.contains("No test has been started"), "{page}");
+    }
     Ok(())
 }
 

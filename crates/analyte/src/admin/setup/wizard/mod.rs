@@ -422,19 +422,19 @@ fn render_review(
     let plan = plan(&state.setup, id, draft)?;
     let link = Link::of(plan.validated.effective().stack());
     let destination = &plan.validated.effective().site().destination;
+    let (test, peer) = tested(state, id, draft, link)?;
     let summary = Summary {
         connection: connection_words(link, &plan.connection),
         cable: plan.cable(),
         choices: plan.choices(),
-        accepts: (link == Link::TcpServer)
-            .then(|| offer(plan.peers.as_ref(), seen(state, id, draft))),
+        accepts: (link == Link::TcpServer).then(|| offer(plan.peers.as_ref(), peer)),
         lab_app: destination.as_ref().map(|destination| {
             sends(
                 destination,
                 lab_apps::missing_keys(&state.setup, destination),
             )
         }),
-        test: tested(state, id, draft, link),
+        test,
         versions: None,
         model: plan.model.clone(),
     };
@@ -482,15 +482,6 @@ fn offer(typed: Option<&analyte_config::AllowedPeers>, seen: Option<std::net::Ip
     }
 }
 
-/// The device the last connection test for `id` saw connect, when it ran
-/// with exactly these choices and Analyte listened.
-fn seen(state: &Context, id: &str, draft: &Draft) -> Option<std::net::IpAddr> {
-    let slot = state.setup.listen.lock().ok()?;
-    slot.as_ref()
-        .filter(|test| test.machine == id && test.draft.same(draft))
-        .and_then(|test| test.session.view().peer)
-}
-
 /// The lab app the machine sends to, with the keys it still lacks.
 fn sends(destination: &analyte_config::Destination, missing: Option<String>) -> Sends {
     Sends {
@@ -501,30 +492,37 @@ fn sends(destination: &analyte_config::Destination, missing: Option<String>) -> 
     }
 }
 
-/// The verdict of the last connection test for `id`, when it ran with exactly
-/// these choices; a watched folder has nothing to test.
-fn tested(state: &Context, id: &str, draft: &Draft, link: Link) -> Tested {
+/// Reads one snapshot of the last test for these settings, including the peer.
+fn tested(
+    state: &Context,
+    id: &str,
+    draft: &Draft,
+    link: Link,
+) -> Result<(Tested, Option<std::net::IpAddr>), SetupError> {
     if link == Link::Folder {
-        return Tested::Folder;
+        return Ok((Tested::Folder, None));
     }
-    let Ok(slot) = state.setup.listen.lock() else {
-        return Tested::NotRun;
-    };
-    match slot
+    let slot = state
+        .setup
+        .listen
+        .lock()
+        .map_err(|_| SetupError::ListenState)?;
+    let Some(test) = slot
         .as_ref()
         .filter(|test| test.machine == id && test.draft.same(draft))
-    {
-        Some(test) => {
-            let view = test.session.view();
-            let verdict = verdict::of_view(&view, test.family, &test.route);
-            Tested::Seen {
-                tone: verdict.tone,
-                title: verdict.title,
-                when: format::moment(view.started, Timestamp::now()),
-            }
-        }
-        None => Tested::NotRun,
-    }
+    else {
+        return Ok((Tested::NotRun, None));
+    };
+    let view = test.session.view();
+    let verdict = verdict::of_view(&view, test.family, &test.route);
+    Ok((
+        Tested::Seen {
+            tone: verdict.tone,
+            title: verdict.title,
+            when: format::moment(view.started, Timestamp::now()),
+        },
+        view.peer,
+    ))
 }
 
 /// A posted step (the test or Save), or why its form could not be read.
@@ -600,7 +598,8 @@ pub(in crate::admin) async fn save(
                 .lab_app
                 .as_ref()
                 .map(|lab_app| sends(lab_app, missing)),
-            test: tested(&state, &id, &draft, saved.link),
+            test: tested(&state, &id, &draft, saved.link)
+                .map_or(Tested::Unavailable, |(test, _)| test),
             versions: Some((
                 Hover {
                     shown: format::digest_short(&saved.digest),
