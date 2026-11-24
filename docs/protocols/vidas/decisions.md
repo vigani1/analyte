@@ -40,9 +40,9 @@ Wire requirements remain in [checklist.md](checklist.md).
 
 ## 4. Require installed timing policy rather than guessed vendor defaults
 
-- **what**: Supply ACK, interbyte, session and commit deadlines explicitly;
-  the retry configuration does not initiate automatic resend.
-- **why**: The research supplies no dependable numeric timing or retry rules.
+- **what**: Supply ACK, interbyte, session and commit deadlines explicitly.
+  Analyte never retries or replays orders.
+- **why**: The BCI Link guide gives no numeric serial timeout or retry schedule.
   Borrowing ASTM constants would give an unrelated protocol's values a false
   appearance of vendor authority.
 - **source**: [Research §3](../../research/machines/vidas.md#3-literal-and-literal-alternate-low-level-protocol);

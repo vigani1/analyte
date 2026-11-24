@@ -331,9 +331,10 @@ impl Host<'_, '_> {
         )?;
         let committed = crate::machine::receive::custody::store_before_ack(
             self.machine.machine(),
-            self.store.request(deadline()?, move |s| {
-                s.journal_frame(&transfer_id, sequence, &bytes, &provenance)
-            }),
+            self.store.request(
+                crate::machine::receive::custody::astm_frame_deadline(self.machine.machine())?,
+                move |s| s.journal_frame(&transfer_id, sequence, &bytes, &provenance),
+            ),
         )
         .await;
 

@@ -91,6 +91,9 @@ pub fn program(path: &Fixture, url: &str) -> Result<Program, Error> {
     let mut program = Program::load(path)?;
     for (id, listener) in &path.listeners {
         program.set_loopback_listener_for_test(id, listener.try_clone()?)?;
+        if id == "astm" {
+            program.set_loopback_astm_frame_budget_for_test(id, guard::STORE_BUDGET)?;
+        }
     }
     program.set_loopback_destination_for_test("demo", url.into())?;
     program.set_loopback_store_budget_for_test("demo", analyte_fixtures::STORE_BUDGET)?;

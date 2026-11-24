@@ -116,14 +116,22 @@ async fn serve(
 type ServiceTask = tokio::task::JoinHandle<Result<(), Error>>;
 
 fn start_service(path: &Path) -> Result<(oneshot::Sender<()>, ServiceTask), Error> {
+    let mut program = Program::load(path)?;
+    if matches!(
+        program
+            .machines()
+            .first()
+            .map(|machine| machine.snapshot().effective().stack()),
+        Some(analyte_config::Stack::Astm(
+            analyte_config::RecordTransport::Stream(_)
+        ))
+    ) {
+        program.set_loopback_astm_frame_budget_for_test("synthetic", guard::STORE_BUDGET)?;
+    }
     let (shutdown, stop) = oneshot::channel();
-    let service = tokio::spawn(serve(
-        Program::load(path)?,
-        Box::new(Space(u64::MAX)),
-        async {
-            stop.await?;
-            Ok(())
-        },
-    ));
+    let service = tokio::spawn(serve(program, Box::new(Space(u64::MAX)), async {
+        stop.await?;
+        Ok(())
+    }));
     Ok((shutdown, service))
 }

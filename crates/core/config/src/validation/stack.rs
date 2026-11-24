@@ -222,7 +222,6 @@ pub(super) fn validate_protocol(m: &ParsedMachine<'_>, path: &str) -> Result<(),
                 v.interbyte_ms,
                 v.session_ms,
                 v.commit_ms,
-                v.backoff_ms,
             ]
             .into_iter()
             .all(valid_ms)
