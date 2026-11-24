@@ -8,7 +8,7 @@
 //! there into the locked file; neither the body nor a key is logged or answered.
 use super::change::{Change, Entered, add_blocking, reason, save_blocking, saved_lines};
 use crate::admin::server::Context;
-use crate::admin::setup::{SetupError, Via, audit_as, on_files};
+use crate::admin::setup::{SetupError, Via, audit_as, off_thread};
 use axum::{
     Json,
     extract::{State, rejection::JsonRejection},
@@ -126,7 +126,7 @@ pub(in crate::admin) async fn post(
     let change = sent.change;
     let name = sent.name.clone();
     let entered = sent.entered();
-    let saved = on_files(&state.setup, move |setup| match change {
+    let saved = off_thread(&state.setup, move |setup| match change {
         Change::Added => add_blocking(setup, entered),
         Change::Saved => save_blocking(setup, &name, entered),
     })

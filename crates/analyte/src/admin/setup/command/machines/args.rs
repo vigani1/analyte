@@ -1,5 +1,4 @@
 //! Reads machine command arguments and restores saved choices.
-use super::running;
 use crate::admin::setup::{
     Setup, SetupError, cable, choices, definitions,
     plan::{self, KEEP},
@@ -229,7 +228,7 @@ pub(super) fn saved(setup: &Setup, id: &str) -> Result<Draft, SetupError> {
     let answer = |key: &str| plan::recording::saved(&table, key);
     let mut draft = Draft {
         definition: installed.definition.as_ref().map(|_| KEEP.to_owned()),
-        lab_app: plan::current_lab_app(running(setup, id), &table),
+        lab_app: plan::current_lab_app(setup.running(id), &table),
         allowed_peers: saved_peers(&table),
         // A record-only machine stays record-only until --connect-normally (ADR 0034).
         mode: table

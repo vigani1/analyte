@@ -4,7 +4,7 @@ use super::{
     super::{
         Address, SetupError, cable, choices, definitions, lab_apps,
         plan::{current_lab_app, holder, kind_of, model_of},
-        running, serial, site,
+        serial, site,
     },
     Draft, Rendered, Step,
     draft::{CHOICES, CONNECTION_FIELDS, PEERS},
@@ -36,7 +36,7 @@ pub(super) fn render_connection(
     let lab_app = draft
         .lab_app
         .clone()
-        .or_else(|| current_lab_app(running(state, id), &current_site));
+        .or_else(|| current_lab_app(state.setup.running(id), &current_site));
     let lab_apps = match lab_apps::scan(state.setup.config()) {
         Ok(scan) => picker(&scan, lab_app.as_deref()),
         Err(error) => Picker::Unreadable(format::sentence(&error.to_string())),

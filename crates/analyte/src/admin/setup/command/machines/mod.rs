@@ -7,10 +7,9 @@ mod test;
 use super::ask::Ask;
 use super::{Failure, Installation, Outcome, actor, backups, record, restart_note, say};
 use crate::admin::setup::{
-    Running, Seams, Setup, SetupError, Shipped, Via, choices, definitions, lab_apps,
-    level_and_state,
+    Seams, Setup, SetupError, Shipped, Via, choices, definitions, lab_apps, level_and_state,
     machines::{add_machine, preview_removal, remove_machine},
-    on_files,
+    off_thread,
     plan::{self, Plan},
     wizard::{Draft, connection_words},
 };
@@ -224,14 +223,6 @@ fn ports(config: &Path, seams: Seams) -> Result<Outcome, Failure> {
     Ok(Outcome::Done)
 }
 
-/// What the service runs for `id`; every machine the settings load counts.
-fn running<'a>(setup: &'a Setup, id: &str) -> Option<&'a Running> {
-    setup
-        .running
-        .iter()
-        .find(|running| running.id.as_str() == id)
-}
-
 async fn add(
     installation: &Installation,
     actor: &Identifier,
@@ -355,7 +346,7 @@ async fn save(
     installation
         .with_store(async |store| {
             let (machine, kept) = (id.to_owned(), draft.clone());
-            let (saved, missing) = on_files(&setup, move |setup| {
+            let (saved, missing) = off_thread(&setup, move |setup| {
                 let saved = plan::save_blocking(setup, &machine, &kept)?;
                 let missing = saved
                     .lab_app
