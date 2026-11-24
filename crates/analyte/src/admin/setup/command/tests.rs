@@ -808,7 +808,7 @@ async fn a_serial_model_does_not_inherit_a_network_allowlist() -> Result<(), Err
                 "set",
                 "other-2",
                 "--model",
-                "example/synthetic-astm",
+                "example/serial-astm",
                 "--serial-port",
                 "COM4",
                 "--lab-app",
