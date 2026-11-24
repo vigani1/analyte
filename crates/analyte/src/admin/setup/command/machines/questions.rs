@@ -2,7 +2,7 @@
 use super::super::{
     Failure,
     ask::{self, Ask},
-    say,
+    problem, say,
 };
 use crate::admin::setup::{
     Definition, Setup, SetupError, Shipped, cable, choices, definitions, lab_apps, level_and_state,
@@ -139,8 +139,12 @@ fn ask_model_choices(
     let mut asked = false;
     if definition.asks_autolyser_poll && draft.poll_seconds.is_none() {
         asked = true;
-        draft.poll_seconds =
-            ask.line("Step 2, Analyzer settings: seconds between report polls (1 to 300)")?;
+        let range = analyte_config::AUTOLYSER_POLL_SECONDS;
+        draft.poll_seconds = ask.line(&format!(
+            "Step 2, Analyzer settings: seconds between report polls ({} to {})",
+            range.start(),
+            range.end(),
+        ))?;
     }
     for choice in choices::missing(draft, &definition.choices) {
         asked = true;
@@ -177,9 +181,12 @@ fn ask_recording(
         "autolyser" => {
             if empty(&draft.poll_seconds) {
                 asked = true;
-                draft.poll_seconds = ask.line(
-                    "Step 2, Recording: seconds between asks for the next report (1 to 3600)",
-                )?;
+                let range = analyte_config::recording::POLL_SECONDS;
+                draft.poll_seconds = ask.line(&format!(
+                    "Step 2, Recording: seconds between asks for the next report ({} to {})",
+                    range.start(),
+                    range.end(),
+                ))?;
             }
             if empty(&draft.controls) {
                 asked = true;
@@ -269,13 +276,18 @@ fn ask_connection(
     }
     match kind {
         TransportKind::Serial => {
-            let ports: Vec<serial::Listed> = (setup.seams.ports)()
-                .unwrap_or_default()
-                .into_iter()
-                .take(serial::LIST_LIMIT)
-                .collect();
+            let ports = match (setup.seams.ports)() {
+                Ok(ports) => ports,
+                Err(error) => {
+                    problem(&format!(
+                        "Could not list serial ports: {error}. You can enter a port name."
+                    ))?;
+                    Vec::new()
+                }
+            };
             let mut choices: Vec<ask::Choice> = ports
                 .iter()
+                .take(serial::LIST_LIMIT)
                 .map(|port| ask::Choice {
                     value: port.factory_serial().map_or_else(
                         || format!("name:{}", port.name),

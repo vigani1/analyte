@@ -161,7 +161,12 @@ fn models(seams: &Seams) -> Result<Outcome, Failure> {
         }
         if let Shipped::Ready { source, .. } = &definition.state {
             if source.details.asks_autolyser_poll {
-                say("  --poll-seconds <1..300>: seconds between report polls (required)")?;
+                let range = analyte_config::AUTOLYSER_POLL_SECONDS;
+                say(&format!(
+                    "  --poll-seconds <{}..{}>: seconds between report polls (required)",
+                    range.start(),
+                    range.end(),
+                ))?;
             }
             for choice in &source.details.choices {
                 say(&format!(
