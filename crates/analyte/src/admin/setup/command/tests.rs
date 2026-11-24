@@ -666,7 +666,8 @@ async fn the_admin_key_goes_only_to_a_listener_that_proves_it_holds_it() -> Resu
         match super::live::read(&program).await {
             super::live::Live::Unknown(why) => {
                 assert!(
-                    why.contains("could not prove it is this Analyte engine"),
+                    why.to_string()
+                        .contains("could not prove it is this Analyte engine"),
                     "{why}"
                 );
             }
@@ -993,7 +994,8 @@ async fn an_unproven_listener_never_receives_the_keys() -> Result<(), Error> {
         match result {
             Err(Failure::EngineUnreachable(why)) => {
                 assert!(
-                    why.contains("could not prove it is this Analyte engine"),
+                    why.to_string()
+                        .contains("could not prove it is this Analyte engine"),
                     "{why}"
                 );
             }
