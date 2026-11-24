@@ -36,6 +36,7 @@
 {%- match summary.test %}
 {%- when Tested::Seen { tone, title, when } %}<span class="with-icon tone-{{ tone.class() }}">{% call draw::icon(tone.icon(), "icon--md") %}{% endcall %}<span>{{ title }} · {% call display::time(when) %}{% endcall %}</span></span>
 {%- when Tested::NotRun %}<span class="subtle">Not run with these settings</span>
+{%- when Tested::Unavailable %}<span class="tone-warn">Connection test state unavailable</span>
 {%- when Tested::Folder %}<span class="subtle">Nothing to test for a watched folder</span>
 {%- endmatch -%}
 </dd>
