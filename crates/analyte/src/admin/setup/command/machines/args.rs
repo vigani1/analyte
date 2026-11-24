@@ -238,7 +238,7 @@ fn saved(
     let mut draft = Draft {
         definition: installed.definition.as_ref().map(|_| KEEP.to_owned()),
         lab_app: plan::current_lab_app(setup.running(id), table),
-        allowed_peers: saved_peers(table),
+        allowed_peers: plan::saved_peers(table),
         // A record-only machine stays record-only until --connect-normally (ADR 0034).
         mode: site
             .records_only()
@@ -302,16 +302,4 @@ fn keep_saved_choices(
         draft.poll_seconds = plan::saved_autolyser_poll(table);
     }
     Ok(())
-}
-
-/// The devices a site file lets connect, as `--allowed-peer` takes them;
-/// none when it names none (ADR 0026).
-pub(super) fn saved_peers(table: &toml::Table) -> Option<String> {
-    let listed: Vec<&str> = table
-        .get("allowed_peers")?
-        .as_array()?
-        .iter()
-        .filter_map(toml::Value::as_str)
-        .collect();
-    (!listed.is_empty()).then(|| listed.join(", "))
 }

@@ -238,6 +238,18 @@ impl TryFrom<Vec<(String, String)>> for Choice {
     }
 }
 
+/// The devices a site file lets connect, as `--allowed-peer` takes them;
+/// none when it names none (ADR 0026).
+pub(super) fn saved_peers(table: &toml::Table) -> Option<String> {
+    let listed: Vec<&str> = table
+        .get("allowed_peers")?
+        .as_array()?
+        .iter()
+        .filter_map(toml::Value::as_str)
+        .collect();
+    (!listed.is_empty()).then(|| listed.join(", "))
+}
+
 /// The devices the draft lets connect (ADR 0026): addresses typed with
 /// commas or spaces between them; none when nothing is typed, which accepts
 /// any device. Only a machine that connects to this PC can name them.

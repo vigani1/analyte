@@ -6,9 +6,7 @@ use super::{
         plan::{current_lab_app, holder, model_of},
         serial, site,
     },
-    Draft, Rendered, Step,
-    draft::{CHOICES, CONNECTION_FIELDS, PEERS},
-    frame,
+    Draft, Rendered, Step, frame,
     page::{self, Cable, CableOption, ConnectionStep, LabApp, Picker, Port, Setting},
     wizard,
 };
@@ -48,7 +46,7 @@ pub(super) fn render_connection(
         wizard: wizard(id, Some(model.name), Some(Step::Connection)),
         action: Step::Test.path(id),
         back: Step::Machine.path(id),
-        hidden: draft.hidden(&[CONNECTION_FIELDS.as_slice(), &[CHOICES]].concat()),
+        hidden: draft.hidden_for_connection(),
         how,
         inputs,
         // Record only asks its own questions and sends to no lab app (ADR 0034).
@@ -77,6 +75,8 @@ pub(super) fn render_connection(
                 .or_else(|| super::plan::saved_autolyser_poll(current_site))
                 .unwrap_or_default()
         }),
+        normal_poll_range: analyte_config::AUTOLYSER_POLL_SECONDS,
+        recording_poll_range: analyte_config::recording::POLL_SECONDS,
         lab_apps,
         recording: records_only.then(|| recording_questions(&model.details, current_site, draft)),
         analyzer_mode: if records_only {
@@ -213,7 +213,8 @@ fn connection_inputs(
                         peers: draft
                             .allowed_peers
                             .clone()
-                            .unwrap_or_else(|| site_peers(current_site)),
+                            .or_else(|| super::plan::saved_peers(current_site))
+                            .unwrap_or_default(),
                     },
                 )
             } else {
@@ -237,22 +238,6 @@ fn connection_inputs(
             ),
         ),
     }
-}
-
-/// The devices the current site file lets connect, as step 2 shows them:
-/// "192.168.1.50, 192.168.1.51"; empty when it names none.
-fn site_peers(current_site: &toml::Table) -> String {
-    current_site
-        .get(PEERS)
-        .and_then(toml::Value::as_array)
-        .map(|addresses| {
-            addresses
-                .iter()
-                .filter_map(toml::Value::as_str)
-                .collect::<Vec<_>>()
-                .join(", ")
-        })
-        .unwrap_or_default()
 }
 
 /// The addresses Analyte can listen on: this PC's own, then every network

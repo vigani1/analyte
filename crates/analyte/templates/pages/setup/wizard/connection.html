@@ -85,7 +85,7 @@
 <div class="field"><label class="field__label" for="vidas_patient_namespace">VIDAS patient namespace</label><input id="vidas_patient_namespace" class="input mono" name="vidas_patient_namespace" type="text" value="{{ namespace }}"><span class="field__hint">Enter the lab app's patient namespace if work lists are enabled.</span></div>
 {%- endif %}
 {%- if let Some(seconds) = autolyser_poll_seconds %}
-<div class="field"><label class="field__label" for="s2-poll">Seconds between report polls</label><input id="s2-poll" class="input mono" name="poll_seconds" type="number" min="1" max="300" required value="{{ seconds }}"><span class="field__hint">Enter the lab&#39;s polling interval in whole seconds.</span></div>
+<div class="field"><label class="field__label" for="s2-poll">Seconds between report polls</label><input id="s2-poll" class="input mono" name="poll_seconds" type="number" min="{{ normal_poll_range.start() }}" max="{{ normal_poll_range.end() }}" required value="{{ seconds }}"><span class="field__hint">Enter the lab&#39;s polling interval in whole seconds.</span></div>
 {%- endif %}
 {%- if let Some(recording) = recording %}
 {%- match recording %}
@@ -102,7 +102,7 @@
 <fieldset class="wizard__set stack">
 <legend class="field__label wizard__legend">Recording</legend>
 <div class="form-grid">
-<div class="field"><label class="field__label" for="s2-poll">Seconds between asks</label><input id="s2-poll" class="input mono" name="poll_seconds" required maxlength="4" inputmode="numeric" value="{{ poll_seconds }}"><span class="field__hint">How often Analyte asks for the next report (1 to 3600). It never asks for the archive.</span></div>
+<div class="field"><label class="field__label" for="s2-poll">Seconds between asks</label><input id="s2-poll" class="input mono" name="poll_seconds" required maxlength="4" inputmode="numeric" value="{{ poll_seconds }}"><span class="field__hint">How often Analyte asks for the next report ({{ recording_poll_range.start() }} to {{ recording_poll_range.end() }}). It never asks for the archive.</span></div>
 <div class="field"><label class="field__label" for="s2-controls">Reports carry controls</label><select id="s2-controls" class="select" name="controls" required>
 {%- if controls.is_empty() %}<option value="" selected>Choose</option>{% endif %}
 <option value="yes"{% if controls == "yes" %} selected{% endif %}>Yes</option>
