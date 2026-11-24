@@ -238,7 +238,8 @@ fn resend_requires_action_and_exact_delivery_target() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("resend-authorization.db"))?;
     let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
-    store.enqueue_order_event(
+    queue_order_event(
+        &mut store,
         &OrderEventDelivery {
             id,
             destination: Identifier::new("app")?,

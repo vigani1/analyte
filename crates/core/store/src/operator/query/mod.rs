@@ -265,20 +265,6 @@ impl Store {
 }
 
 impl Store {
-    /// Enqueues an order event atomically without creating result evidence.
-    /// # Errors
-    /// Refuses bounds, capacity failures, duplicate IDs and database errors.
-    pub fn enqueue_order_event(
-        &mut self,
-        event: &crate::OrderEventDelivery,
-        now: i64,
-    ) -> Result<(), Error> {
-        self.bound(&event.payload)?;
-        self.capacity(event.payload.len())?;
-        self.db.execute("INSERT INTO outbox(id,kind,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?8,?2,?3,?2,?4,?5,?6,?9,0,?7)", params![key(&event.id)?,event.order_id.as_str(),event.destination.as_str(),event.payload,crate::digest(&event.payload).0.as_slice(),event.contract_version,now,crate::DeliveryKind::OrderEvent,DeliveryState::Pending])?;
-        Ok(())
-    }
-
     /// Reads one consistent destination snapshot without exposing clinical bytes.
     /// # Errors
     /// Returns database or aggregate overflow failures.

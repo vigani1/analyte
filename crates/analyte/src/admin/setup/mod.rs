@@ -240,6 +240,8 @@ pub(crate) enum SetupError {
         "model {0} is not ready yet: facts or recordings are still missing (its README lists them)"
     )]
     BlockedDefinition(String),
+    #[error("{0}")]
+    DefinitionFile(#[from] Arc<definitions::FileError>),
     #[error(
         "model {0} is not ready yet, so it can only record: choose Record only (nothing is sent to a lab app) to keep its conversation"
     )]
@@ -290,8 +292,13 @@ pub(crate) enum SetupError {
     ProgramFile(#[source] toml::de::Error),
     #[error("Analyte's main settings file cannot be read: {0}")]
     ProgramLayout(&'static str),
-    #[error("this machine's settings file cannot be read: {0}")]
-    SiteFile(#[source] toml::de::Error),
+    #[error("reading the machine's site file {path} failed: {source}")]
+    SiteRead {
+        path: PathBuf,
+        source: Box<crate::installation::config::Error>,
+    },
+    #[error("the machine's site file could not be parsed: {0}")]
+    SiteFile(#[source] Box<analyte_config::Error>),
     #[error(
         "this machine's settings file cannot be read: its [destination] cannot be moved to the Lab apps page: {0}"
     )]
@@ -474,7 +481,7 @@ fn level_and_state(definition: &Definition) -> (Hover, Status, Icon) {
     };
     match &definition.state {
         Shipped::Ready { level, .. } => (
-            hover(evidence_words(level), format!("Evidence level: {level}")),
+            hover(evidence_words(*level), format!("Evidence level: {level}")),
             status(Tone::Good, "Ready"),
             Icon::Ok,
         ),
@@ -493,13 +500,13 @@ fn level_and_state(definition: &Definition) -> (Hover, Status, Icon) {
             },
             Icon::Off,
         ),
-        Shipped::Unreadable(why) => (
+        Shipped::Unreadable { error, .. } => (
             hover(
                 format::NOT_APPLICABLE,
                 "Evidence level unknown: the definition cannot be read".into(),
             ),
             Status {
-                note: Some(format::sentence(why)),
+                note: Some(format::sentence(&error.to_string())),
                 ..status(Tone::Problem, "Cannot be read")
             },
             Icon::Problem,
@@ -507,13 +514,12 @@ fn level_and_state(definition: &Definition) -> (Hover, Status, Icon) {
     }
 }
 
-/// How a model was checked, in words; an unknown level shows as written.
-fn evidence_words(level: &str) -> &str {
+/// How a model was checked, in words.
+fn evidence_words(level: analyte_config::EvidenceLevel) -> &'static str {
     match level {
-        "documented" => "Built from the manuals",
-        "simulated" => "Tested with a simulator",
-        "proven" => "Tested on the real machine",
-        other => other,
+        analyte_config::EvidenceLevel::Documented => "Built from the manuals",
+        analyte_config::EvidenceLevel::Simulated => "Tested with a simulator",
+        analyte_config::EvidenceLevel::Proven => "Tested on the real machine",
     }
 }
 
@@ -610,8 +616,8 @@ fn definition_name(definition: &Definition) -> Hover {
     Hover {
         shown: definition.display.clone(),
         exact: match &definition.state {
-            Shipped::Ready { name, .. } => format!("{} (name {name})", definition.key),
-            Shipped::Blocked { .. } | Shipped::Unreadable(_) => definition.key.clone(),
+            Shipped::Ready { name, .. } => format!("{} (name {})", definition.key, name.as_str()),
+            Shipped::Blocked { .. } | Shipped::Unreadable { .. } => definition.key.clone(),
         },
     }
 }

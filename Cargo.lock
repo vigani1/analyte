@@ -136,6 +136,7 @@ name = "analyte-config"
 version = "0.1.0"
 dependencies = [
  "analyte-astm",
+ "analyte-contract",
  "analyte-fixtures",
  "analyte-framing",
  "analyte-hl7",
@@ -207,6 +208,7 @@ dependencies = [
 name = "analyte-fixtures"
 version = "0.1.0"
 dependencies = [
+ "analyte-model",
  "analyte-poct",
  "analyte-store",
  "quick-xml",

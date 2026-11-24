@@ -5,15 +5,15 @@ use super::super::{
     say,
 };
 use crate::admin::setup::{
-    Definition, Setup, Shipped, cable, choices, definitions, lab_apps, level_and_state, plan, site,
+    Definition, Setup, SetupError, Shipped, cable, choices, definitions, lab_apps, level_and_state,
+    plan, site,
     wizard::{Draft, host_choices},
 };
 use crate::admin::view::format;
 use crate::machine::link::status::Link;
-use analyte_config::{SerialSetting, TransportKind};
+use analyte_config::{DefinitionDetails, SerialSetting, TransportKind};
 use analyte_model::Identifier;
 use analyte_transport::serial;
-use std::path::Path;
 
 /// For a machine that connects to Analyte whose devices are not chosen yet,
 /// asks at a terminal which devices it accepts, as step 2's field does (ADR
@@ -54,6 +54,9 @@ pub(super) fn fill(setup: &Setup, id: &str, draft: &mut Draft, ask: Ask) -> Resu
     let records_only = plan::recording::chosen(draft);
     let model = match plan::model_of(&list, draft, &installed) {
         Ok(model) => model,
+        Err(SetupError::DefinitionFile(error)) => {
+            return Err(SetupError::DefinitionFile(error).into());
+        }
         Err(_) => {
             asked = true;
             let choices: Vec<ask::Choice> = list
@@ -72,18 +75,18 @@ pub(super) fn fill(setup: &Setup, id: &str, draft: &mut Draft, ask: Ask) -> Resu
             plan::model_of(&list, draft, &installed)?
         }
     };
-    let kind = plan::kind_of(&model.path);
+    let kind = model.details.kind;
     if plan::connection_of(kind, draft).is_err() {
         asked = true;
         ask_connection(setup, kind, draft, ask)?;
     }
     asked |= if records_only {
-        ask_recording(&model.path, draft, ask)?
+        ask_recording(&model.details, draft, ask)?
     } else {
-        ask_model_choices(&model.path, draft, ask)?
+        ask_model_choices(&model.details, draft, ask)?
     };
-    if kind == Some(TransportKind::Serial) {
-        for setting in cable::missing(draft, cable::suggested(&model.path).as_ref()) {
+    if kind == TransportKind::Serial {
+        for setting in cable::missing(draft, model.details.serial.as_ref()) {
             asked = true;
             let choices: Vec<ask::Choice> = cable::options(setting)
                 .into_iter()
@@ -128,14 +131,18 @@ pub(super) fn fill(setup: &Setup, id: &str, draft: &mut Draft, ask: Ask) -> Resu
 }
 
 /// Asks the settings a normal model declares when no saved answer exists.
-fn ask_model_choices(definition: &Path, draft: &mut Draft, ask: Ask) -> Result<bool, Failure> {
+fn ask_model_choices(
+    definition: &DefinitionDetails,
+    draft: &mut Draft,
+    ask: Ask,
+) -> Result<bool, Failure> {
     let mut asked = false;
-    if plan::asks_autolyser_poll(definition) && draft.poll_seconds.is_none() {
+    if definition.asks_autolyser_poll && draft.poll_seconds.is_none() {
         asked = true;
         draft.poll_seconds =
             ask.line("Step 2, Analyzer settings: seconds between report polls (1 to 300)")?;
     }
-    for choice in choices::missing(draft, &choices::declared(definition)) {
+    for choice in choices::missing(draft, &definition.choices) {
         asked = true;
         let options: Vec<ask::Choice> = choice
             .values
@@ -159,11 +166,15 @@ fn ask_model_choices(definition: &Path, draft: &mut Draft, ask: Ask) -> Result<b
 
 /// Record only at the terminal: the capture profile's questions the draft
 /// does not answer yet (ADR 0034). Returns whether anything was asked.
-fn ask_recording(definition: &Path, draft: &mut Draft, ask: Ask) -> Result<bool, Failure> {
+fn ask_recording(
+    definition: &DefinitionDetails,
+    draft: &mut Draft,
+    ask: Ask,
+) -> Result<bool, Failure> {
     let empty = |value: &Option<String>| value.as_deref().is_none_or(|v| v.trim().is_empty());
     let mut asked = false;
-    match plan::recording::protocol(definition).as_deref() {
-        Some("autolyser") => {
+    match definition.protocol.as_str() {
+        "autolyser" => {
             if empty(&draft.poll_seconds) {
                 asked = true;
                 draft.poll_seconds = ask.line(
@@ -182,7 +193,7 @@ fn ask_recording(definition: &Path, draft: &mut Draft, ask: Ask) -> Result<bool,
                 )?;
             }
         }
-        Some("vidas") if empty(&draft.acknowledgment) => {
+        "vidas" if empty(&draft.acknowledgment) => {
             asked = true;
             let options = [
                 ("literal", "Literal (after the checksum)"),
@@ -199,7 +210,7 @@ fn ask_recording(definition: &Path, draft: &mut Draft, ask: Ask) -> Result<bool,
         }
         _ => {}
     }
-    if let Some(mode) = plan::recording::analyzer_mode(definition)
+    if let Some(mode) = &definition.analyzer_mode
         && empty(&draft.analyzer_mode)
     {
         asked = true;
@@ -232,7 +243,7 @@ fn model_label(definition: &Definition) -> String {
 /// port number, or a folder, by the model's kind of link.
 fn ask_connection(
     setup: &Setup,
-    kind: Option<TransportKind>,
+    kind: TransportKind,
     draft: &mut Draft,
     ask: Ask,
 ) -> Result<(), Failure> {
@@ -251,13 +262,13 @@ fn ask_connection(
         flow_control: draft.flow_control.take(),
         ..Draft::default()
     };
-    if kind != Some(TransportKind::Serial) {
+    if kind != TransportKind::Serial {
         for setting in SerialSetting::ALL {
             cable::set(draft, setting, None);
         }
     }
     match kind {
-        Some(TransportKind::Serial) => {
+        TransportKind::Serial => {
             let ports: Vec<serial::Listed> = (setup.seams.ports)()
                 .unwrap_or_default()
                 .into_iter()
@@ -286,16 +297,16 @@ fn ask_connection(
                 None => {}
             }
         }
-        Some(TransportKind::TcpServer) => {
+        TransportKind::TcpServer => {
             draft.host = ask_listen_address(setup, ask)?;
             draft.tcp_port = ask.line("Port number, 1 to 65535")?;
         }
-        Some(TransportKind::TcpClient) => {
+        TransportKind::TcpClient => {
             draft.host =
                 ask.line("Step 2, Connection: the machine's IP address, such as 192.168.1.20")?;
             draft.tcp_port = ask.line("Port number, 1 to 65535")?;
         }
-        Some(TransportKind::WatchedFolder) | None => {
+        TransportKind::WatchedFolder => {
             draft.folder = ask.line("Step 2, Connection: the folder Analyte reads results from")?;
         }
     }

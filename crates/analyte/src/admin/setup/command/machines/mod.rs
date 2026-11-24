@@ -7,7 +7,7 @@ mod test;
 use super::ask::Ask;
 use super::{Failure, Installation, Outcome, actor, backups, record, restart_note, say};
 use crate::admin::setup::{
-    Seams, Setup, SetupError, Shipped, Via, choices, definitions, lab_apps, level_and_state,
+    Seams, Setup, SetupError, Shipped, Via, definitions, lab_apps, level_and_state,
     machines::{add_machine, preview_removal, remove_machine},
     off_thread,
     plan::{self, Plan},
@@ -17,7 +17,7 @@ use crate::admin::view::format;
 use crate::machine::link::status::Link;
 use analyte_model::Identifier;
 use analyte_transport::serial;
-use args::{Cable, Choice, keep_saved_choices, saved};
+use args::{Cable, Choice};
 use list::list;
 #[cfg(test)]
 pub(super) use list::{devices_line, settings_rows};
@@ -159,11 +159,11 @@ fn models(seams: &Seams) -> Result<Outcome, Failure> {
         if let Some(note) = status.note {
             say(&format!("  {note}"))?;
         }
-        if let Shipped::Ready { path, .. } = &definition.state {
-            if plan::asks_autolyser_poll(path) {
+        if let Shipped::Ready { source, .. } = &definition.state {
+            if source.details.asks_autolyser_poll {
                 say("  --poll-seconds <1..300>: seconds between report polls (required)")?;
             }
-            for choice in choices::declared(path) {
+            for choice in &source.details.choices {
                 say(&format!(
                     "  --choice {}=<{}>: {}{}",
                     choice.name,
@@ -177,8 +177,10 @@ fn models(seams: &Seams) -> Result<Outcome, Failure> {
                 ))?;
             }
         }
-        if let Shipped::Blocked { record: Some(path) } = &definition.state
-            && let Some(mode) = plan::recording::analyzer_mode(path)
+        if let Shipped::Blocked {
+            record: Some(source),
+        } = &definition.state
+            && let Some(mode) = &source.details.analyzer_mode
         {
             say(&format!(
                 "  --record-only --analyzer-mode <{}>: {}",
@@ -316,8 +318,7 @@ async fn set(
     ask: Ask,
 ) -> Result<Outcome, Failure> {
     let setup = installation.setup.clone();
-    let mut draft = choice.over(saved(&setup, id)?);
-    keep_saved_choices(&setup, id, &mut draft)?;
+    let mut draft = args::draft(&setup, id, choice)?;
     let filled = fill(&setup, id, &mut draft, ask)?;
     let asked = ask_peers(&setup, id, &mut draft, ask)? || filled;
     if dry_run {
