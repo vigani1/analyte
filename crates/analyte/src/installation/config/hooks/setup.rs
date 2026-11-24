@@ -2,6 +2,35 @@
 use super::super::{Error, Machine, Program, knows_destination};
 use std::time::Duration;
 impl Program {
+    /// Extends the ASTM frame custody wait for a synthetic loopback server.
+    /// # Errors
+    /// Rejects unknown machines, non-loopback ASTM servers and budgets outside 1 through 60 seconds.
+    pub fn set_loopback_astm_frame_budget_for_test(
+        &mut self,
+        id: &str,
+        budget: Duration,
+    ) -> Result<(), Error> {
+        let machine = self.test_machine_mut(id)?;
+        let effective = machine.snapshot.effective();
+        if !matches!(
+            effective.stack(),
+            analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(_))
+        ) || effective.stack().transport_kind() != analyte_config::TransportKind::TcpServer
+            || !effective
+                .site()
+                .endpoint
+                .fixed()
+                .ok()
+                .and_then(|endpoint| endpoint.parse::<std::net::SocketAddr>().ok())
+                .is_some_and(|address| address.ip().is_loopback())
+            || !(Duration::from_secs(1)..=Duration::from_secs(60)).contains(&budget)
+        {
+            return Err(Error::InvalidTestAstmFrameBudget);
+        }
+        machine.hooks.astm_frame_budget = Some(budget);
+        Ok(())
+    }
+
     /// Overrides delivery/poller store waits for a synthetic loopback destination.
     /// Production entry points reject the required destination override.
     /// # Errors

@@ -71,19 +71,21 @@ async fn the_command_route_stores_keys_as_the_lab_apps_page_does() -> Result<(),
     let fixture = start().await?;
     let bearer = format!("Authorization: Bearer {}\r\n", fixture.bearer);
     let refused = [
-        body("it-test", ",\"extra\":\"x\""),
-        body("admin-session-forged", ""),
-        body("it-test", &format!(",\"pad\":\"{}\"", "x".repeat(20_000))),
+        (body("it-test", ",\"extra\":\"x\""), "HTTP/1.1 400"),
+        (body("admin-session-forged", ""), "HTTP/1.1 400"),
+        (
+            format!("{}{}", body("it-test", ""), " ".repeat(20_000)),
+            "HTTP/1.1 413",
+        ),
     ];
-    for json in &refused {
+    for (json, status) in &refused {
         let answer = fixture.command(&bearer, json).await?;
-        assert!(
-            answer.starts_with("HTTP/1.1 400") || answer.starts_with("HTTP/1.1 413"),
-            "{answer}"
-        );
+        assert!(answer.starts_with(*status), "{answer}");
         assert!(!answer.contains(COMMAND_API_KEY) && !answer.contains(COMMAND_SIGNING_KEY));
     }
+    assert!(!fixture.config.with_file_name("lab-apps.toml").exists());
     assert_eq!(fixture.stored()?.value("spare-api"), None);
+    assert!(fixture.audited("lab-app-add").await?.is_empty());
     // ADR 0028: a valid request above the server's default 1 KiB limit still
     // fits the command route's larger bound.
     let json = format!("{}{}", body("it-test", ""), " ".repeat(2048));

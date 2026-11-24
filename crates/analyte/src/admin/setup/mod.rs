@@ -191,6 +191,13 @@ impl Setup {
         self.running.retain(|running| runs(running.id.as_str()));
     }
 
+    /// Finds the settings the service currently runs for this machine.
+    fn running(&self, id: &str) -> Option<&Running> {
+        self.running
+            .iter()
+            .find(|running| running.id.as_str() == id)
+    }
+
     /// The program file the installation was loaded from.
     pub(crate) fn config(&self) -> &std::path::Path {
         &self.config
@@ -412,7 +419,7 @@ fn machine_rows(
         .zip(models)
         .map(|(entry, model)| {
             let id = entry.id.get_ref();
-            let running = running(state, id);
+            let running = state.setup.running(id);
             let (tone, word) = match (running, &entry.definition) {
                 (Some(_), _) => (Tone::Good, "Running"),
                 (None, None) => (Tone::Neutral, "Not set up yet"),
@@ -639,12 +646,6 @@ pub(in crate::admin) async fn listed(state: &Arc<Context>) -> Result<Vec<Listed>
     .await
 }
 
-/// What the service runs for `id`, or `None` when it runs nothing for it yet:
-/// not set up, or added or completed since the last start.
-fn running<'a>(state: &'a Context, id: &str) -> Option<&'a Running> {
-    state.setup.running.iter().find(|r| r.id.as_str() == id)
-}
-
 /// Records who made a page change: the signed-in person of `session`.
 async fn audit(
     state: &Context,
@@ -759,24 +760,11 @@ where
     Ok(store.read(until, work).await?)
 }
 
-/// Runs `work` on the setup files off the async workers: it reads or writes
-/// files, the port list or the credentials file, which block.
-async fn on_files<T: Send + 'static>(
-    setup: &Arc<Setup>,
-    work: impl FnOnce(&Setup) -> Result<T, SetupError> + Send + 'static,
-) -> Result<T, SetupError> {
-    let setup = setup.clone();
-    tokio::task::spawn_blocking(move || work(&setup))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|done| done)
-}
-
 /// Runs `work` off the async workers: it reads or writes files, the port list
 /// or the credentials file, which block.
-async fn off_thread<T: Send + 'static>(
-    state: &Arc<Context>,
-    work: impl FnOnce(&Context) -> Result<T, SetupError> + Send + 'static,
+async fn off_thread<S: Send + Sync + 'static, T: Send + 'static>(
+    state: &Arc<S>,
+    work: impl FnOnce(&S) -> Result<T, SetupError> + Send + 'static,
 ) -> Result<T, SetupError> {
     let worker = state.clone();
     tokio::task::spawn_blocking(move || work(&worker))
@@ -805,6 +793,12 @@ fn copies(backups: &[PathBuf]) -> Vec<String> {
 
 /// What to do after a Lab app, add or remove form could not be read.
 const RELOAD: &str = "reload the page";
+
+/// When saved settings start taking effect.
+const RESTART_REQUIRED: &str = "Analyte uses these settings after it restarts.";
+
+/// Shared confirmation for a save that leaves the settings file alone.
+const SETTINGS_UNCHANGED: &str = "The settings were already the same; no file was written.";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

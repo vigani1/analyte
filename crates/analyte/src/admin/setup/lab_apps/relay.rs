@@ -8,7 +8,7 @@
 //! there into the locked file; neither the body nor a key is logged or answered.
 use super::change::{Change, Entered, add_blocking, reason, save_blocking, saved_lines};
 use crate::admin::server::Context;
-use crate::admin::setup::{SetupError, Via, audit_as, on_files};
+use crate::admin::setup::{SetupError, Via, audit_as, off_thread};
 use axum::{
     Json,
     extract::{State, rejection::JsonRejection},
@@ -85,9 +85,9 @@ pub(in crate::admin::setup) enum Answer {
 }
 
 /// A request that could not be read; the reason names no value it held.
-fn unreadable(reason: &str) -> Response {
+fn unreadable(status: StatusCode, reason: &str) -> Response {
     (
-        StatusCode::BAD_REQUEST,
+        status,
         Json(Answer::Refused {
             reason: reason.to_owned(),
             keys_not_stored: false,
@@ -105,19 +105,28 @@ pub(in crate::admin) async fn post(
     let sent = match sent {
         Ok(Json(sent)) => sent,
         Err(rejection) => {
-            return unreadable(&format!(
-                "the engine could not read the request ({})",
-                rejection.status()
-            ));
+            let status = rejection.status();
+            let response_status = if status == StatusCode::PAYLOAD_TOO_LARGE {
+                status
+            } else {
+                StatusCode::BAD_REQUEST
+            };
+            return unreadable(
+                response_status,
+                &format!("the engine could not read the request ({status})"),
+            );
         }
     };
     let Ok(actor) = crate::admin::command_line_actor(&sent.actor) else {
-        return unreadable("the command named no valid --actor");
+        return unreadable(
+            StatusCode::BAD_REQUEST,
+            "the command named no valid --actor",
+        );
     };
     let change = sent.change;
     let name = sent.name.clone();
     let entered = sent.entered();
-    let saved = on_files(&state.setup, move |setup| match change {
+    let saved = off_thread(&state.setup, move |setup| match change {
         Change::Added => add_blocking(setup, entered),
         Change::Saved => save_blocking(setup, &name, entered),
     })

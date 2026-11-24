@@ -424,7 +424,9 @@ pub(super) fn plan(setup: &Setup, id: &str, draft: &wizard::Draft) -> Result<Pla
             &scan.settings(),
         )?
     };
+    let definition = installed.definition_to_save(definition);
     let validated = site::validate(
+        &program,
         &installed,
         &definition,
         &candidate.text,

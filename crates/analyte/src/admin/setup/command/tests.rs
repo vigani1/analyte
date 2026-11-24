@@ -90,8 +90,7 @@ fn install_on(admin: u16) -> Result<Install, Error> {
             include_str!("../../../../../core/config/examples/hl7.toml").to_owned(),
         ),
         (
-            // Validates on its own, but its frame bound is above the store's
-            // record bound, so only the whole program's reload refuses it.
+            // Validates on its own, but its record bound exceeds the store's.
             "machines/example/big-hl7",
             include_str!("../../../../../core/config/examples/hl7.toml")
                 .rewrite("bytes = 1048576", "bytes = 4194304"),
@@ -352,7 +351,7 @@ async fn add_and_set_write_what_the_pages_write_with_backups_and_audit() -> Resu
 // Owner request 2026-11-21 (command line): every refusal of the Save step
 // refuses here too, in the page's words, and changes no file: an unknown lab
 // app, a model that is not ready, an unknown model, a connection another
-// machine already uses, and a change no reload accepts (files put back).
+// machine already uses, and a model whose data is too large for the store.
 #[tokio::test(flavor = "multi_thread")]
 async fn set_refuses_as_the_save_step_does_and_changes_nothing() -> Result<(), Error> {
     let install = install()?;
@@ -405,7 +404,8 @@ async fn set_refuses_as_the_save_step_does_and_changes_nothing() -> Result<(), E
         "{error}"
     );
     assert_eq!(install.settings()?, before);
-    let too_big = &[
+    // AGENTS.md "One way per thing": save and dry run refuse the same store limit.
+    let too_big = [
         "set",
         "hl7-2",
         "--model",
@@ -415,13 +415,23 @@ async fn set_refuses_as_the_save_step_does_and_changes_nothing() -> Result<(), E
         "--port",
         "5601",
     ];
-    let error = refusal(refused(too_big).await)?;
-    assert!(matches!(error, SetupError::RolledBack(_)), "{error}");
-    assert!(
-        error.to_string().contains("previous files were put back"),
-        "{error}"
-    );
+    let backups = install.backups()?;
+    let mut dry_run = too_big.to_vec();
+    dry_run.push("--dry-run");
+    for args in [too_big.as_slice(), dry_run.as_slice()] {
+        let error = refusal(install.machines(args).await)?;
+        assert!(
+            matches!(
+                error,
+                SetupError::Installation(
+                    crate::installation::config::Error::StoreRecordLimitTooSmall
+                )
+            ),
+            "{error}"
+        );
+    }
     assert_eq!(install.settings()?, before);
+    assert_eq!(install.backups()?, backups);
     Ok(())
 }
 
