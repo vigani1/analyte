@@ -250,12 +250,8 @@ pub(super) fn saved(setup: &Setup, id: &str) -> Result<Draft, SetupError> {
         (_, Some(number), _) => draft.port = Some(format!("usb:{number}")),
         (Some(TransportKind::Serial), None, endpoint) => draft.port_name = endpoint,
         (Some(TransportKind::TcpServer | TransportKind::TcpClient), None, Some(endpoint)) => {
-            if let Some((host, port)) = endpoint.rsplit_once(':') {
-                draft.host = Some(
-                    host.trim_start_matches('[')
-                        .trim_end_matches(']')
-                        .to_owned(),
-                );
+            if let Some((host, port)) = plan::saved_tcp(&endpoint) {
+                draft.host = Some(host.to_owned());
                 draft.tcp_port = Some(port.to_owned());
             }
         }
