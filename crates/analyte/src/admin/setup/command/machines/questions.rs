@@ -2,7 +2,7 @@
 use super::super::{
     Failure,
     ask::{self, Ask},
-    say,
+    problem, say,
 };
 use crate::admin::setup::{
     Definition, Setup, Shipped, cable, choices, definitions, lab_apps, level_and_state, plan, site,
@@ -265,13 +265,18 @@ fn ask_connection(
     }
     match kind {
         Some(TransportKind::Serial) => {
-            let ports: Vec<serial::Listed> = (setup.seams.ports)()
-                .unwrap_or_default()
-                .into_iter()
-                .take(serial::LIST_LIMIT)
-                .collect();
+            let ports = match (setup.seams.ports)() {
+                Ok(ports) => ports,
+                Err(error) => {
+                    problem(&format!(
+                        "Could not list serial ports: {error}. You can enter a port name."
+                    ))?;
+                    Vec::new()
+                }
+            };
             let mut choices: Vec<ask::Choice> = ports
                 .iter()
+                .take(serial::LIST_LIMIT)
                 .map(|port| ask::Choice {
                     value: port.factory_serial().map_or_else(
                         || format!("name:{}", port.name),
