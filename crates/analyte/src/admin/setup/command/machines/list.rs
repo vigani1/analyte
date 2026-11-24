@@ -193,7 +193,7 @@ pub(super) async fn list(installation: &Installation, json: bool) -> Result<Outc
             machines,
         } => ("running", None, machines, settings_read),
         live::Live::NotRunning => ("not running", None, Vec::new(), true),
-        live::Live::Unknown(why) => ("unknown", Some(why), Vec::new(), true),
+        live::Live::Unknown(why) => ("unknown", Some(why.to_string()), Vec::new(), true),
     };
     for machine in &mut machines {
         if let Some(at) = rows.iter().position(|row| row.id == machine.id) {

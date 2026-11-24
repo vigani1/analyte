@@ -290,18 +290,36 @@ fn accepts(link: Link, peers: Option<&analyte_config::AllowedPeers>) -> Option<S
 /// What a plan sets, in the Save step's words.
 fn summary(id: &str, plan: &Plan) -> std::io::Result<()> {
     let effective = plan.validated.effective();
-    let words = connection_words(Link::of(effective.stack()), &plan.connection);
-    let destination = &effective.site().destination;
     say(&format!("Machine: {id}"))?;
     say(&format!("Model: {}", plan.model))?;
+    settings_summary(
+        Link::of(effective.stack()),
+        &plan.connection,
+        plan.cable().as_deref(),
+        plan.choices().as_deref(),
+        plan.peers.as_ref(),
+        effective.site().destination.as_ref(),
+    )
+}
+
+/// Prints the settings in the same words on a dry run and after a save.
+fn settings_summary(
+    link: Link,
+    connection: &analyte_config::Endpoint,
+    cable: Option<&str>,
+    choices: Option<&str>,
+    peers: Option<&analyte_config::AllowedPeers>,
+    destination: Option<&analyte_config::Destination>,
+) -> std::io::Result<()> {
+    let words = connection_words(link, connection);
     say(&format!("Connection: {} ({})", words.shown, words.exact))?;
-    if let Some(cable) = plan.cable() {
+    if let Some(cable) = cable {
         say(&format!("Cable: {cable}"))?;
     }
-    if let Some(choices) = plan.choices() {
+    if let Some(choices) = choices {
         say(&format!("Analyzer settings: {choices}"))?;
     }
-    if let Some(accepts) = accepts(Link::of(effective.stack()), plan.peers.as_ref()) {
+    if let Some(accepts) = accepts(link, peers) {
         say(&format!("Devices: {accepts}"))?;
     }
     match destination {
@@ -361,26 +379,15 @@ async fn save(
                 Ok((saved, missing))
             })
             .await?;
-            let words = connection_words(saved.link, &saved.connection);
             say(&format!("Saved {id}: {}.", saved.model))?;
-            say(&format!("Connection: {} ({})", words.shown, words.exact))?;
-            if let Some(cable) = &saved.cable {
-                say(&format!("Cable: {cable}"))?;
-            }
-            if let Some(choices) = &saved.choices {
-                say(&format!("Analyzer settings: {choices}"))?;
-            }
-            if let Some(accepts) = accepts(saved.link, saved.peers.as_ref()) {
-                say(&format!("Devices: {accepts}"))?;
-            }
-            match &saved.lab_app {
-                Some(lab_app) => say(&format!(
-                    "Lab app: {} ({})",
-                    lab_app.name.as_str(),
-                    lab_app.base_url.as_str()
-                ))?,
-                None => say(&format!("Lab app: {}", format::RECORDING_ONLY))?,
-            }
+            settings_summary(
+                saved.link,
+                &saved.connection,
+                saved.cable.as_deref(),
+                saved.choices.as_deref(),
+                saved.peers.as_ref(),
+                saved.lab_app.as_ref(),
+            )?;
             if let Some(missing) = missing {
                 say(&missing)?;
             }
