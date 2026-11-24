@@ -190,12 +190,8 @@ fn connection_inputs(
             serial_choices(state, id, (definition, current_site), draft),
         ),
         kind @ (TransportKind::TcpServer | TransportKind::TcpClient) => {
-            let (host, port) = current_endpoint.rsplit_once(':').unwrap_or(("", ""));
-            let host = draft
-                .host
-                .as_deref()
-                .unwrap_or_else(|| host.trim_start_matches('[').trim_end_matches(']'))
-                .to_owned();
+            let (host, port) = super::plan::saved_tcp(current_endpoint).unwrap_or_default();
+            let host = draft.host.as_deref().unwrap_or(host).to_owned();
             let port = draft.tcp_port.as_deref().unwrap_or(port).to_owned();
             if kind == TransportKind::TcpServer {
                 (

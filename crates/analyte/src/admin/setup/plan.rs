@@ -238,6 +238,13 @@ impl TryFrom<Vec<(String, String)>> for Choice {
     }
 }
 
+/// Splits a saved TCP endpoint for display or editing. Validation happens
+/// when the draft is submitted, so an invalid saved value is not trusted.
+pub(super) fn saved_tcp(endpoint: &str) -> Option<(&str, &str)> {
+    let (host, port) = endpoint.rsplit_once(':')?;
+    Some((host.trim_start_matches('[').trim_end_matches(']'), port))
+}
+
 /// The devices a site file lets connect, as `--allowed-peer` takes them;
 /// none when it names none (ADR 0026).
 pub(super) fn saved_peers(table: &toml::Table) -> Option<String> {
