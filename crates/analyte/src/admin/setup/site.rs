@@ -553,7 +553,7 @@ mod tests {
     // ADR 0033: a missing definition must never infer a different model.
     #[test]
     fn missing_definition_keeps_the_installed_path() -> Result<(), crate::Error> {
-        use crate::admin::setup::{Definition, Shipped, plan};
+        use crate::admin::setup::{Shipped, definitions, plan};
 
         let root = tempfile::tempdir()?;
         let config = root.path().join("analyte.toml");
@@ -562,19 +562,30 @@ mod tests {
             "[[machines]]\nid = 'lab-one'\ndefinition = 'missing.toml'\nsite = 'site.toml'\n",
         )?;
         let (_, installed) = super::installed(&config, "lab-one")?;
-        let other = Definition {
-            key: "example/other".into(),
-            display: "Other model".into(),
-            state: Shipped::Ready {
-                path: root.path().join("other.toml"),
-                name: "other".into(),
-                level: "documented".into(),
-            },
-        };
+        let models = root.path().join("machines");
+        let other = models.join("example").join("other").join("machine.toml");
+        std::fs::create_dir_all(other.parent().ok_or("model folder")?)?;
+        std::fs::write(&other, ASTM)?;
+        let list = definitions::list(&models)?;
+        assert!(matches!(
+            list.as_slice(),
+            [definitions::Definition {
+                state: Shipped::Ready { .. },
+                ..
+            }]
+        ));
+        // The shipped file disappeared after discovery. Its unresolved path
+        // must remain distinct from the installed machine's missing definition.
+        std::fs::remove_file(other)?;
 
-        let chosen = plan::chosen(&[other], None, &installed, false)?;
-        assert_eq!(chosen.key, None);
-        assert_eq!(chosen.path, root.path().join("missing.toml"));
+        let Err(SetupError::DefinitionFile(error)) = plan::chosen(&list, None, &installed, false)
+        else {
+            return Err("expected the installed definition to be reported missing".into());
+        };
+        assert!(matches!(
+            error.as_ref(),
+            definitions::FileError::Read { path, .. } if path == &root.path().join("missing.toml")
+        ));
         Ok(())
     }
 
