@@ -90,8 +90,7 @@ fn install_on(admin: u16) -> Result<Install, Error> {
             include_str!("../../../../../core/config/examples/hl7.toml").to_owned(),
         ),
         (
-            // Validates on its own, but its frame bound is above the store's
-            // record bound, so only the whole program's reload refuses it.
+            // Validates on its own, but its record bound exceeds the store's.
             "machines/example/big-hl7",
             include_str!("../../../../../core/config/examples/hl7.toml")
                 .rewrite("bytes = 1048576", "bytes = 4194304"),
@@ -352,7 +351,7 @@ async fn add_and_set_write_what_the_pages_write_with_backups_and_audit() -> Resu
 // Owner request 2026-11-21 (command line): every refusal of the Save step
 // refuses here too, in the page's words, and changes no file: an unknown lab
 // app, a model that is not ready, an unknown model, a connection another
-// machine already uses, and a change no reload accepts (files put back).
+// machine already uses, and a model whose data is too large for the store.
 #[tokio::test(flavor = "multi_thread")]
 async fn set_refuses_as_the_save_step_does_and_changes_nothing() -> Result<(), Error> {
     let install = install()?;
@@ -405,7 +404,8 @@ async fn set_refuses_as_the_save_step_does_and_changes_nothing() -> Result<(), E
         "{error}"
     );
     assert_eq!(install.settings()?, before);
-    let too_big = &[
+    // AGENTS.md "One way per thing": save and dry run refuse the same store limit.
+    let too_big = [
         "set",
         "hl7-2",
         "--model",
@@ -415,13 +415,23 @@ async fn set_refuses_as_the_save_step_does_and_changes_nothing() -> Result<(), E
         "--port",
         "5601",
     ];
-    let error = refusal(refused(too_big).await)?;
-    assert!(matches!(error, SetupError::RolledBack(_)), "{error}");
-    assert!(
-        error.to_string().contains("previous files were put back"),
-        "{error}"
-    );
+    let backups = install.backups()?;
+    let mut dry_run = too_big.to_vec();
+    dry_run.push("--dry-run");
+    for args in [too_big.as_slice(), dry_run.as_slice()] {
+        let error = refusal(install.machines(args).await)?;
+        assert!(
+            matches!(
+                error,
+                SetupError::Installation(
+                    crate::installation::config::Error::StoreRecordLimitTooSmall
+                )
+            ),
+            "{error}"
+        );
+    }
     assert_eq!(install.settings()?, before);
+    assert_eq!(install.backups()?, backups);
     Ok(())
 }
 
@@ -821,6 +831,38 @@ async fn list_says_which_devices_each_machine_accepts() -> Result<(), Error> {
         )
     );
     assert_eq!(line("cobas-1"), None);
+    Ok(())
+}
+
+// ADR 0002: the effective settings include explicit local overrides.
+#[tokio::test(flavor = "multi_thread")]
+async fn list_describes_the_connection_loaded_with_overrides() -> Result<(), Error> {
+    let install = install()?;
+    install.set_up().await?;
+    std::fs::write(
+        install.root.join("serial.override.toml"),
+        "schema_version = 1\nendpoint = 'COM99'\n",
+    )?;
+    let program = std::fs::read_to_string(&install.config)?;
+    let definition_line = "definition = \"machines/example/serial-astm/machine.toml\"";
+    assert!(program.contains(definition_line), "{program}");
+    std::fs::write(
+        &install.config,
+        program.rewrite(
+            definition_line,
+            &format!("{definition_line}\noverrides = 'serial.override.toml'"),
+        ),
+    )?;
+    let installation = super::Installation::load(&install.config, install.seams())?;
+    let machines = machines::settings_rows(&installation)?;
+    let machine = machines
+        .iter()
+        .find(|row| row.id == "cobas-1")
+        .ok_or("missing machine")?;
+    assert_eq!(
+        serde_json::to_value(machine)?["connection"],
+        "endpoint = COM99"
+    );
     Ok(())
 }
 
@@ -1610,5 +1652,56 @@ async fn record_only_takes_the_cobas_protocol_type_from_the_command_line() -> Re
         .await;
     assert!(unoffered.is_err(), "{unoffered:?}");
     assert_eq!(install.settings()?, before);
+    Ok(())
+}
+
+// ADR 0034: record-only detection uses the same size bound as site loading.
+#[tokio::test]
+async fn machine_commands_report_an_oversized_record_only_site() -> Result<(), Error> {
+    let install = install()?;
+    install.machines(&["add", "cobas-1"]).await?;
+    let site = install.root.join("cobas-1.site.toml");
+    let contents = format!(
+        "[recording]\n#{}",
+        "x".repeat(analyte_config::MAX_FILE_BYTES)
+    );
+    std::fs::write(&site, contents)?;
+    for outcome in [
+        install.machines(&["list"]).await,
+        install.machines(&["set", "cobas-1", "--dry-run"]).await,
+    ] {
+        let error = outcome
+            .err()
+            .ok_or("command ignored an oversized site file")?;
+        assert!(matches!(
+            error,
+            Failure::Setup(SetupError::SiteRead {
+                path,
+                source,
+            }) if path == site
+                && matches!(*source, crate::installation::config::Error::ConfigurationTooLarge)
+        ));
+    }
+    Ok(())
+}
+
+// AGENTS.md: unreadable site settings cannot be treated as empty settings.
+#[tokio::test]
+async fn machine_and_lab_app_commands_report_an_unreadable_site() -> Result<(), Error> {
+    let install = install()?;
+    install.machines(&["add", "cobas-1"]).await?;
+    let site = install.root.join("cobas-1.site.toml");
+    std::fs::remove_file(&site)?;
+    for outcome in [
+        install.machines(&["list"]).await,
+        install.machines(&["set", "cobas-1", "--dry-run"]).await,
+        install.lab_apps(&["list"], [API_KEY, SIGNING_KEY]).await,
+    ] {
+        let error = outcome.err().ok_or("command ignored a missing site file")?;
+        assert!(matches!(
+            error,
+            Failure::Setup(SetupError::SiteRead { path, .. }) if path == site
+        ));
+    }
     Ok(())
 }

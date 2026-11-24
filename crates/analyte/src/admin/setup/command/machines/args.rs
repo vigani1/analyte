@@ -1,12 +1,11 @@
 //! Reads machine command arguments and restores saved choices.
-use super::running;
 use crate::admin::setup::{
     Setup, SetupError, cable, choices, definitions,
     plan::{self, KEEP},
     site,
     wizard::Draft,
 };
-use analyte_config::{SerialSetting, TransportKind};
+use analyte_config::{SerialSetting, TransportKind, recording::SiteDocument};
 
 /// A serial machine's cable settings, as step 2 chooses them (ADR 0031):
 /// match the analyzer's LIS/host settings screen. A setting not given keeps
@@ -212,28 +211,37 @@ impl Choice {
     }
 }
 
-/// The machine's saved choices as a draft: its model kept, its connection and
-/// its lab app, as step 2 shows them before anything is changed.
-pub(super) fn saved(setup: &Setup, id: &str) -> Result<Draft, SetupError> {
+/// Applies the command's choices over the settings read for this machine.
+pub(super) fn draft(setup: &Setup, id: &str, choice: Choice) -> Result<Draft, SetupError> {
     let (_, installed) = site::installed(setup.config(), id)?;
-    let table = crate::installation::config::read(&installed.site)
-        .ok()
-        .and_then(|text| text.parse::<toml::Table>().ok())
-        .unwrap_or_default();
+    let site = site::read_document(&installed.site)?;
+    let mut draft = choice.over(saved(setup, id, &installed, &site)?);
+    keep_saved_choices(setup, &installed, site.table(), &mut draft)?;
+    Ok(draft)
+}
+
+/// The current connection and lab app, as step 2 shows them before anything is changed.
+fn saved(
+    setup: &Setup,
+    id: &str,
+    installed: &site::Installed,
+    site: &SiteDocument,
+) -> Result<Draft, SetupError> {
+    let table = site.table();
     let text = |key: &str| {
         table
             .get(key)
             .and_then(toml::Value::as_str)
             .map(str::to_owned)
     };
-    let answer = |key: &str| plan::recording::saved(&table, key);
+    let answer = |key: &str| plan::recording::saved(table, key);
     let mut draft = Draft {
         definition: installed.definition.as_ref().map(|_| KEEP.to_owned()),
-        lab_app: plan::current_lab_app(running(setup, id), &table),
-        allowed_peers: plan::saved_peers(&table),
+        lab_app: plan::current_lab_app(setup.running(id), table),
+        allowed_peers: plan::saved_peers(table),
         // A record-only machine stays record-only until --connect-normally (ADR 0034).
-        mode: table
-            .contains_key("recording")
+        mode: site
+            .records_only()
             .then(|| plan::recording::RECORD.to_owned()),
         poll_seconds: answer("poll_seconds"),
         controls: answer("controls"),
@@ -241,10 +249,15 @@ pub(super) fn saved(setup: &Setup, id: &str) -> Result<Draft, SetupError> {
         analyzer_mode: answer("analyzer_mode"),
         ..Draft::default()
     };
-    let kind = installed.definition.as_deref().and_then(plan::kind_of);
+    let kind = installed
+        .definition
+        .as_deref()
+        .map(|path| definitions::read(path).map(|details| details.kind))
+        .transpose()
+        .map_err(std::sync::Arc::new)?;
     // Also before a model is chosen: `machines add` may have kept cable settings.
     if matches!(kind, Some(TransportKind::Serial) | None) {
-        cable::keep_saved(&mut draft, &table);
+        cable::keep_saved(&mut draft, table);
     }
     match (kind, text("usb_serial"), text("endpoint")) {
         (_, Some(number), _) => draft.port = Some(format!("usb:{number}")),
@@ -269,26 +282,24 @@ pub(super) fn saved(setup: &Setup, id: &str) -> Result<Draft, SetupError> {
 /// from the saved site file, as step 2 starts from them; a saved choice the
 /// model does not declare (another model's) is left behind. Nothing is
 /// filled while the model is unknown; the plan refuses that by itself.
-pub(super) fn keep_saved_choices(
+fn keep_saved_choices(
     setup: &Setup,
-    id: &str,
+    installed: &site::Installed,
+    table: &toml::Table,
     draft: &mut Draft,
 ) -> Result<(), SetupError> {
-    let (_, installed) = site::installed(setup.config(), id)?;
     let list = definitions(&setup.seams)?;
-    let Ok(model) = plan::model_of(&list, draft, &installed) else {
-        return Ok(());
+    let model = match plan::model_of(&list, draft, installed) {
+        Ok(model) => model,
+        Err(error @ SetupError::DefinitionFile(_)) => return Err(error),
+        Err(_) => return Ok(()),
     };
-    let table = crate::installation::config::read(&installed.site)
-        .ok()
-        .and_then(|text| text.parse::<toml::Table>().ok())
-        .unwrap_or_default();
-    choices::keep_saved(draft, &table, &choices::declared(&model.path));
+    choices::keep_saved(draft, table, &model.details.choices);
     if !plan::recording::chosen(draft)
-        && plan::asks_autolyser_poll(&model.path)
+        && model.details.asks_autolyser_poll
         && draft.poll_seconds.is_none()
     {
-        draft.poll_seconds = plan::saved_autolyser_poll(&table);
+        draft.poll_seconds = plan::saved_autolyser_poll(table);
     }
     Ok(())
 }

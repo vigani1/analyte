@@ -246,6 +246,15 @@ async fn lab_apps_list_reads_each_lab_app_by_the_overview_rules() -> Result<(), 
     store
         .request::<_, FixtureError>(fixture_deadline()?, move |s| seed(s, now))
         .await?;
+    // The reservation seeds an order page. This fixture independently
+    // exercises a successful delivery with an order list never checked.
+    {
+        let mut db = rusqlite::Connection::open(root.join("analyte.db"))?;
+        let tx = db.transaction()?;
+        tx.execute("DELETE FROM orders WHERE destination = ?1", ["up-lab"])?;
+        tx.execute("DELETE FROM feed WHERE destination = ?1", ["up-lab"])?;
+        tx.commit()?;
+    }
     let ((state, stopper, owner, host), auth) = serve(
         root,
         &store,

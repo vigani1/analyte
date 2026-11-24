@@ -191,6 +191,13 @@ impl Setup {
         self.running.retain(|running| runs(running.id.as_str()));
     }
 
+    /// Finds the settings the service currently runs for this machine.
+    fn running(&self, id: &str) -> Option<&Running> {
+        self.running
+            .iter()
+            .find(|running| running.id.as_str() == id)
+    }
+
     /// The program file the installation was loaded from.
     pub(crate) fn config(&self) -> &std::path::Path {
         &self.config
@@ -233,6 +240,8 @@ pub(crate) enum SetupError {
         "model {0} is not ready yet: facts or recordings are still missing (its README lists them)"
     )]
     BlockedDefinition(String),
+    #[error("{0}")]
+    DefinitionFile(#[from] Arc<definitions::FileError>),
     #[error(
         "model {0} is not ready yet, so it can only record: choose Record only (nothing is sent to a lab app) to keep its conversation"
     )]
@@ -283,8 +292,13 @@ pub(crate) enum SetupError {
     ProgramFile(#[source] toml::de::Error),
     #[error("Analyte's main settings file cannot be read: {0}")]
     ProgramLayout(&'static str),
-    #[error("this machine's settings file cannot be read: {0}")]
-    SiteFile(#[source] toml::de::Error),
+    #[error("reading the machine's site file {path} failed: {source}")]
+    SiteRead {
+        path: PathBuf,
+        source: Box<crate::installation::config::Error>,
+    },
+    #[error("the machine's site file could not be parsed: {0}")]
+    SiteFile(#[source] Box<analyte_config::Error>),
     #[error(
         "this machine's settings file cannot be read: its [destination] cannot be moved to the Lab apps page: {0}"
     )]
@@ -405,7 +419,7 @@ fn machine_rows(
         .zip(models)
         .map(|(entry, model)| {
             let id = entry.id.get_ref();
-            let running = running(state, id);
+            let running = state.setup.running(id);
             let (tone, word) = match (running, &entry.definition) {
                 (Some(_), _) => (Tone::Good, "Running"),
                 (None, None) => (Tone::Neutral, "Not set up yet"),
@@ -467,7 +481,7 @@ fn level_and_state(definition: &Definition) -> (Hover, Status, Icon) {
     };
     match &definition.state {
         Shipped::Ready { level, .. } => (
-            hover(evidence_words(level), format!("Evidence level: {level}")),
+            hover(evidence_words(*level), format!("Evidence level: {level}")),
             status(Tone::Good, "Ready"),
             Icon::Ok,
         ),
@@ -486,13 +500,13 @@ fn level_and_state(definition: &Definition) -> (Hover, Status, Icon) {
             },
             Icon::Off,
         ),
-        Shipped::Unreadable(why) => (
+        Shipped::Unreadable { error, .. } => (
             hover(
                 format::NOT_APPLICABLE,
                 "Evidence level unknown: the definition cannot be read".into(),
             ),
             Status {
-                note: Some(format::sentence(why)),
+                note: Some(format::sentence(&error.to_string())),
                 ..status(Tone::Problem, "Cannot be read")
             },
             Icon::Problem,
@@ -500,13 +514,12 @@ fn level_and_state(definition: &Definition) -> (Hover, Status, Icon) {
     }
 }
 
-/// How a model was checked, in words; an unknown level shows as written.
-fn evidence_words(level: &str) -> &str {
+/// How a model was checked, in words.
+fn evidence_words(level: analyte_config::EvidenceLevel) -> &'static str {
     match level {
-        "documented" => "Built from the manuals",
-        "simulated" => "Tested with a simulator",
-        "proven" => "Tested on the real machine",
-        other => other,
+        analyte_config::EvidenceLevel::Documented => "Built from the manuals",
+        analyte_config::EvidenceLevel::Simulated => "Tested with a simulator",
+        analyte_config::EvidenceLevel::Proven => "Tested on the real machine",
     }
 }
 
@@ -603,8 +616,8 @@ fn definition_name(definition: &Definition) -> Hover {
     Hover {
         shown: definition.display.clone(),
         exact: match &definition.state {
-            Shipped::Ready { name, .. } => format!("{} (name {name})", definition.key),
-            Shipped::Blocked { .. } | Shipped::Unreadable(_) => definition.key.clone(),
+            Shipped::Ready { name, .. } => format!("{} (name {})", definition.key, name.as_str()),
+            Shipped::Blocked { .. } | Shipped::Unreadable { .. } => definition.key.clone(),
         },
     }
 }
@@ -631,12 +644,6 @@ pub(in crate::admin) async fn listed(state: &Arc<Context>) -> Result<Vec<Listed>
         })
     })
     .await
-}
-
-/// What the service runs for `id`, or `None` when it runs nothing for it yet:
-/// not set up, or added or completed since the last start.
-fn running<'a>(state: &'a Context, id: &str) -> Option<&'a Running> {
-    state.setup.running.iter().find(|r| r.id.as_str() == id)
 }
 
 /// Records who made a page change: the signed-in person of `session`.
@@ -753,24 +760,11 @@ where
     Ok(store.read(until, work).await?)
 }
 
-/// Runs `work` on the setup files off the async workers: it reads or writes
-/// files, the port list or the credentials file, which block.
-async fn on_files<T: Send + 'static>(
-    setup: &Arc<Setup>,
-    work: impl FnOnce(&Setup) -> Result<T, SetupError> + Send + 'static,
-) -> Result<T, SetupError> {
-    let setup = setup.clone();
-    tokio::task::spawn_blocking(move || work(&setup))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|done| done)
-}
-
 /// Runs `work` off the async workers: it reads or writes files, the port list
 /// or the credentials file, which block.
-async fn off_thread<T: Send + 'static>(
-    state: &Arc<Context>,
-    work: impl FnOnce(&Context) -> Result<T, SetupError> + Send + 'static,
+async fn off_thread<S: Send + Sync + 'static, T: Send + 'static>(
+    state: &Arc<S>,
+    work: impl FnOnce(&S) -> Result<T, SetupError> + Send + 'static,
 ) -> Result<T, SetupError> {
     let worker = state.clone();
     tokio::task::spawn_blocking(move || work(&worker))
@@ -799,6 +793,12 @@ fn copies(backups: &[PathBuf]) -> Vec<String> {
 
 /// What to do after a Lab app, add or remove form could not be read.
 const RELOAD: &str = "reload the page";
+
+/// When saved settings start taking effect.
+const RESTART_REQUIRED: &str = "Analyte uses these settings after it restarts.";
+
+/// Shared confirmation for a save that leaves the settings file alone.
+const SETTINGS_UNCHANGED: &str = "The settings were already the same; no file was written.";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

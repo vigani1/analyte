@@ -7,10 +7,9 @@ mod test;
 use super::ask::Ask;
 use super::{Failure, Installation, Outcome, actor, backups, record, restart_note, say};
 use crate::admin::setup::{
-    Running, Seams, Setup, SetupError, Shipped, Via, choices, definitions, lab_apps,
-    level_and_state,
+    Seams, Setup, SetupError, Shipped, Via, definitions, lab_apps, level_and_state,
     machines::{add_machine, preview_removal, remove_machine},
-    on_files,
+    off_thread,
     plan::{self, Plan},
     wizard::{Draft, connection_words},
 };
@@ -18,7 +17,7 @@ use crate::admin::view::format;
 use crate::machine::link::status::Link;
 use analyte_model::Identifier;
 use analyte_transport::serial;
-use args::{Cable, Choice, keep_saved_choices, saved};
+use args::{Cable, Choice};
 use list::list;
 #[cfg(test)]
 pub(super) use list::{devices_line, settings_rows};
@@ -160,8 +159,8 @@ fn models(seams: &Seams) -> Result<Outcome, Failure> {
         if let Some(note) = status.note {
             say(&format!("  {note}"))?;
         }
-        if let Shipped::Ready { path, .. } = &definition.state {
-            if plan::asks_autolyser_poll(path) {
+        if let Shipped::Ready { source, .. } = &definition.state {
+            if source.details.asks_autolyser_poll {
                 let range = analyte_config::AUTOLYSER_POLL_SECONDS;
                 say(&format!(
                     "  --poll-seconds <{}..{}>: seconds between report polls (required)",
@@ -169,7 +168,7 @@ fn models(seams: &Seams) -> Result<Outcome, Failure> {
                     range.end(),
                 ))?;
             }
-            for choice in choices::declared(path) {
+            for choice in &source.details.choices {
                 say(&format!(
                     "  --choice {}=<{}>: {}{}",
                     choice.name,
@@ -183,8 +182,10 @@ fn models(seams: &Seams) -> Result<Outcome, Failure> {
                 ))?;
             }
         }
-        if let Shipped::Blocked { record: Some(path) } = &definition.state
-            && let Some(mode) = plan::recording::analyzer_mode(path)
+        if let Shipped::Blocked {
+            record: Some(source),
+        } = &definition.state
+            && let Some(mode) = &source.details.analyzer_mode
         {
             say(&format!(
                 "  --record-only --analyzer-mode <{}>: {}",
@@ -227,14 +228,6 @@ fn ports(config: &Path, seams: Seams) -> Result<Outcome, Failure> {
         say(&port_line(port, used_by))?;
     }
     Ok(Outcome::Done)
-}
-
-/// What the service runs for `id`; every machine the settings load counts.
-fn running<'a>(setup: &'a Setup, id: &str) -> Option<&'a Running> {
-    setup
-        .running
-        .iter()
-        .find(|running| running.id.as_str() == id)
 }
 
 async fn add(
@@ -330,8 +323,7 @@ async fn set(
     ask: Ask,
 ) -> Result<Outcome, Failure> {
     let setup = installation.setup.clone();
-    let mut draft = choice.over(saved(&setup, id)?);
-    keep_saved_choices(&setup, id, &mut draft)?;
+    let mut draft = args::draft(&setup, id, choice)?;
     let filled = fill(&setup, id, &mut draft, ask)?;
     let asked = ask_peers(&setup, id, &mut draft, ask)? || filled;
     if dry_run {
@@ -360,7 +352,7 @@ async fn save(
     installation
         .with_store(async |store| {
             let (machine, kept) = (id.to_owned(), draft.clone());
-            let (saved, missing) = on_files(&setup, move |setup| {
+            let (saved, missing) = off_thread(&setup, move |setup| {
                 let saved = plan::save_blocking(setup, &machine, &kept)?;
                 let missing = saved
                     .lab_app

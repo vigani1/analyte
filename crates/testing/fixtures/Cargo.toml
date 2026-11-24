@@ -8,6 +8,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+analyte-model.workspace = true
 analyte-poct.workspace = true
 analyte-store.workspace = true
 quick-xml.workspace = true

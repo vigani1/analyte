@@ -1,9 +1,12 @@
 //! Lists configured machines and their live state in text or JSON.
 use super::super::{Failure, Installation, Outcome, live, say};
-use super::running;
-use crate::admin::setup::{cable, choices, model, plan, site};
 use crate::admin::view::format;
-use analyte_config::{SerialSetting, TransportKind};
+use crate::admin::{
+    server::Connection,
+    setup::{cable, choices, model, plan, site},
+};
+use crate::machine::link::status::Link;
+use analyte_config::SerialSetting;
 
 /// One machine of the settings file, read for `machines list`.
 #[derive(serde::Serialize)]
@@ -88,26 +91,48 @@ pub(in super::super) fn settings_rows(installation: &Installation) -> Result<Vec
     for entry in &entries {
         let id = entry.id.get_ref().clone();
         let definition = entry.definition.as_ref().map(|d| d.get_ref().clone());
-        let table = crate::installation::config::read(
-            &crate::installation::config::folder(&config).join(entry.site.get_ref()),
-        )
-        .ok()
-        .and_then(|text| text.parse::<toml::Table>().ok())
-        .unwrap_or_default();
-        let connection = ["usb_serial", "endpoint"].iter().find_map(|key| {
-            table
-                .get(*key)
-                .and_then(toml::Value::as_str)
-                .map(|value| format!("{key} = {value}"))
-        });
         let loaded = installation
             .program
             .machines()
             .iter()
             .find(|machine| machine.id().as_str() == id);
+        let effective = loaded.map(|machine| machine.snapshot().effective());
+        let (connection, lab_app, peers, open_to_any_device, record_only) =
+            if let Some(effective) = effective {
+                let site = effective.site();
+                let connection = Connection::of(Link::of(effective.stack()), &site.endpoint);
+                (
+                    Some(site::describe(&site.endpoint)),
+                    site.destination
+                        .as_ref()
+                        .map(|app| app.name.as_str().to_owned()),
+                    site.allowed_peers
+                        .as_ref()
+                        .map(|peers| peers.addresses().iter().map(ToString::to_string).collect()),
+                    connection.accepts_any_device(site.allowed_peers.as_ref()),
+                    effective.records_only(),
+                )
+            } else {
+                let document = site::read_document(
+                    &crate::installation::config::folder(&config).join(entry.site.get_ref()),
+                )?;
+                let table = document.table();
+                let connection = ["usb_serial", "endpoint"].iter().find_map(|key| {
+                    table
+                        .get(*key)
+                        .and_then(toml::Value::as_str)
+                        .map(|value| format!("{key} = {value}"))
+                });
+                (
+                    connection,
+                    plan::current_lab_app(None, table),
+                    None,
+                    false,
+                    document.records_only(),
+                )
+            };
         let version = loaded.map(|machine| format::digest_short(&machine.snapshot().digest()));
-        let cable = loaded.and_then(|machine| {
-            let effective = machine.snapshot().effective();
+        let cable = effective.and_then(|effective| {
             let suggestion = effective.serial_suggestion();
             cable::of(effective.stack()).map(|serial| ListedCable {
                 settings: cable::values(serial),
@@ -119,7 +144,7 @@ pub(in super::super) fn settings_rows(installation: &Installation) -> Result<Vec
                 words: cable::summary(serial, suggestion),
             })
         });
-        let chosen = loaded.map(|machine| machine.snapshot().effective().choices());
+        let chosen = effective.map(analyte_config::Effective::choices);
         let listed_choices = chosen
             .unwrap_or_default()
             .iter()
@@ -138,30 +163,22 @@ pub(in super::super) fn settings_rows(installation: &Installation) -> Result<Vec
                 differs_from_suggestion: chosen.differs(),
             })
             .collect();
-        let listens = definition.as_deref().is_some_and(|path| {
-            plan::kind_of(&crate::installation::config::folder(&config).join(path))
-                == Some(TransportKind::TcpServer)
-        });
-        let allowed_peers = plan::saved_peers(&table)
-            .map(|peers| peers.split(", ").map(str::to_owned).collect::<Vec<_>>());
         machines.push(Listed {
-            open_to_any_device: listens && allowed_peers.is_none(),
-            allowed_peers: allowed_peers.filter(|_| listens),
+            open_to_any_device,
+            allowed_peers: peers,
             model: model(&config, root.as_deref(), definition.as_deref()).map(|m| m.shown),
             definition,
             connection,
-            lab_app: plan::current_lab_app(running(setup, &id), &table),
+            lab_app,
             set_up: entry.definition.is_some(),
             settings_version: version,
             live: None,
             cable,
             choices: listed_choices,
-            autolyser_poll_seconds: table
-                .get("autolyser_poll_seconds")
-                .and_then(toml::Value::as_integer)
-                .and_then(|seconds| u32::try_from(seconds).ok()),
+            autolyser_poll_seconds: effective
+                .and_then(analyte_config::Effective::site_autolyser_poll_seconds),
             choices_words: chosen.and_then(choices::summary),
-            record_only: table.contains_key("recording"),
+            record_only,
             id,
         });
     }

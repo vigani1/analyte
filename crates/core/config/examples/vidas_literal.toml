@@ -34,8 +34,6 @@ acknowledgment_ms = 5000
 interbyte_ms = 5000
 session_ms = 30000
 commit_ms = 5000
-retries = 0
-backoff_ms = 1000
 download = false
 
 [codes]
