@@ -99,7 +99,7 @@ impl Installed {
     /// identity depends on the path left in the program file (ADR 0033).
     pub(super) fn definition_to_save(&self, proposed: PathBuf) -> PathBuf {
         match &self.definition {
-            Some(current) if same_file(current, &proposed) => current.clone(),
+            Some(current) if file_identity(current) == file_identity(&proposed) => current.clone(),
             _ => proposed,
         }
     }
@@ -443,11 +443,11 @@ pub(super) fn commit(config: &Path, changes: &[(PathBuf, String)]) -> Result<Wri
     })
 }
 
-fn same_file(left: &Path, right: &Path) -> bool {
-    match (left.canonicalize(), right.canonicalize()) {
-        (Ok(left), Ok(right)) => left == right,
-        _ => left == right,
-    }
+/// Resolves file aliases when possible. A failed lookup preserves the exact
+/// path instead of making all unresolved files equivalent.
+pub(super) fn file_identity(path: &Path) -> std::borrow::Cow<'_, Path> {
+    path.canonicalize()
+        .map_or(std::borrow::Cow::Borrowed(path), std::borrow::Cow::Owned)
 }
 
 fn io(operation: &'static str, path: &Path) -> impl FnOnce(std::io::Error) -> SetupError {
@@ -549,6 +549,45 @@ mod tests {
     use super::{Program, SetupError};
     use crate::installation::config::Error as Installation;
     use analyte_fixtures::ConfigEdit as _;
+
+    // ADR 0033: a missing definition must never infer a different model.
+    #[test]
+    fn missing_definition_keeps_the_installed_path() -> Result<(), crate::Error> {
+        use crate::admin::setup::{Shipped, definitions, plan};
+
+        let root = tempfile::tempdir()?;
+        let config = root.path().join("analyte.toml");
+        std::fs::write(
+            &config,
+            "[[machines]]\nid = 'lab-one'\ndefinition = 'missing.toml'\nsite = 'site.toml'\n",
+        )?;
+        let (_, installed) = super::installed(&config, "lab-one")?;
+        let models = root.path().join("machines");
+        let other = models.join("example").join("other").join("machine.toml");
+        std::fs::create_dir_all(other.parent().ok_or("model folder")?)?;
+        std::fs::write(&other, ASTM)?;
+        let list = definitions::list(&models)?;
+        assert!(matches!(
+            list.as_slice(),
+            [definitions::Definition {
+                state: Shipped::Ready { .. },
+                ..
+            }]
+        ));
+        // The shipped file disappeared after discovery. Its unresolved path
+        // must remain distinct from the installed machine's missing definition.
+        std::fs::remove_file(other)?;
+
+        let Err(SetupError::DefinitionFile(error)) = plan::chosen(&list, None, &installed, false)
+        else {
+            return Err("expected the installed definition to be reported missing".into());
+        };
+        assert!(matches!(
+            error.as_ref(),
+            definitions::FileError::Read { path, .. } if path == &root.path().join("missing.toml")
+        ));
+        Ok(())
+    }
 
     const ASTM: &str = include_str!("../../../../core/config/examples/astm.toml");
     const HL7: &str = include_str!("../../../../core/config/examples/hl7.toml");

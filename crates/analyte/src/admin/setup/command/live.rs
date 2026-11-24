@@ -55,8 +55,8 @@ pub(super) enum Live {
     },
     /// Nothing answers on the admin address.
     NotRunning,
-    /// It cannot be asked or did not answer well; the text says why.
-    Unknown(String),
+    /// It cannot be asked or did not answer well; the error says why.
+    Unknown(EngineError),
 }
 
 /// Asks the engine of `program` for its Machines list.
@@ -64,18 +64,18 @@ pub(super) async fn read(program: &Program) -> Live {
     let engine = match Engine::proven(program).await {
         Ok(engine) => engine,
         Err(EngineError::NotRunning(_)) => return Live::NotRunning,
-        Err(error) => return Live::Unknown(error.to_string()),
+        Err(error) => return Live::Unknown(error),
     };
     let body = match engine.get("/machines.json").await {
         Ok((200, body)) => body,
-        Ok((status, _)) => return Live::Unknown(EngineError::Status(status).to_string()),
-        Err(error) => return Live::Unknown(error.to_string()),
+        Ok((status, _)) => return Live::Unknown(EngineError::Status(status)),
+        Err(error) => return Live::Unknown(error),
     };
     match serde_json::from_slice::<Answer>(&body) {
         Ok(answer) => Live::Running {
             settings_read: answer.settings_read,
             machines: answer.machines,
         },
-        Err(error) => Live::Unknown(EngineError::Unreadable(error).to_string()),
+        Err(error) => Live::Unknown(EngineError::Unreadable(error)),
     }
 }

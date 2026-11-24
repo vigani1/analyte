@@ -57,16 +57,17 @@ pub(super) fn chosen(
                 .definition
                 .as_ref()
                 .ok_or(SetupError::NoDefinitionYet)?;
-            let current = installed.canonicalize().ok();
-            match list.iter().find(|d| match &d.state {
-                Shipped::Ready { source, .. }
-                | Shipped::Blocked {
-                    record: Some(source),
-                } => current.is_some() && source.path.canonicalize().ok() == current,
-                Shipped::Unreadable { path, .. } => {
-                    path == installed || (current.is_some() && path.canonicalize().ok() == current)
-                }
-                Shipped::Blocked { record: None } => false,
+            let current = site::file_identity(installed);
+            match list.iter().find(|d| {
+                let path = match &d.state {
+                    Shipped::Ready { source, .. }
+                    | Shipped::Blocked {
+                        record: Some(source),
+                    } => &source.path,
+                    Shipped::Unreadable { path, .. } => path,
+                    Shipped::Blocked { record: None } => return false,
+                };
+                site::file_identity(path) == current
             }) {
                 Some(found) => found,
                 None => {
@@ -236,6 +237,13 @@ impl TryFrom<Vec<(String, String)>> for Choice {
             draft: wizard::Draft::try_from(fields)?,
         })
     }
+}
+
+/// Splits a saved TCP endpoint for display or editing. Validation happens
+/// when the draft is submitted, so an invalid saved value is not trusted.
+pub(super) fn saved_tcp(endpoint: &str) -> Option<(&str, &str)> {
+    let (host, port) = endpoint.rsplit_once(':')?;
+    Some((host.trim_start_matches('[').trim_end_matches(']'), port))
 }
 
 /// The devices a site file lets connect, as `--allowed-peer` takes them;

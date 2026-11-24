@@ -76,6 +76,8 @@ enum Failure {
     Console(#[from] io::Error),
     #[error("name who makes this change with --actor <name>; it is recorded in the audit trail")]
     NoActor,
+    #[error(transparent)]
+    BadActor(#[from] crate::admin::ActorError),
     #[error("nothing was saved: it was not confirmed")]
     NotConfirmed,
     /// ADR 0028: the engine is not running and this account may not write the locked keys file.
@@ -120,6 +122,7 @@ impl Failure {
             | Self::Ports(_)
             | Self::Console(_)
             | Self::NoActor
+            | Self::BadActor(_)
             | Self::NotConfirmed
             | Self::EngineUnreachable(_)
             | Self::EngineRefused(_)
@@ -208,7 +211,7 @@ fn actor(given: Option<Identifier>, ask: ask::Ask) -> Result<Identifier, Failure
     let Some(name) = ask.line("Your name for the audit record")? else {
         return Err(Failure::NoActor);
     };
-    crate::admin::command_line_actor(&name).map_err(|_| Failure::NoActor)
+    Ok(crate::admin::command_line_actor(&name)?)
 }
 
 /// Records the change and says what happened if the record could not be
