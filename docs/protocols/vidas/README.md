@@ -27,10 +27,11 @@ There are no configuration defaults. Supply every framing setting explicitly:
 - Sample ID limit: exactly the installed 12 or 17 character policy. Printable
   ASCII is preserved, never trimmed, folded or truncated. Additional installed
   punctuation restrictions belong to the host's order policy.
-- ACK, interbyte, whole-session and durable-commit deadlines; site retry count
-  and backoff. Retry settings record site policy, but never trigger a resend.
-  Timeout, collision, a peer refusal, disconnect and unexpected input stop and park. No
-  undocumented abort sequence is emitted. Reconcile before a new conversation.
+- Explicit ACK, interbyte, whole-session and durable-commit deadlines.
+  Timeout, collision, peer refusal, disconnect and unexpected input stop the
+  conversation and park the affected work. Analyte closes without sending
+  an undocumented abort sequence. Reconcile before a new conversation.
+  Analyte never retries or replays orders.
 
 The checksum span/case, suffix treatment, chunking, timers and retry behavior
 must be confirmed against installed settings even where the notes state a
@@ -50,10 +51,10 @@ emits packet ACK. Normal Literal then waits for ETX and EOT; Alternate already
 consumed ETX. For a bad checksum, retain the rejected packet at the same reply
 point and send NAK (BCI Link LIS guide 161150-486 C pp. 3-1 to 3-4). The receiver
 then waits for a fresh STX under the existing interbyte and whole-session
-deadlines. The guide gives no packet retry count. Preserve incomplete durable
-receipts across disconnect/restart;
-never infer that timeout means the peer received nothing. Host owns bounded
-shutdown and suffix validation of control events. The dialog owns all timers,
+deadlines. The guide gives no numeric retry schedule. Preserve incomplete
+durable receipts across disconnects and restarts. A timeout leaves peer receipt
+uncertain. The host owns bounded shutdown and suffix validation of control
+events. The dialog owns all timers,
 reports its next absolute deadline and expires it before accepting new input.
 Journaled byte activity refreshes only the byte-gap timer; the whole-session
 and durable-commit deadlines remain independent of progress.

@@ -44,6 +44,14 @@ pub(crate) fn shutdown_budgets(
     bound: Duration,
 ) -> Result<(Duration, Option<Duration>), Error> {
     let loopback = mode.is_loopback();
+    if !loopback
+        && program
+            .machines()
+            .iter()
+            .any(|machine| machine.hooks.astm_frame_budget().is_some())
+    {
+        return Err(Error::TestServiceRequired);
+    }
     if !loopback && program.hooks.shutdown_io_budget.is_some() {
         return Err(Error::ShutdownTestServiceRequired);
     }
