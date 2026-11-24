@@ -2,6 +2,7 @@
 use super::{Error, Operation, Pause, watch};
 #[derive(Default)]
 pub(crate) struct MachineHooks {
+    pub(crate) astm_frame_budget: Option<std::time::Duration>,
     pub(crate) autolyser_quiescent: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
     pub(crate) input_processed: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
     pub(crate) law_gates: crate::runtime::test_hooks::LawGates,
@@ -11,6 +12,9 @@ pub(crate) struct MachineHooks {
     pub(crate) connection_closing: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
 }
 impl MachineHooks {
+    pub(crate) fn astm_frame_budget(&self) -> Option<std::time::Duration> {
+        self.astm_frame_budget
+    }
     pub(crate) fn enabled(&self, point: Pause) -> bool {
         self.gate(point).is_some()
     }
