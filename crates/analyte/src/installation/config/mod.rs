@@ -1018,6 +1018,15 @@ pub(crate) fn plain_name(name: &str) -> bool {
         .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
 }
 
+/// Reads the installation's store record limit from the program text being edited.
+pub(crate) fn store_record_bytes(program: &str) -> Result<usize, Error> {
+    #[derive(Deserialize)]
+    struct Storage {
+        store: Limits,
+    }
+    Ok(toml::from_str::<Storage>(program)?.store.record_bytes)
+}
+
 /// The files one machine entry names, resolved against the program folder.
 struct Files {
     definition: PathBuf,
@@ -1026,20 +1035,75 @@ struct Files {
 }
 
 fn load_machine(entry: Entry, files: &Files, loading: &Loading<'_>) -> Result<Machine, Error> {
-    let record_bytes = loading.record_bytes;
-    let replacement = files.overrides.as_ref().map(|p| read(p)).transpose()?;
-    let snapshot = analyte_config::load_machine(
-        (
-            &files.definition.display().to_string(),
-            &read(&files.definition)?,
-        ),
-        (&files.site.display().to_string(), &read(&files.site)?),
-        replacement.as_deref().map(|text| ("overrides", text)),
+    let ValidatedMachine {
+        snapshot,
+        model,
+        capture,
+    } = validate_machine(
+        (&entry.id, entry.capture),
+        &files.definition,
+        (&files.site, None),
+        files.overrides.as_deref(),
+        loading.record_bytes,
         loading.lab_apps,
     )?;
+    let link = crate::machine::link::status::Link::of(snapshot.effective().stack());
+    Ok(Machine {
+        capture,
+
+        hooks: MachineHooks::default(),
+        destination_limits: crate::runtime::delivery::limits(
+            snapshot.effective().site().destination.as_ref(),
+        ),
+        id: entry.id,
+        status: if snapshot.effective().records_only() {
+            crate::machine::link::status::Reporter::recording(link)
+        } else {
+            crate::machine::link::status::Reporter::new(link)
+        },
+        snapshot,
+        listener: None,
+        definition: files.definition.clone(),
+        model,
+    })
+}
+
+/// An effective machine snapshot checked against the program's requirements.
+pub(crate) struct ValidatedMachine {
+    /// The reproducible effective settings, bounded by the store record limit.
+    pub(crate) snapshot: Validated,
+    model: analyte_contract::document::ModelId,
+    capture: bool,
+}
+
+/// Loads one machine and checks it against the runtime's constraints. Setup can
+/// supply proposed site text in place of the file. This only reads settings.
+pub(crate) fn validate_machine(
+    (id, capture): (&analyte_model::Identifier, bool),
+    definition: &Path,
+    (site, proposed): (&Path, Option<&str>),
+    overrides: Option<&Path>,
+    record_bytes: usize,
+    lab_apps: &analyte_config::LabApps,
+) -> Result<ValidatedMachine, Error> {
+    let replacement = overrides.map(read).transpose()?;
+    let definition_text = read(definition)?;
+    let saved;
+    let site_text = match proposed {
+        Some(text) => text,
+        None => {
+            saved = read(site)?;
+            &saved
+        }
+    };
+    let snapshot = analyte_config::load_machine(
+        (&definition.display().to_string(), &definition_text),
+        (&site.display().to_string(), site_text),
+        replacement.as_deref().map(|text| ("overrides", text)),
+        lab_apps,
+    )?;
     // A record-only machine always captures: its recordings are its purpose (ADR 0034).
-    let records_only = snapshot.effective().records_only();
-    let capture = entry.capture || records_only;
+    let capture = capture || snapshot.effective().records_only();
     if matches!(
         snapshot.effective().stack(),
         analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(settings)) if settings.checksum_hex()
@@ -1055,35 +1119,20 @@ fn load_machine(entry: Entry, files: &Files, loading: &Loading<'_>) -> Result<Ma
     {
         return Err(Error::StoreRecordLimitTooSmall);
     }
-    if capture && !plain_name(entry.id.as_str()) {
+    if capture && !plain_name(id.as_str()) {
         return Err(Error::InvalidCaptureMachineId);
     }
-    let model = model(&files.definition)?;
-    let link = crate::machine::link::status::Link::of(snapshot.effective().stack());
-    Ok(Machine {
-        capture,
-
-        hooks: MachineHooks::default(),
-        destination_limits: crate::runtime::delivery::limits(
-            snapshot.effective().site().destination.as_ref(),
-        ),
-        id: entry.id,
-        status: if records_only {
-            crate::machine::link::status::Reporter::recording(link)
-        } else {
-            crate::machine::link::status::Reporter::new(link)
-        },
+    Ok(ValidatedMachine {
         snapshot,
-        listener: None,
-        definition: files.definition.clone(),
-        model,
+        model: model(definition)?,
+        capture,
     })
 }
 
 /// The model of the definition file `definition`: the names of the two
-/// folders it sits in, `<vendor>/<model>/machine.toml` (ADR 0033). Setup
-/// always writes that path; a definition anywhere else is refused, since no
-/// model can be named for it and none is guessed.
+/// folders it sits in (ADR 0033). Setup uses `<vendor>/<model>/machine.toml`
+/// or that model's `record.toml`. If the folders cannot name a model, the
+/// definition is refused.
 fn model(definition: &Path) -> Result<analyte_contract::document::ModelId, Error> {
     // A name that is not UTF-8 reads as empty, which no model key accepts.
     fn name(path: Option<&Path>) -> &str {
