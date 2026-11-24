@@ -797,6 +797,41 @@ async fn set_names_keeps_and_clears_the_allowed_devices() -> Result<(), Error> {
     Ok(())
 }
 
+// ADR 0026 decision 2: allowed devices apply only to an analyzer dialing in.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_serial_model_does_not_inherit_a_network_allowlist() -> Result<(), Error> {
+    let install = install()?;
+    install.set_up().await?;
+    assert_eq!(install.machines(&["add", "other-2"]).await?, Outcome::Done);
+    assert_eq!(
+        set_listening(
+            &install,
+            "other-2",
+            "5601",
+            &["--allowed-peer", "192.168.1.50"]
+        )
+        .await?,
+        Outcome::Done
+    );
+    assert_eq!(
+        install
+            .machines(&[
+                "set",
+                "other-2",
+                "--model",
+                "example/serial-astm",
+                "--serial-port",
+                "COM4",
+                "--lab-app",
+                "demo"
+            ])
+            .await?,
+        Outcome::Done
+    );
+    assert_eq!(site_peers(&install, "other-2")?, None);
+    Ok(())
+}
+
 // ADR 0026 decision 2: `machines list` says which devices a listening
 // machine accepts, or warns that it accepts any device with the command
 // that limits it; machines on other links say nothing about devices.
