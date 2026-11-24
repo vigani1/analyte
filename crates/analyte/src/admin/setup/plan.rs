@@ -64,12 +64,12 @@ pub(super) fn chosen(
                 .definition
                 .as_ref()
                 .ok_or(SetupError::NoDefinitionYet)?;
-            let current = installed.canonicalize().ok();
+            let current = site::file_identity(installed);
             match list.iter().find(|d| match &d.state {
                 Shipped::Ready { path, .. }
                 | Shipped::Blocked {
                     record: Some(path), ..
-                } => path.canonicalize().ok() == current,
+                } => site::file_identity(path) == current,
                 Shipped::Blocked { record: None } | Shipped::Unreadable(_) => false,
             }) {
                 Some(found) => found,
