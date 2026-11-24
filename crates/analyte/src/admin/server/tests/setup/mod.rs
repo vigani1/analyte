@@ -1121,7 +1121,7 @@ async fn listen_test_counts_bytes_and_never_shows_them() -> Result<(), Error> {
 #[tokio::test(flavor = "multi_thread")]
 async fn poisoned_test_state_is_shown_as_unavailable() -> Result<(), Error> {
     let fixture = start().await?;
-    let setup = fixture.get("/setup/synthetic").await?;
+    let setup = fixture.get("/setup/lab-apps/new").await?;
     let token = csrf(&setup)?;
     fixture
         .state
