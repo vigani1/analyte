@@ -22,6 +22,7 @@ use crate::{
     AckPoint, ChoiceLabel, ChoiceName, Error, Evidence, EvidenceLevel, LabAppSource, Machine,
     MachineDeparture, SerialValues, Site, Stack, Transport, TransportKind, Validated, invalid,
 };
+use analyte_contract::document::ModelId;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -229,67 +230,54 @@ struct DefinitionTransport {
 }
 
 /// Whether the text is a model's `record.toml` rather than a machine definition.
-fn is_record_file(table: &toml::Table) -> bool {
+pub(crate) fn is_record_file(table: &toml::Table) -> bool {
     table.contains_key("recording_schema_version")
+}
+
+/// A site's bounded TOML, before its stack and destination are resolved.
+pub struct SiteDocument(toml::Table);
+
+impl SiteDocument {
+    /// Parses a site file once so callers can check its mode and use its saved fields.
+    /// # Errors
+    /// Rejects oversized files and malformed TOML.
+    pub fn parse(path: &str, text: &str) -> Result<Self, Error> {
+        crate::parse_table(path, text).map(Self)
+    }
+
+    /// Whether the site file asks for a record-only connection (it has `[recording]`).
+    #[must_use]
+    pub fn records_only(&self) -> bool {
+        self.0.contains_key("recording")
+    }
+
+    /// The site settings as written.
+    #[must_use]
+    pub const fn table(&self) -> &toml::Table {
+        &self.0
+    }
+
+    /// Takes the parsed settings for use in a candidate file.
+    #[must_use]
+    pub fn into_table(self) -> toml::Table {
+        self.0
+    }
 }
 
 /// Whether a site file asks for a record-only connection (it has `[recording]`).
 /// A file that does not parse is not record-only here; its loader reports why.
 #[must_use]
 pub fn records_only(site: &str) -> bool {
-    site.len() <= crate::MAX_FILE_BYTES
-        && toml::from_str::<toml::Table>(site).is_ok_and(|table| table.contains_key("recording"))
-}
-
-fn parse_table(path: &str, text: &str) -> Result<toml::Table, Error> {
-    if text.len() > crate::MAX_FILE_BYTES {
-        return Err(Error::FileSize { path: path.into() });
-    }
-    toml::from_str(text).map_err(|source| Error::Schema {
-        path: path.into(),
-        source,
-    })
+    SiteDocument::parse("site", site).is_ok_and(|document| document.records_only())
 }
 
 /// The protocol and link a model file names: a `record.toml` (with its
 /// analyzer mode and departures), or the `protocol` and `[transport]` of a
 /// ready definition.
 fn model_link(path: &str, text: &str) -> Result<ModelFile, Error> {
-    let table = parse_table(path, text)?;
+    let table = crate::parse_table(path, text)?;
     if is_record_file(&table) {
-        let file: RecordFile = toml::from_str(text).map_err(|source| Error::Schema {
-            path: path.into(),
-            source,
-        })?;
-        if file.recording_schema_version != 1 {
-            return Err(invalid(
-                path,
-                "recording_schema_version",
-                "use supported recording_schema_version = 1",
-            ));
-        }
-        let protocol = CaptureProtocol::of(&file.protocol, path)?;
-        if let Some(mode) = &file.analyzer_mode {
-            mode.check(path)?;
-        }
-        let offered = file
-            .analyzer_mode
-            .as_ref()
-            .map(AnalyzerMode::names)
-            .unwrap_or_default();
-        crate::validation::validate_recording(
-            &file.deviations,
-            protocol == CaptureProtocol::Astm,
-            folder_key(path).as_deref(),
-            &offered,
-            path,
-        )?;
-        return Ok(ModelFile {
-            protocol,
-            transport: file.transport,
-            analyzer_mode: file.analyzer_mode,
-            deviations: file.deviations,
-        });
+        return record_link(path, table);
     }
     let link: DefinitionLink =
         toml::Value::Table(table)
@@ -309,13 +297,81 @@ fn model_link(path: &str, text: &str) -> Result<ModelFile, Error> {
     })
 }
 
+fn record_link(path: &str, table: toml::Table) -> Result<ModelFile, Error> {
+    let file: RecordFile =
+        toml::Value::Table(table)
+            .try_into()
+            .map_err(|source| Error::Schema {
+                path: path.into(),
+                source,
+            })?;
+    if file.recording_schema_version != 1 {
+        return Err(invalid(
+            path,
+            "recording_schema_version",
+            "use supported recording_schema_version = 1",
+        ));
+    }
+    let protocol = CaptureProtocol::of(&file.protocol, path)?;
+    if let Some(mode) = &file.analyzer_mode {
+        mode.check(path)?;
+    }
+    let offered = file
+        .analyzer_mode
+        .as_ref()
+        .map(AnalyzerMode::names)
+        .unwrap_or_default();
+    let model = folder_key(path)?;
+    crate::validation::validate_recording(
+        &file.deviations,
+        protocol == CaptureProtocol::Astm,
+        model.as_ref().map(ModelId::as_str),
+        &offered,
+        path,
+    )?;
+    Ok(ModelFile {
+        protocol,
+        transport: file.transport,
+        analyzer_mode: file.analyzer_mode,
+        deviations: file.deviations,
+    })
+}
+
+pub(crate) fn definition_details(
+    path: &str,
+    table: toml::Table,
+) -> Result<crate::DefinitionDetails, Error> {
+    let file = record_link(path, table)?;
+    Ok(crate::DefinitionDetails {
+        identity: None,
+        protocol: file.protocol.key().into(),
+        kind: file.transport.kind,
+        serial: file.transport.serial,
+        choices: Vec::new(),
+        asks_autolyser_poll: false,
+        asks_vidas_patient_namespace: false,
+        analyzer_mode: file.analyzer_mode,
+    })
+}
+
 /// The model's folder key, `vendor/model`, from the two folders its file is
 /// in (ADR 0033); none for a file elsewhere, so no departure can match it.
-fn folder_key(path: &str) -> Option<String> {
-    let folder = std::path::Path::new(path).parent()?;
-    let model = folder.file_name()?.to_str()?;
-    let vendor = folder.parent()?.file_name()?.to_str()?;
-    Some(format!("{vendor}/{model}"))
+fn folder_key(path: &str) -> Result<Option<ModelId>, Error> {
+    use std::path::Path;
+    let Some((vendor, model)) = Path::new(path).parent().and_then(|folder| {
+        Some((
+            folder.parent()?.file_name()?.to_str()?,
+            folder.file_name()?.to_str()?,
+        ))
+    }) else {
+        return Ok(None);
+    };
+    ModelId::new(vendor, model)
+        .map(Some)
+        .map_err(|source| Error::ModelFolder {
+            path: path.into(),
+            source,
+        })
 }
 
 /// The analyzer mode the model asks, from its file; none when it asks none
@@ -383,7 +439,7 @@ pub(crate) fn refuse_recording_site(site: &Site, path: &str) -> Result<(), Error
 
 /// Refuses a model's `record.toml` loaded for a normal connection, naming the way out.
 pub(crate) fn refuse_record_file(path: &str, text: &str) -> Result<(), Error> {
-    if parse_table(path, text).is_ok_and(|table| is_record_file(&table)) {
+    if crate::parse_table(path, text).is_ok_and(|table| is_record_file(&table)) {
         return Err(invalid(
             path,
             "recording_schema_version",
@@ -502,6 +558,7 @@ pub fn load(model: (&str, &str), site: (&str, &str)) -> Result<Validated, Error>
             source: LabAppSource::None,
             suggestion: link.serial.clone(),
             choices: Vec::new(),
+            site_autolyser_poll_seconds: None,
             document,
         },
         canonical,

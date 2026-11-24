@@ -1,6 +1,7 @@
 //! Provides synthetic peer messages, bounded waits and controlled free-space probes for tests.
 #![forbid(unsafe_code)]
 
+pub mod orders;
 pub mod poct;
 
 /// Wall-clock allowance for scheduler and durable disk delays on loaded CI runners.

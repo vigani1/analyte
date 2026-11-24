@@ -161,10 +161,6 @@ pub struct Settings {
     pub session_ms: u32,
     /// Durable storage deadline.
     pub commit_ms: u32,
-    /// Recorded retry setting, never automatic order replay.
-    pub retries: u16,
-    /// Recorded retry backoff.
-    pub backoff_ms: u32,
     /// Permit explicit worklist downloads.
     pub download: bool,
     /// Installed assay codes for which VIDAS PC expects a dilution (Guide C p. 4-6).

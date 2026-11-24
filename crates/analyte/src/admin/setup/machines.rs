@@ -7,8 +7,8 @@
 //! still wrote it), so results waiting for it are still delivered. A machine just
 //! added goes straight into step 1 of the setup steps.
 use super::{
-    RELOAD, Setup, SetupError, Via, audit, copies, entries, needs_login, off_thread, on_files,
-    page, refused, see_other, site, stored,
+    RELOAD, Setup, SetupError, Via, audit, copies, entries, needs_login, off_thread, page, refused,
+    see_other, site, stored,
 };
 use crate::admin::machines::{self, DialogItem, RemoveDialog};
 use crate::admin::view::parts::Hover;
@@ -155,7 +155,7 @@ pub(super) async fn add_machine(
     // A listed name is refused as such before its history is looked at;
     // `add_blocking` checks again under the write lock.
     let wanted = id.clone();
-    let taken = on_files(setup, move |setup| {
+    let taken = off_thread(setup, move |setup| {
         site::entries(setup.config()).map(|(_, listed)| entries::taken(&listed, wanted.as_str()))
     })
     .await?;
@@ -167,7 +167,7 @@ pub(super) async fn add_machine(
         return Err(SetupError::HistoryNotConfirmed(id.as_str().into()));
     }
     let machine = id.clone();
-    let (path, written) = on_files(setup, move |setup| {
+    let (path, written) = off_thread(setup, move |setup| {
         add_blocking(setup, &machine, serial.as_ref())
     })
     .await?;
@@ -427,7 +427,7 @@ pub(super) async fn preview_removal(
     id: &str,
 ) -> Result<Preview, SetupError> {
     let machine = id.to_owned();
-    let (kept, last) = on_files(setup, move |setup| {
+    let (kept, last) = off_thread(setup, move |setup| {
         site::installed(setup.config(), &machine)?;
         let kept = lab_app(setup.config(), &machine);
         let (_, listed) = site::entries(setup.config())?;
@@ -638,7 +638,7 @@ pub(super) async fn remove_machine(
         return Err(SetupError::UnfinishedWork(id.to_owned(), summary));
     }
     let machine = id.to_owned();
-    let mut removed = on_files(setup, move |setup| remove_blocking(setup, &machine)).await?;
+    let mut removed = off_thread(setup, move |setup| remove_blocking(setup, &machine)).await?;
     removed.summary = summary;
     removed.anyway = anyway;
     Ok(removed)

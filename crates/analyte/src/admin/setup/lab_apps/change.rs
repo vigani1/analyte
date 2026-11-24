@@ -5,7 +5,7 @@ use super::{
     scan::{Known, scan},
 };
 use crate::admin::{
-    setup::{Setup, SetupError, Via, copies, entries, site, stored},
+    setup::{SETTINGS_UNCHANGED, Setup, SetupError, Via, copies, entries, site, stored},
     view::format,
 };
 use crate::installation::{
@@ -379,7 +379,7 @@ pub(in crate::admin::setup) fn saved_lines(change: Change, saved: &Saved) -> Vec
         ),
     ];
     if !saved.changed {
-        lines.push("The settings were already the same; no file was written.".to_owned());
+        lines.push(SETTINGS_UNCHANGED.to_owned());
     }
     for key in &saved.replaced {
         lines.push(format!("Key stored: {key}"));

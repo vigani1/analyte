@@ -1,6 +1,29 @@
-//! Tests VIDAS acknowledgment and checksum policy settings.
-use analyte_config::{Draft, Stack};
+//! Tests VIDAS policy settings and rejects obsolete keys.
+use analyte_config::{Draft, Error, Stack};
 use analyte_fixtures::ConfigEdit as _;
+
+// ADR 0002: report specific configuration errors at load time.
+#[test]
+fn vidas_rejects_removed_retry_keys() {
+    let definition = include_str!("../examples/vidas_literal.toml");
+    let site = include_str!("../examples/site.toml");
+    for (key, value) in [("retries", 0), ("backoff_ms", 1000)] {
+        let obsolete = definition.rewrite("[vidas]", &format!("[vidas]\n{key} = {value}"));
+        let result = Draft::load(
+            ("machine", &obsolete),
+            ("site", site),
+            ("overrides", "schema_version=1"),
+        );
+        assert!(
+            matches!(
+                result,
+                Err(Error::Schema { source, .. })
+                    if source.message().contains(&format!("unknown field `{key}`"))
+            ),
+            "expected an unknown-field error for `{key}`"
+        );
+    }
+}
 
 // ADR 0002; VIDAS BCI Link rev C appendix B.
 #[test]

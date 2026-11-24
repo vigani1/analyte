@@ -17,14 +17,6 @@ use analyte_transport::serial;
 use serde::Deserialize;
 use std::path::PathBuf;
 
-/// A definition's transport kind, used only to choose which inputs to show;
-/// `None` when it cannot be read or names no known kind.
-pub(super) fn kind_of(path: &std::path::Path) -> Option<TransportKind> {
-    let text = crate::installation::config::read(path).ok()?;
-    let table: toml::Table = text.parse().ok()?;
-    table.get("transport")?.get("kind")?.clone().try_into().ok()
-}
-
 /// The form value that keeps the installed model when it is not a shipped one.
 pub(super) const KEEP: &str = "installed";
 
@@ -34,6 +26,7 @@ pub(super) struct Model {
     /// kept from outside the shipped list.
     pub(super) key: Option<String>,
     pub(super) path: PathBuf,
+    pub(super) details: std::sync::Arc<analyte_config::DefinitionDetails>,
     /// The name for people; a kept model shows its file.
     pub(super) name: String,
 }
@@ -66,39 +59,48 @@ pub(super) fn chosen(
                 .ok_or(SetupError::NoDefinitionYet)?;
             let current = installed.canonicalize().ok();
             match list.iter().find(|d| match &d.state {
-                Shipped::Ready { path, .. }
+                Shipped::Ready { source, .. }
                 | Shipped::Blocked {
-                    record: Some(path), ..
-                } => path.canonicalize().ok() == current,
-                Shipped::Blocked { record: None } | Shipped::Unreadable(_) => false,
+                    record: Some(source),
+                } => current.is_some() && source.path.canonicalize().ok() == current,
+                Shipped::Unreadable { path, .. } => {
+                    path == installed || (current.is_some() && path.canonicalize().ok() == current)
+                }
+                Shipped::Blocked { record: None } => false,
             }) {
                 Some(found) => found,
                 None => {
                     return Ok(Model {
                         key: None,
                         path: installed.clone(),
+                        details: std::sync::Arc::new(
+                            definitions::read(installed).map_err(std::sync::Arc::new)?,
+                        ),
                         name: installed.display().to_string(),
                     });
                 }
             }
         }
     };
-    match &found.state {
-        Shipped::Ready { path, .. } => Ok(Model {
-            key: Some(found.key.clone()),
-            path: path.clone(),
-            name: found.display.clone(),
-        }),
-        Shipped::Blocked { record: Some(path) } if records_only => Ok(Model {
-            key: Some(found.key.clone()),
-            path: path.clone(),
-            name: found.display.clone(),
-        }),
-        Shipped::Blocked { record: Some(_) } => Err(SetupError::RecordOnlyModel(found.key.clone())),
-        Shipped::Blocked { record: None } | Shipped::Unreadable(_) => {
-            Err(SetupError::BlockedDefinition(found.key.clone()))
+    let source = match &found.state {
+        Shipped::Ready { source, .. } => source,
+        Shipped::Blocked {
+            record: Some(source),
+        } if records_only => source,
+        Shipped::Blocked { record: Some(_) } => {
+            return Err(SetupError::RecordOnlyModel(found.key.clone()));
         }
-    }
+        Shipped::Blocked { record: None } => {
+            return Err(SetupError::BlockedDefinition(found.key.clone()));
+        }
+        Shipped::Unreadable { error, .. } => return Err(error.clone().into()),
+    };
+    Ok(Model {
+        key: Some(found.key.clone()),
+        path: source.path.clone(),
+        details: source.details.clone(),
+        name: found.display.clone(),
+    })
 }
 
 /// Record only (ADR 0034): what the draft answers for the model's capture
@@ -131,36 +133,18 @@ pub(super) mod recording {
         }
     }
 
-    /// The `protocol` the model file names, for the questions it asks.
-    pub(in crate::admin::setup) fn protocol(definition: &std::path::Path) -> Option<String> {
-        let text = crate::installation::config::read(definition).ok()?;
-        let table: toml::Table = text.parse().ok()?;
-        table.get("protocol")?.as_str().map(str::to_owned)
-    }
-
-    /// The analyzer mode the model file asks (its `[analyzer_mode]`); none
-    /// when it asks none or cannot be read (the loader then says why).
-    pub(in crate::admin::setup) fn analyzer_mode(
-        definition: &std::path::Path,
-    ) -> Option<analyte_config::AnalyzerMode> {
-        let text = crate::installation::config::read(definition).ok()?;
-        analyte_config::recording::analyzer_mode(&definition.display().to_string(), &text)
-            .ok()
-            .flatten()
-    }
-
     /// The `[recording]` answers in the draft for this model's protocol.
     fn field(value: &Option<String>) -> Option<&str> {
         value.as_deref().map(str::trim).filter(|v| !v.is_empty())
     }
 
     pub(in crate::admin::setup) fn settings(
-        definition: &std::path::Path,
+        definition: &analyte_config::DefinitionDetails,
         draft: &wizard::Draft,
     ) -> Result<ProfileAnswers, SetupError> {
         let mut settings = ProfileAnswers::default();
-        match protocol(definition).as_deref() {
-            Some("autolyser") => {
+        match definition.protocol.as_str() {
+            "autolyser" => {
                 settings.poll_seconds = field(&draft.poll_seconds)
                     .map(|seconds| {
                         seconds.parse::<u32>().ok().filter(|s| analyte_config::recording::POLL_SECONDS.contains(s)).ok_or(
@@ -180,7 +164,7 @@ pub(super) mod recording {
                     })
                     .transpose()?;
             }
-            Some("vidas") => {
+            "vidas" => {
                 settings.acknowledgment = field(&draft.acknowledgment)
                     .map(|value| match value {
                         "literal" => Ok(VidasAcknowledgment::Literal),
@@ -195,7 +179,7 @@ pub(super) mod recording {
         }
         // Asked only when the model asks it; the loader checks the value is
         // one it offers.
-        if analyzer_mode(definition).is_some() {
+        if definition.analyzer_mode.is_some() {
             settings.analyzer_mode = field(&draft.analyzer_mode)
                 .map(|value| {
                     analyte_config::ChoiceName::new(value).map_err(|_| {
@@ -258,7 +242,7 @@ impl TryFrom<Vec<(String, String)>> for Choice {
 /// commas or spaces between them; none when nothing is typed, which accepts
 /// any device. Only a machine that connects to this PC can name them.
 fn peers_of(
-    kind: Option<TransportKind>,
+    kind: TransportKind,
     choice: &wizard::Draft,
 ) -> Result<Option<AllowedPeers>, SetupError> {
     let typed: Vec<&str> = choice
@@ -273,7 +257,7 @@ fn peers_of(
     if typed.is_empty() {
         return Ok(None);
     }
-    if kind != Some(TransportKind::TcpServer) {
+    if kind != TransportKind::TcpServer {
         return Err(SetupError::Connection(
             "only a machine that connects to this PC can be limited to some devices",
         ));
@@ -283,15 +267,14 @@ fn peers_of(
         .map_err(SetupError::Connection)
 }
 
-/// The connection the draft names for a definition of transport `kind`; an
-/// unknown kind asks for a folder, as a watched folder does.
+/// The connection the draft names for the definition's transport.
 pub(super) fn connection_of(
-    kind: Option<TransportKind>,
+    kind: TransportKind,
     choice: &wizard::Draft,
 ) -> Result<Endpoint, SetupError> {
     let field = |value: &Option<String>| value.as_deref().unwrap_or_default().trim().to_owned();
     match kind {
-        Some(TransportKind::Serial) => {
+        TransportKind::Serial => {
             let typed = field(&choice.port_name);
             if !typed.is_empty() {
                 return Ok(Endpoint::Fixed(typed));
@@ -305,7 +288,7 @@ pub(super) fn connection_of(
                 _ => Err(SetupError::Connection("choose a serial port")),
             }
         }
-        Some(TransportKind::TcpServer | TransportKind::TcpClient) => {
+        TransportKind::TcpServer | TransportKind::TcpClient => {
             let host: std::net::IpAddr = field(&choice.host)
                 .parse()
                 .map_err(|_| SetupError::Connection("enter an IP address such as 192.168.1.20"))?;
@@ -320,7 +303,7 @@ pub(super) fn connection_of(
                 std::net::SocketAddr::new(host, port).to_string(),
             ))
         }
-        Some(TransportKind::WatchedFolder) | None => {
+        TransportKind::WatchedFolder => {
             let folder = field(&choice.folder);
             if folder.is_empty() {
                 return Err(SetupError::Connection("enter the folder path"));
@@ -334,42 +317,18 @@ pub(super) fn connection_of(
 /// `kind` (ADR 0031): every typed value, the rest from the definition's
 /// suggestion; none for other links, which refuse typed cable settings.
 fn serial_of(
-    kind: Option<TransportKind>,
-    definition: &std::path::Path,
+    definition: &analyte_config::DefinitionDetails,
     draft: &wizard::Draft,
 ) -> Result<Option<analyte_config::SerialValues>, SetupError> {
-    match kind {
-        Some(TransportKind::Serial) => {
-            cable::chosen(draft, cable::suggested(definition).as_ref()).map(Some)
-        }
+    match definition.kind {
+        TransportKind::Serial => cable::chosen(draft, definition.serial.as_ref()).map(Some),
         _ if cable::given(draft) => Err(SetupError::Connection(
             "only a machine on a serial cable has cable settings (baud rate, parity and the rest)",
         )),
-        Some(
-            TransportKind::TcpServer | TransportKind::TcpClient | TransportKind::WatchedFolder,
-        )
-        | None => Ok(None),
+        TransportKind::TcpServer | TransportKind::TcpClient | TransportKind::WatchedFolder => {
+            Ok(None)
+        }
     }
-}
-
-/// Whether the normal definition leaves the Autolyser interval to the lab.
-pub(super) fn asks_autolyser_poll(definition: &std::path::Path) -> bool {
-    crate::installation::config::read(definition)
-        .ok()
-        .is_some_and(|text| {
-            analyte_config::asks_autolyser_poll(&definition.display().to_string(), &text)
-                .unwrap_or(false)
-        })
-}
-
-/// Whether the definition asks for the lab's VIDAS patient namespace.
-pub(super) fn asks_vidas_patient_namespace(definition: &std::path::Path) -> bool {
-    crate::installation::config::read(definition)
-        .ok()
-        .is_some_and(|text| {
-            analyte_config::asks_vidas_patient_namespace(&definition.display().to_string(), &text)
-                .unwrap_or(false)
-        })
 }
 
 /// The site interval, if one was saved for normal operation.
@@ -404,15 +363,16 @@ pub(super) fn plan(setup: &Setup, id: &str, draft: &wizard::Draft) -> Result<Pla
     let Model {
         path: definition,
         name: model,
+        details,
         ..
     } = model_of(&list, draft, &installed)?;
-    let kind = kind_of(&definition);
+    let kind = details.kind;
     let connection = connection_of(kind, draft)?;
     let peers = peers_of(kind, draft)?;
-    let serial = serial_of(kind, &definition, draft)?;
+    let serial = serial_of(&details, draft)?;
     let records_only = recording::chosen(draft);
-    let current = crate::installation::config::read(&installed.site)?;
-    let scan = lab_apps::scan(setup.config())?;
+    let current = site::read_document(&installed.site)?.into_table();
+    let scan = lab_apps::scan_with_site(setup.config(), Some((&installed.site, &current)))?;
     let link = (&connection, peers.as_ref(), serial.as_ref());
     let candidate = if records_only {
         // Record only asks its own questions; the model's choices are not used.
@@ -423,10 +383,10 @@ pub(super) fn plan(setup: &Setup, id: &str, draft: &wizard::Draft) -> Result<Pla
         {
             return Err(SetupError::LabAppWhileRecording);
         }
-        let answers = recording::settings(&definition, draft)?;
-        site::recording_candidate(&current, link, &answers, &scan.file)?
+        let answers = recording::settings(&details, draft)?;
+        site::recording_candidate(current, link, &answers, &scan.file)?
     } else {
-        let chosen = choices::chosen(draft, &choices::declared(&definition))?;
+        let chosen = choices::chosen(draft, &details.choices)?;
         let lab_app = Identifier::new(draft.lab_app.as_deref().unwrap_or_default().trim())
             .map_err(|_| SetupError::NoLabAppChosen)?;
         let poll = draft
@@ -439,27 +399,34 @@ pub(super) fn plan(setup: &Setup, id: &str, draft: &wizard::Draft) -> Result<Pla
                 })
             })
             .transpose()?;
-        let current_table: toml::Table = current.parse().map_err(SetupError::SiteFile)?;
-        let vidas_namespace = asks_vidas_patient_namespace(&definition)
+        let vidas_namespace = details
+            .asks_vidas_patient_namespace
             .then(|| {
-                draft.vidas_patient_namespace.as_deref().or_else(|| {
-                    current_table
-                        .get("vidas_patient_namespace")
-                        .and_then(toml::Value::as_str)
-                })
+                draft
+                    .vidas_patient_namespace
+                    .as_deref()
+                    .map(str::to_owned)
+                    .or_else(|| {
+                        current
+                            .get("vidas_patient_namespace")
+                            .and_then(toml::Value::as_str)
+                            .map(str::to_owned)
+                    })
             })
             .flatten()
             .filter(|value| !value.is_empty());
         site::candidate(
-            &current,
+            current,
             (link.0, link.1, link.2, &chosen),
-            (poll, vidas_namespace),
+            (poll, vidas_namespace.as_deref()),
             &lab_app,
             &scan.file,
             &scan.settings(),
         )?
     };
+    let definition = installed.definition_to_save(definition);
     let validated = site::validate(
+        &program,
         &installed,
         &definition,
         &candidate.text,

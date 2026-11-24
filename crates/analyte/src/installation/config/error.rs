@@ -146,6 +146,10 @@ pub enum Error {
     #[cfg(feature = "test-hooks")]
     #[error("test store budget requires a loopback override and 1 through 60 seconds")]
     InvalidTestStoreBudget,
+    /// An ASTM frame budget override must apply to a bounded synthetic server.
+    #[cfg(feature = "test-hooks")]
+    #[error("test ASTM frame budget requires a loopback ASTM server and 1 through 60 seconds")]
+    InvalidTestAstmFrameBudget,
     /// The synthetic shutdown I/O budget must stay within fixture limits.
     #[cfg(feature = "test-hooks")]
     #[error("test shutdown I/O budget must be 5 through 60 seconds")]
@@ -251,6 +255,7 @@ impl Error {
             | Self::TestListenerMismatch
             | Self::InvalidTestPolling
             | Self::InvalidTestStoreBudget
+            | Self::InvalidTestAstmFrameBudget
             | Self::InvalidTestShutdownIoBudget
             | Self::UnknownTestDestination
             | Self::UnknownTestMachine => return None,

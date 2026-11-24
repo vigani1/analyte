@@ -12,7 +12,7 @@ use super::{
     SetupError, Shipped, audit, copies, definition_name, definitions, lab_apps, level_and_state,
     needs_login, off_thread,
     plan::{self, Choice as Posted, KEEP, chosen, plan, save_blocking},
-    refused, running, settings_version, site,
+    refused, settings_version, site,
 };
 use crate::admin::{
     server::{Context, sessions::Session},
@@ -118,6 +118,7 @@ impl Step {
             SetupError::UnknownDefinition
             | SetupError::NoDefinitionYet
             | SetupError::BlockedDefinition(_)
+            | SetupError::DefinitionFile(_)
             | SetupError::RecordOnlyModel(_)
             | SetupError::Definitions(_) => Some(Self::Machine),
             SetupError::Connection(_)
@@ -146,6 +147,7 @@ impl Step {
             | SetupError::IncompleteForm(_)
             | SetupError::ProgramFile(_)
             | SetupError::ProgramLayout(_)
+            | SetupError::SiteRead { .. }
             | SetupError::SiteFile(_)
             | SetupError::SiteDestination(_)
             | SetupError::SiteText(_)
@@ -312,8 +314,7 @@ fn render_machine(
 ) -> Result<Rendered, SetupError> {
     let (_, installed) = site::installed(state.setup.config(), id)?;
     let list = definitions(&state.setup.seams)?;
-    let recording_now = crate::installation::config::read(&installed.site)
-        .is_ok_and(|text| analyte_config::recording::records_only(&text));
+    let recording_now = site::read_document(&installed.site)?.records_only();
     let records_only = draft
         .mode
         .as_deref()
@@ -605,7 +606,7 @@ pub(in crate::admin) async fn save(
                     shown: format::digest_short(&saved.digest),
                     exact: format::digest_hex(&saved.digest),
                 },
-                settings_version(running(&state, &id)),
+                settings_version(state.setup.running(&id)),
             )),
             model: saved.model,
         },

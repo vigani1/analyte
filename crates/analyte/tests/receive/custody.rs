@@ -223,9 +223,12 @@ async fn disk_full_rebuilds(at_eot: bool) -> Result<(), Error> {
     let path = config(temp.path(), true)?;
     let program = Program::load(&path)?;
     let space = std::sync::Arc::new(AtomicU64::new(u64::MAX));
+    let mut loaded = Program::load(&path)?;
+    // The first frames need to commit before this test removes space from the store.
+    loaded.set_loopback_astm_frame_budget_for_test("synthetic", guard::STORE_BUDGET)?;
     let (shutdown, stop) = oneshot::channel();
     let owner = tokio::spawn(serve(
-        Program::load(&path)?,
+        loaded,
         Box::new(analyte_fixtures::AdjustableSpace(space.clone())),
         async {
             stop.await?;
