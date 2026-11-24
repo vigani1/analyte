@@ -1182,12 +1182,11 @@ async fn restart_now_is_audited_and_stops_the_server() -> Result<(), Error> {
     Ok(())
 }
 
-// Owner request 2026-11-18 (setup page): choosing another shipped definition
-// changes only that entry's `definition` in the program file, with a backup; a
-// choice the whole program then refuses (here the store record bound) puts every
-// previous file back.
+// AGENTS.md "One way per thing": steps 3 and 4 and the save enforce the
+// program loader's store record bound before they write anything. A valid
+// model change still edits the entry's definition and backs up the program.
 #[tokio::test(flavor = "multi_thread")]
-async fn definition_change_edits_program_and_rolls_back_on_refusal() -> Result<(), Error> {
+async fn definition_change_checks_store_limit_before_writing() -> Result<(), Error> {
     let fixture = start().await?;
     let root = fixture.config.parent().ok_or("root")?;
     let big = root.join("machines/example/big-hl7");
@@ -1206,14 +1205,27 @@ async fn definition_change_edits_program_and_rolls_back_on_refusal() -> Result<(
             ("tcp_port", "5600"),
         ])
         .await?;
-    let refused = fixture.post("/setup/synthetic", &too_big).await?;
-    assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
-    assert!(
-        refused.contains("previous files were put back"),
-        "{refused}"
-    );
+    let query = "definition=example%2Fbig-hl7&host=127.0.0.1&tcp_port=5600&lab_app=demo";
+    for refused in [
+        fixture
+            .get(&format!("/setup/synthetic/test?{query}"))
+            .await?,
+        fixture
+            .get(&format!("/setup/synthetic/save?{query}"))
+            .await?,
+        fixture.post("/setup/synthetic", &too_big).await?,
+    ] {
+        assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
+        assert!(
+            refused.contains(
+                "Store record limit is smaller than machine message or effective config."
+            ),
+            "{refused}"
+        );
+    }
     assert_eq!(std::fs::read_to_string(&fixture.config)?, program_before);
     assert_eq!(std::fs::read_to_string(&fixture.site)?, site_before);
+    assert!(fixture.backups()?.is_empty());
     let body = fixture
         .form(&[
             ("definition", "example/network-hl7"),
@@ -2414,6 +2426,73 @@ async fn test_with_no_bytes_says_nothing_received() -> Result<(), Error> {
         "{view}"
     );
     assert!(fixture.written.lock().map_err(|_| "poisoned")?.is_empty());
+    Ok(())
+}
+
+// AGENTS.md: step 2 must keep the read or parse failure for the site's settings.
+#[tokio::test(flavor = "multi_thread")]
+async fn setup_step_two_reports_site_errors() -> Result<(), Error> {
+    let fixture = start_with(
+        "[admin]\nport = 8080\n[[machines]]\nid = 'machine-1'\nsite = 'site.toml'\n",
+        include_str!("../../../../../../../packaging/linux/starter/machine-1.site.toml"),
+    )
+    .await?;
+    let folder = fixture.root().join("machines/example/synthetic-astm");
+    std::fs::create_dir_all(&folder)?;
+    std::fs::write(
+        folder.join("machine.toml"),
+        include_str!("../../../../../../../machines/example/synthetic-astm/machine.toml"),
+    )?;
+    let step = "/setup/machine-1/connection?definition=example/synthetic-astm";
+    let site = fixture.root().join("site.toml");
+    for (contents, problem) in [
+        (None, "Reading the machine&#39;s site file"),
+        (Some("endpoint = ["), "site file could not be parsed"),
+    ] {
+        match contents {
+            Some(text) => std::fs::write(&site, text)?,
+            None => std::fs::remove_file(&site)?,
+        }
+        let response = fixture.get(step).await?;
+        assert!(response.starts_with("HTTP/1.1 409"), "{response}");
+        assert!(response.contains("site.toml"), "{response}");
+        assert!(response.contains(problem), "{response}");
+    }
+    Ok(())
+}
+
+// AGENTS.md: keep definition errors specific; an unreadable transport is unknown.
+#[tokio::test(flavor = "multi_thread")]
+async fn setup_step_two_reports_definition_errors() -> Result<(), Error> {
+    let fixture = start_with(
+        "[admin]\nport = 8080\n[[machines]]\nid = 'machine-1'\nsite = 'site.toml'\n",
+        include_str!("../../../../../../../packaging/linux/starter/machine-1.site.toml"),
+    )
+    .await?;
+    let path = fixture.root().join("machines/example/broken/machine.toml");
+    std::fs::create_dir_all(&path)?;
+    let step = "/setup/machine-1/connection?definition=example/broken";
+    let response = fixture.get(step).await?;
+    assert!(response.starts_with("HTTP/1.1 409"), "{response}");
+    assert!(
+        response.contains("Reading the machine definition"),
+        "{response}"
+    );
+    assert!(response.contains("machine.toml"), "{response}");
+
+    std::fs::remove_dir(&path)?;
+    std::fs::write(
+        &path,
+        include_str!("../../../../../../../machines/example/synthetic-astm/machine.toml")
+            .replace("kind = \"tcp_server\"", "kind = \"unknown-link\""),
+    )?;
+    let response = fixture.get(step).await?;
+    assert!(response.starts_with("HTTP/1.1 409"), "{response}");
+    assert!(
+        response.contains("The machine definition is invalid"),
+        "{response}"
+    );
+    assert!(response.contains("unknown-link"), "{response}");
     Ok(())
 }
 

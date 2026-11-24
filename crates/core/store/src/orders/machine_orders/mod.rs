@@ -13,7 +13,7 @@ use rusqlite::{Transaction, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 use std::num::NonZeroU64;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 /// Stable app namespace, order and machine identity for one attempted command.
 #[derive(Debug, Clone, Serialize, Deserialize)]

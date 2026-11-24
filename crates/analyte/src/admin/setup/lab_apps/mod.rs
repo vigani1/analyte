@@ -21,9 +21,13 @@ use change::{
 pub(super) use keys::{API_KEY, KeySource, SIGNING_KEY, missing_keys};
 pub(in crate::admin) use keys::{Found, key_sources};
 use scan::Known;
-pub(super) use scan::{Scan, SiteLabApp, conflict_sentence, scan, site_lab_app, where_written};
+pub(super) use scan::{
+    Scan, SiteLabApp, conflict_sentence, scan, scan_with_site, site_lab_app, where_written,
+};
 
-use super::{Csrf, RELOAD, SetupError, Via, audit, copies, off_thread, on_files};
+use super::{
+    Csrf, RELOAD, RESTART_REQUIRED, SETTINGS_UNCHANGED, SetupError, Via, audit, copies, off_thread,
+};
 use crate::admin::machines::{DialogItem, RemoveDialog};
 use crate::admin::overview::{self, Delivery, Standing};
 use crate::admin::removed;
@@ -618,14 +622,10 @@ fn saved_page(
     };
     let mut lines = vec![
         format!("Address: {}", saved.settings.base_url.as_str()),
-        if saved.users.is_empty() {
-            "Used by no machine yet: pick it on a machine’s setup page.".to_owned()
-        } else {
-            format!("Used by {}.", saved.users.join(", "))
-        },
+        saved.usage_line("Used by no machine yet: pick it on a machine’s setup page."),
     ];
     if !saved.changed {
-        lines.push("The settings were already the same; no file was written.".into());
+        lines.push(SETTINGS_UNCHANGED.into());
     }
     lines.extend(
         saved
@@ -653,7 +653,7 @@ fn saved_page(
             section,
             Tone::Good,
             format!("{name} is {}", change.verb()),
-            "Analyte uses these settings after it restarts.",
+            RESTART_REQUIRED,
         )
     };
     respond(state, Some(session), section, StatusCode::OK, page.render())
@@ -675,7 +675,7 @@ pub(in crate::admin) async fn add(
     let Ok(Form(posted)) = form else {
         return refused(&state, &session, None, &SetupError::IncompleteForm(RELOAD));
     };
-    let saved = on_files(&state.setup, move |setup| {
+    let saved = off_thread(&state.setup, move |setup| {
         add_blocking(setup, posted.entered())
     })
     .await;
@@ -698,7 +698,7 @@ pub(in crate::admin) async fn save(
         );
     };
     let lab_app = name.clone();
-    let saved = on_files(&state.setup, move |setup| {
+    let saved = off_thread(&state.setup, move |setup| {
         save_blocking(setup, &lab_app, posted.entered())
     })
     .await;
@@ -747,7 +747,7 @@ pub(in crate::admin) async fn remove(
     }
     let open = waiting(&state.store).await.map(|open| count(&open, &name));
     let lab_app = name.clone();
-    let removed = on_files(&state.setup, move |setup| {
+    let removed = off_thread(&state.setup, move |setup| {
         remove_blocking(setup, &lab_app, &open)
     })
     .await;

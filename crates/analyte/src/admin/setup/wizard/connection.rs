@@ -3,8 +3,8 @@
 use super::{
     super::{
         Address, SetupError, cable, choices, definitions, lab_apps,
-        plan::{current_lab_app, holder, kind_of, model_of},
-        running, serial, site,
+        plan::{current_lab_app, holder, model_of},
+        serial, site,
     },
     Draft, Rendered, Step, frame,
     page::{self, Cable, CableOption, ConnectionStep, LabApp, Picker, Port, Setting},
@@ -15,7 +15,7 @@ use crate::admin::{
     view::{format, parts::Hover},
 };
 use crate::machine::link::status::Link;
-use analyte_config::{Endpoint, TransportKind};
+use analyte_config::{DefinitionDetails, Endpoint, TransportKind};
 use askama::Template as _;
 
 pub(super) fn render_connection(
@@ -27,19 +27,19 @@ pub(super) fn render_connection(
     let (_, installed) = site::installed(state.setup.config(), id)?;
     let list = definitions(&state.setup.seams)?;
     let model = model_of(&list, draft, &installed)?;
-    let current_site = crate::installation::config::read(&installed.site)
-        .ok()
-        .and_then(|text| text.parse::<toml::Table>().ok())
-        .unwrap_or_default();
+    let document = site::read_document(&installed.site)?;
+    let current_site = document.table();
     let lab_app = draft
         .lab_app
         .clone()
-        .or_else(|| current_lab_app(running(state, id), &current_site));
-    let lab_apps = match lab_apps::scan(state.setup.config()) {
-        Ok(scan) => picker(&scan, lab_app.as_deref()),
-        Err(error) => Picker::Unreadable(format::sentence(&error.to_string())),
-    };
-    let (how, inputs) = connection_inputs(state, id, &model.path, &current_site, draft);
+        .or_else(|| current_lab_app(state.setup.running(id), current_site));
+    let lab_apps =
+        match lab_apps::scan_with_site(state.setup.config(), Some((&installed.site, current_site)))
+        {
+            Ok(scan) => picker(&scan, lab_app.as_deref()),
+            Err(error) => Picker::Unreadable(format::sentence(&error.to_string())),
+        };
+    let (how, inputs) = connection_inputs(state, id, &model.details, current_site, draft);
     let records_only = super::plan::recording::chosen(draft);
     Ok(ConnectionStep {
         frame: frame(state, session, id),
@@ -53,36 +53,34 @@ pub(super) fn render_connection(
         choices: if records_only {
             Vec::new()
         } else {
-            choice_fields(&model.path, &current_site, draft)
+            choice_fields(&model.details, current_site, draft)
         },
-        vidas_patient_namespace: (!records_only
-            && super::plan::asks_vidas_patient_namespace(&model.path))
-        .then(|| {
-            draft
-                .vidas_patient_namespace
-                .clone()
-                .or_else(|| {
-                    current_site
-                        .get("vidas_patient_namespace")
-                        .and_then(toml::Value::as_str)
-                        .map(str::to_owned)
-                })
-                .unwrap_or_default()
-        }),
-        autolyser_poll_seconds: (!records_only && super::plan::asks_autolyser_poll(&model.path))
+        vidas_patient_namespace: (!records_only && model.details.asks_vidas_patient_namespace)
             .then(|| {
                 draft
-                    .poll_seconds
+                    .vidas_patient_namespace
                     .clone()
-                    .or_else(|| super::plan::saved_autolyser_poll(&current_site))
+                    .or_else(|| {
+                        current_site
+                            .get("vidas_patient_namespace")
+                            .and_then(toml::Value::as_str)
+                            .map(str::to_owned)
+                    })
                     .unwrap_or_default()
             }),
+        autolyser_poll_seconds: (!records_only && model.details.asks_autolyser_poll).then(|| {
+            draft
+                .poll_seconds
+                .clone()
+                .or_else(|| super::plan::saved_autolyser_poll(current_site))
+                .unwrap_or_default()
+        }),
         normal_poll_range: analyte_config::AUTOLYSER_POLL_SECONDS,
         recording_poll_range: analyte_config::recording::POLL_SECONDS,
         lab_apps,
-        recording: records_only.then(|| recording_questions(&model.path, &current_site, draft)),
+        recording: records_only.then(|| recording_questions(&model.details, current_site, draft)),
         analyzer_mode: if records_only {
-            analyzer_mode_field(&model.path, &current_site, draft)
+            analyzer_mode_field(&model.details, current_site, draft)
         } else {
             None
         },
@@ -93,7 +91,7 @@ pub(super) fn render_connection(
 /// Record only, step 2: the capture profile's questions for the model's
 /// protocol (ADR 0034), filled in with the draft's or the saved answers.
 fn recording_questions(
-    definition: &std::path::Path,
+    definition: &DefinitionDetails,
     current_site: &toml::Table,
     draft: &Draft,
 ) -> page::Recording {
@@ -103,12 +101,12 @@ fn recording_questions(
             .or_else(|| super::plan::recording::saved(current_site, key))
             .unwrap_or_default()
     };
-    match super::plan::recording::protocol(definition).as_deref() {
-        Some("autolyser") => page::Recording::Autolyser {
+    match definition.protocol.as_str() {
+        "autolyser" => page::Recording::Autolyser {
             poll_seconds: value(&draft.poll_seconds, "poll_seconds"),
             controls: value(&draft.controls, "controls"),
         },
-        Some("vidas") => page::Recording::Vidas {
+        "vidas" => page::Recording::Vidas {
             acknowledgment: value(&draft.acknowledgment, "acknowledgment"),
         },
         _ => page::Recording::Nothing,
@@ -119,11 +117,11 @@ fn recording_questions(
 /// its declared values; the draft's or the saved answer, else "Choose": the
 /// installed mode is never assumed.
 fn analyzer_mode_field(
-    definition: &std::path::Path,
+    definition: &DefinitionDetails,
     current_site: &toml::Table,
     draft: &Draft,
 ) -> Option<Setting> {
-    let mode = super::plan::recording::analyzer_mode(definition)?;
+    let mode = definition.analyzer_mode.as_ref()?;
     let current = draft
         .analyzer_mode
         .clone()
@@ -178,7 +176,7 @@ fn picker(scan: &lab_apps::Scan, current: Option<&str>) -> Picker {
 fn connection_inputs(
     state: &Context,
     id: &str,
-    path: &std::path::Path,
+    definition: &DefinitionDetails,
     current_site: &toml::Table,
     draft: &Draft,
 ) -> (&'static str, page::Inputs) {
@@ -186,12 +184,12 @@ fn connection_inputs(
         .get("endpoint")
         .and_then(toml::Value::as_str)
         .unwrap_or_default();
-    match kind_of(path) {
-        Some(TransportKind::Serial) => (
+    match definition.kind {
+        TransportKind::Serial => (
             "It connects by a serial cable or a USB serial adapter.",
-            serial_choices(state, id, (path, current_site), draft),
+            serial_choices(state, id, (definition, current_site), draft),
         ),
-        Some(kind @ (TransportKind::TcpServer | TransportKind::TcpClient)) => {
+        kind @ (TransportKind::TcpServer | TransportKind::TcpClient) => {
             let (host, port) = super::plan::saved_tcp(current_endpoint).unwrap_or_default();
             let host = draft.host.as_deref().unwrap_or(host).to_owned();
             let port = draft.tcp_port.as_deref().unwrap_or(port).to_owned();
@@ -225,7 +223,7 @@ fn connection_inputs(
                 )
             }
         }
-        Some(TransportKind::WatchedFolder) | None => (
+        TransportKind::WatchedFolder => (
             "Analyte reads its results from a folder.",
             page::Inputs::Folder(
                 draft
@@ -285,7 +283,7 @@ pub(in crate::admin::setup) fn host_choices(found: &[Address], chosen: &str) -> 
 fn serial_choices(
     state: &Context,
     id: &str,
-    (definition, current_site): (&std::path::Path, &toml::Table),
+    (definition, current_site): (&DefinitionDetails, &toml::Table),
     draft: &Draft,
 ) -> page::Inputs {
     let current = |key| current_site.get(key).and_then(toml::Value::as_str);
@@ -352,11 +350,11 @@ fn serial_choices(
 /// draft's value, else the site file's saved choice, else the definition's
 /// suggestion; without any, "Choose", so nothing is assumed.
 fn cable_fields(
-    definition: &std::path::Path,
+    definition: &DefinitionDetails,
     current_site: &toml::Table,
     draft: &Draft,
 ) -> Vec<Cable> {
-    let suggestion = cable::suggested(definition).unwrap_or_default();
+    let suggestion = definition.serial.clone().unwrap_or_default();
     let saved = cable::saved(current_site).unwrap_or_default();
     analyte_config::SerialSetting::ALL
         .into_iter()
@@ -402,13 +400,14 @@ fn cable_fields(
 /// the draft's value, else the site file's saved one, else the manual's
 /// suggestion; without any, "Choose", so nothing is assumed.
 fn choice_fields(
-    definition: &std::path::Path,
+    definition: &DefinitionDetails,
     current_site: &toml::Table,
     draft: &Draft,
 ) -> Vec<Setting> {
     let saved = choices::saved(current_site);
-    choices::declared(definition)
-        .into_iter()
+    definition
+        .choices
+        .iter()
         .map(|choice| {
             let name = choice.name.as_str();
             let suggested = choice

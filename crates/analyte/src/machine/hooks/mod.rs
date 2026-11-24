@@ -29,6 +29,9 @@ mod disabled {
     #[derive(Default)]
     pub(crate) struct MachineHooks {}
     impl MachineHooks {
+        pub(crate) fn astm_frame_budget(&self) -> Option<std::time::Duration> {
+            None
+        }
         pub(crate) fn enabled(&self, _: Pause) -> bool {
             false
         }

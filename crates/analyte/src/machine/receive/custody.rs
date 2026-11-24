@@ -100,7 +100,7 @@ pub(crate) enum Refusal<E: std::error::Error + 'static> {
 
 pub(crate) use crate::cleanup::{CleanupFailure, effect_failure, retain_cleanup};
 
-/// Uses the validated transport operation timeout as the complete custody budget.
+/// Bounds the complete custody operation.
 /// Cancelling the wait does not prove rollback: callers must refuse positive effects.
 pub(crate) async fn store_within<T, E>(
     budget: Duration,
@@ -137,7 +137,22 @@ pub(crate) enum StoreWaitError<E> {
 }
 
 pub(crate) fn budget(machine: &crate::installation::config::Machine) -> Duration {
-    ms(machine.snapshot.effective().stack().commit_budget_ms())
+    machine
+        .hooks
+        .astm_frame_budget()
+        .unwrap_or_else(|| ms(machine.snapshot.effective().stack().commit_budget_ms()))
+}
+
+/// Keeps the ASTM frame journal's worker deadline in step with a fixture's custody budget.
+pub(crate) fn astm_frame_deadline(
+    machine: &crate::installation::config::Machine,
+) -> Result<Instant, crate::DeadlineError> {
+    machine
+        .hooks
+        .astm_frame_budget()
+        .map_or_else(crate::deadline, |budget| {
+            crate::storage_deadline(Instant::now(), budget)
+        })
 }
 
 /// Gives one protocol host error, which must have a `Refusal(Refusal<Self>)` variant,
@@ -181,6 +196,37 @@ mod tests {
     #[derive(Debug, thiserror::Error)]
     #[error("disk full")]
     struct DiskFull;
+
+    // ADR 0003 and ADR 0010: a fixture may wait longer for the same durable custody.
+    #[cfg(feature = "test-hooks")]
+    #[test]
+    fn astm_fixture_extends_both_custody_deadlines() -> Result<(), crate::Error> {
+        use crate::installation::config::Program;
+        let temp = tempfile::tempdir()?;
+        let path = analyte_fixtures::write_machine(
+            temp.path(),
+            &analyte_fixtures::astm_tcp(),
+            "127.0.0.1:5600",
+        )?;
+        let mut program = Program::load(&path)?;
+        let check = |program: &Program, custody: Duration, worker: Duration| {
+            let machine = program.machines().first().ok_or("machine missing")?;
+            assert_eq!(budget(machine), custody);
+            let before = Instant::now();
+            let deadline = astm_frame_deadline(machine)?;
+            assert!((before + worker..=Instant::now() + worker).contains(&deadline));
+            Ok::<_, crate::Error>(())
+        };
+        check(&program, Duration::from_secs(10), Duration::from_secs(5))?;
+        let fixture = analyte_fixtures::STORE_BUDGET;
+        program.set_loopback_astm_frame_budget_for_test("synthetic", fixture)?;
+        check(&program, fixture, fixture)?;
+        check(
+            &Program::load(&path)?,
+            Duration::from_secs(10),
+            Duration::from_secs(5),
+        )
+    }
 
     // ADR 0010
     #[tokio::test]

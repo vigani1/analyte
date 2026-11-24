@@ -679,11 +679,7 @@ fn check_config(file: &std::path::Path) -> Result<(), Error> {
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect::<String>();
-        let level = match machine.snapshot().effective().machine().evidence.level {
-            analyte_config::EvidenceLevel::Documented => "documented",
-            analyte_config::EvidenceLevel::Simulated => "simulated",
-            analyte_config::EvidenceLevel::Proven => "proven",
-        };
+        let level = machine.snapshot().effective().machine().evidence.level;
         analyte::operator::display::line(&format!("{} {digest} {level}", machine.id().as_str()))?;
     }
     for id in program.awaiting_setup() {

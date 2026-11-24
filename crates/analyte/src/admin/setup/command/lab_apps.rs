@@ -23,7 +23,7 @@ use crate::admin::setup::{
         relay::{Answer, PATH, Sent},
         scan, where_written,
     },
-    on_files,
+    off_thread,
 };
 use crate::admin::view::format;
 use crate::installation::credentials::Locked;
@@ -338,7 +338,7 @@ async fn add(
     }
     installation
         .with_store(async |store| {
-            let saved = on_files(setup, move |setup| add_blocking(setup, entered)).await?;
+            let saved = off_thread(setup, move |setup| add_blocking(setup, entered)).await?;
             print_saved(Change::Added, &saved)?;
             let name = saved.settings.name.as_str();
             let why = reason(Via::CommandLine, Change::Added, &saved);
@@ -360,7 +360,7 @@ async fn save(
         .with_store(async |store| {
             let lab_app = name.to_owned();
             let saved =
-                on_files(setup, move |setup| save_blocking(setup, &lab_app, entered)).await?;
+                off_thread(setup, move |setup| save_blocking(setup, &lab_app, entered)).await?;
             print_saved(Change::Saved, &saved)?;
             let why = reason(Via::CommandLine, Change::Saved, &saved);
             let outcome = record(store, actor, Change::Saved.action(), name, &why).await?;
@@ -385,7 +385,7 @@ async fn remove(
             let open = waiting(store).await.map(|open| count(&open, name));
             let lab_app = name.to_owned();
             let (kept, keys) =
-                on_files(setup, move |setup| remove_blocking(setup, &lab_app, &open)).await?;
+                off_thread(setup, move |setup| remove_blocking(setup, &lab_app, &open)).await?;
             say(&format!("{name} is no longer listed."))?;
             say(keys)?;
             backups(&kept)?;
