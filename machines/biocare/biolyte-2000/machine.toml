@@ -92,11 +92,31 @@ run = []
 correction_status_codes = []
 
 # ADR 0036: Appendix VI p. 82 puts the software version in the third
-# component of H.5 (BioCare^Biolyte^version^serial). Staff read it on the
-# analyzer under Menu → 4 (Software version). A mismatch only warns.
+# component of H.5 (BioCare^Biolyte^version^serial). A mismatch only warns.
 [software_version]
 selector = "astm_sender_third_component"
 source = "BioCARE Biolyte 2000 Service Manual V4.2A, Appendix VI, Header record H.5 (p. 82)"
+
+[software_version.bands]
+"v4-2a" = ["4.2A"]
+
+# ADR 0032 and the ADR 0034 amendment: staff read the installed version under
+# Menu → 4 (Appendix I p. 73). Only the lab knows it, so there is no
+# suggestion. The manual documents one version; any other runs unchecked
+# with a visible warning. No version selects different settings.
+[[choices]]
+name = "software_version"
+kind = "software_version"
+label = "Software version shown under Menu → 4 (Software version)"
+
+[[choices.values]]
+value = "v4-2a"
+label = "4.2A"
+
+[[choices.values]]
+value = "other"
+label = "Other version (not checked)"
+checked = false
 
 # Both departures apply to the one documented upload (Menu → Data → Transfer).
 [departure_scope]

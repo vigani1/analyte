@@ -38,20 +38,18 @@ resolution (Appendix I, pp. 73–74). These settings change the analytes,
 unit strings or value text on the wire; Analyte passes each through as sent,
 so none of them is a Setup question. Appendix VI gives one layout and
 establishes neither a transfer mode choice nor firmware-dependent field
-layouts, so the definition declares no ADR 0032 choices.
+layouts. The only ADR 0032 choice is the software version.
 
 ### Setup questions
 
 | Setup asks | Where staff find the answer |
 | --- | --- |
 | Baud, data bits, parity, stop bits | Fixed on the analyzer (Service Manual pp. 13–14, no settings screen). Keep the suggested 9600, 8, none, 1. |
+| Software version (no suggestion): 4.2A, or Other version (not checked) | **Menu → 4 (Software version)** on the analyzer. Choose 4.2A only if the screen shows exactly that; otherwise choose Other, and Overview keeps a "not checked" warning. No version changes how results are read. |
 | Flow control (no suggestion) | Not on any analyzer screen or in the manual. Ask whoever wired the cable (pins 4, 5, 6 and 20 are the handshake lines) or the vendor's service engineer. |
 
-Two other answers belong to the lab but are not Setup questions today:
+One other answer belongs to the lab but is not a Setup question:
 
-- **Software version.** Staff read it under Menu → 4. A software version
-  choice needs at least two values and the manual documents one, so it is
-  not offered yet; the H.5 check below still warns on any other version.
 - **Where staff type the specimen ID.** Only the keypad **ID** field reaches
   the wire (P.4). The accession number and name are printed but never
   transmitted (Appendix VI p. 82), so this is not a choice: staff must enter
@@ -65,7 +63,7 @@ transfer of stored data is the documented workflow.
 
 | Wire field | Documented meaning and how the definition uses it |
 | --- | --- |
-| H.5.3 / H.5.4 | Software version and analyzer serial number. H.5.3 feeds the ADR 0036 check against `4.2A`. H.14 is transmission time. H.3 and H.12 are unused. |
+| H.5.3 / H.5.4 | Software version and analyzer serial number. With 4.2A chosen, H.5.3 is checked against `4.2A` (ADR 0036) and any other token warns. H.14 is transmission time. H.3 and H.12 are unused. |
 | P.4 | The laboratory-assigned ID, blank when none was entered. It is the sample ID, kept exactly as sent, including padding and leading zeros. |
 | O.3 / O.4 | O.3 is unused. O.4 is the analyzer's wrapping sample sequence; it is not used as identity. Appendix VI gives no accession field. P.6 is unused even though the keypad accepts a name. |
 | O.16 / O.26 | Specimen descriptor (Serum/Plasma, Whole Blood or Urine) and preliminary report code P, kept as result details. One P and one O record per message, each with record sequence 1. |
@@ -108,7 +106,7 @@ tolerance is declared.
 | Appendix VI §§2–4 | The documented editions are E1381-91 and E1394-91. Matching envelopes and timers establish only part of compatibility. | **Open.** Framing, dialog and syntax use LIS01-A2 and LIS02-A2; config cannot select the older editions. |
 | Appendix VI §§2.1–2.2 | The analyzer repeats ENQ once. | **Closed:** the repeat-ENQ departure is declared. |
 | Appendix VI §3 and p. 86 | The prose allows only 0–9 and A–F; the example prints lowercase. If the analyzer emits lowercase, Analyte NAKs the frame (raw bytes are kept). | **Open.** The conflicting evidence does not justify the lowercase-checksum departure; a capture decides. |
-| Appendix VI p. 82, H.5 and H.12 | H.12 is unused; H.5.3 carries the software version. | **Closed:** the empty-H.12 departure and the ADR 0036 check are declared. The software version choice waits for a second documented value. |
+| Appendix VI p. 82, H.5 and H.12 | H.12 is unused; H.5.3 carries the software version. | **Closed:** the empty-H.12 departure, the software version choice and the ADR 0036 check are declared. |
 | Appendix VI pp. 82–84, P.4 and O.3/O.4 | Missing ID, use of the accession field on the keypad or reliance on a wrapping counter can misassign a result. | **Partly closed:** P.4 is the sample ID, kept as sent, and a blank P.4 is held. Whether the lab's real specimen ID arrives intact (padding, case) needs a capture. |
 | Appendix I p. 73 and Appendix VI pp. 82–85 | A QC menu exists, but the transfer layout has no patient/control discriminator and does not say whether controls are exported. | **Open.** Material class stays unknown. No site choice can supply a marker missing from the bytes. |
 | Appendix VI pp. 84–85, O.16, O.26 and R.9 | Specimen descriptor and preliminary report status. | **Closed:** kept as result details. Observation status stays unknown. |
@@ -130,7 +128,8 @@ Empty optional fields leaves P.4 blank and places the start time only on
 the first result. Broken checksum tests a correct lowercase checksum, an
 incorrect uppercase checksum and an accepted uppercase retry.
 
-The machine replay suite replays them through the definition. The host
+The machine replay suite replays them through the definition, with the
+site answers in [replay.toml](replay.toml) (both software version values). The host
 replies are unchanged from the record-only fixtures: the ready path stores
 each frame and acknowledges it the same way, and refuses lowercase checksum
 digits under strict hex. A shared de-identified recording from a real
