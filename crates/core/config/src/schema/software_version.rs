@@ -1,5 +1,5 @@
 //! Declares and resolves evidenced analyzer software version checks.
-use crate::schema::{ChoiceKind, ChoiceName, MachineDocument};
+use crate::schema::{ChoiceKind, ChoiceName, MachineDocument, VersionEvidence};
 use crate::{Chosen, Error, Machine, invalid};
 use analyte_model::Identifier;
 use serde::{Deserialize, Serialize};
@@ -27,9 +27,29 @@ pub(crate) struct Declaration {
     bands: BTreeMap<ChoiceName, Vec<Identifier>>,
 }
 
-/// The validated selector and the checked versions for the settings in use.
+/// Software version coverage for the settings in use.
 #[derive(Debug, Clone)]
-pub struct Check {
+pub enum Check {
+    /// The selected version has no manual coverage or expected wire tokens.
+    Unchecked,
+    /// Compare incoming versions to exact tokens backed by evidence.
+    Expected(ExpectedVersions),
+}
+
+impl Check {
+    /// The wire comparison, when the active version has expected tokens.
+    #[must_use]
+    pub const fn expected(&self) -> Option<&ExpectedVersions> {
+        match self {
+            Self::Unchecked => None,
+            Self::Expected(expected) => Some(expected),
+        }
+    }
+}
+
+/// The validated selector and the expected tokens for a wire comparison.
+#[derive(Debug, Clone)]
+pub struct ExpectedVersions {
     /// The selected location in incoming messages.
     pub selector: Selector,
     /// Exact checked versions; no ordering or prefix matching is inferred.
@@ -39,7 +59,7 @@ pub struct Check {
 }
 
 impl Machine {
-    /// Returns the check for the active settings, if the definition declares one.
+    /// Returns the coverage and wire check, if applicable to the active settings.
     #[must_use]
     pub fn software_version(&self) -> Option<&Check> {
         self.software_version.as_ref()
@@ -82,14 +102,15 @@ fn validate(document: &MachineDocument, path: &str) -> Result<(), Error> {
         .iter()
         .find(|c| c.kind == ChoiceKind::SoftwareVersion);
     if let Some(choice) = choice {
-        if declaration.bands.len() != choice.values.len()
-            || choice
-                .values
-                .iter()
-                .any(|v| !declaration.bands.contains_key(&v.value))
+        let mut expected = choice
+            .values
+            .iter()
+            .filter(|value| value.version_evidence == VersionEvidence::Checked);
+        if declaration.bands.len() != expected.clone().count()
+            || expected.any(|value| !declaration.bands.contains_key(&value.value))
         {
             return Err(refuse(
-                "declare checked versions for every software version choice value",
+                "declare wire tokens for every checked software version value and omit the unchecked value",
             ));
         }
         for versions in declaration.bands.values() {
@@ -128,14 +149,17 @@ pub(crate) fn resolve(
     chosen: &[Chosen],
     path: &str,
 ) -> Result<Option<Check>, Error> {
+    validate(document, path)?;
+    let choice = chosen
+        .iter()
+        .find(|c| c.kind == ChoiceKind::SoftwareVersion);
+    if choice.is_some_and(|c| c.version_evidence == VersionEvidence::Unchecked) {
+        return Ok(Some(Check::Unchecked));
+    }
     let Some(declaration) = &document.software_version else {
         return Ok(None);
     };
-    validate(document, path)?;
-    let mut checked = match chosen
-        .iter()
-        .find(|c| c.kind == ChoiceKind::SoftwareVersion)
-    {
+    let mut checked = match choice {
         Some(choice) => declaration
             .bands
             .get(&choice.value)
@@ -158,17 +182,14 @@ pub(crate) fn resolve(
     checked.dedup();
     let mut digest = Sha256::new();
     digest.update(toml::to_string(document)?);
-    if let Some(choice) = chosen
-        .iter()
-        .find(|c| c.kind == ChoiceKind::SoftwareVersion)
-    {
+    if let Some(choice) = choice {
         digest.update(choice.value.as_str());
     }
-    Ok(Some(Check {
+    Ok(Some(Check::Expected(ExpectedVersions {
         selector: declaration.selector,
         checked,
         revision: analyte_model::Digest(digest.finalize().into()),
-    }))
+    })))
 }
 
 #[cfg(test)]
@@ -229,6 +250,7 @@ two = ["2.0"]
                 .effective()
                 .machine()
                 .software_version()
+                .and_then(Check::expected)
                 .cloned()
                 .ok_or("missing check")
         };
@@ -241,6 +263,50 @@ two = ["2.0"]
                 "one"
             )
             .is_err()
+        );
+        Ok(())
+    }
+
+    // ADR 0036 (2026-11-26): the unchecked value is distinct from a checked
+    // band, even when the definition has a selector and evidenced tokens.
+    #[test]
+    fn unchecked_software_band_has_no_wire_expectations() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let astm = include_str!("../../examples/astm.toml")
+            .replace("firmware = \"unknown\"", "firmware = \"1.0\"");
+        let choice = include_str!("../../../../testing/fixtures/software-version-choices.toml");
+        let definition = format!(
+            "{astm}\n{choice}\n{}",
+            r#"
+[software_version]
+selector = "astm_sender_third_component"
+source = "Synthetic band fixture"
+[software_version.bands]
+v1 = ["1.0"]
+"#
+        );
+        let site = format!(
+            "{}\n[choices]\nsoftware_version = 'other'\n",
+            include_str!("../../examples/site.toml")
+        );
+        let load = |definition: &str| {
+            crate::Draft::load(
+                ("machine.toml", definition),
+                ("site.toml", &site),
+                ("overrides.toml", "schema_version = 1"),
+            )?
+            .validate()
+        };
+        let snapshot = load(&definition)?;
+        assert!(matches!(
+            snapshot.effective().machine().software_version(),
+            Some(Check::Unchecked)
+        ));
+        let invented = load(&format!("{definition}\nother = [\"1.0\"]\n"))
+            .expect_err("an unchecked band cannot declare tokens");
+        assert!(
+            invented.to_string().contains("omit the unchecked value"),
+            "{invented}"
         );
         Ok(())
     }

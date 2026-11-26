@@ -153,7 +153,7 @@ fn ask_model_choices(
             .iter()
             .map(|value| ask::Choice {
                 value: value.value.as_str().to_owned(),
-                label: value.label.as_str().to_owned(),
+                label: choices::value_words(&value.label, value.version_evidence),
             })
             .collect();
         let question = format!(

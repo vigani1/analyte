@@ -429,7 +429,7 @@ fn choice_fields(
                 .map(|value| CableOption {
                     selected: current.as_deref() == Some(value.value.as_str()),
                     value: value.value.as_str().to_owned(),
-                    label: value.label.as_str().to_owned(),
+                    label: choices::value_words(&value.label, value.version_evidence),
                 })
                 .collect();
             let hint = match choice

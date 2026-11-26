@@ -591,3 +591,124 @@ async fn failed_software_warning_write_preserves_ack_and_changes_status() -> Res
     tokio::time::timeout(HANG_GUARD, service).await???;
     outcome
 }
+
+// ADR 0036 (2026-11-26): a version outside manual coverage needs attention
+// before any receipt and after receiving a token known from a checked band.
+#[tokio::test]
+async fn unchecked_software_warns_and_keeps_results_flowing() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), false)?;
+    let admin_port = std::net::TcpListener::bind("127.0.0.1:0")?
+        .local_addr()?
+        .port();
+    let settings = std::fs::read_to_string(&path)?;
+    std::fs::write(&path, format!("{settings}\n[admin]\nport = {admin_port}\n"))?;
+    let base = include_str!("../../../core/config/examples/hl7.toml")
+        .rewrite("firmware = \"unknown\"", "firmware = \"1.0\"");
+    let choice = include_str!("../../../testing/fixtures/software-version-choices.toml");
+    let selector = "[software_version]\nselector = 'hl7_sending_application'\nsource = 'Synthetic selector fixture'\n[software_version.bands]\nv1 = ['1.0']\n";
+    analyte_fixtures::write_definition(
+        temp.path(),
+        "synthetic",
+        format!("{base}\n{choice}\n{selector}"),
+    )?;
+    let site = temp.path().join("site.toml");
+    let settings = std::fs::read_to_string(&site)?;
+    std::fs::write(
+        site,
+        format!("{settings}\n[choices]\nsoftware_version = 'other'\n"),
+    )?;
+
+    let program = Program::load(&path)?;
+    let bearer = analyte::admin::rotate_token(program.data_directory())?;
+    let listed = tokio::time::timeout(
+        HANG_GUARD,
+        tokio::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+            .arg("--config")
+            .arg(&path)
+            .args(["machines", "list"])
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await??;
+    assert!(listed.status.success(), "{listed:?}");
+    assert!(
+        String::from_utf8(listed.stdout)?.contains("Software version not checked against a manual")
+    );
+    let (shutdown, service) = start_service(&path)?;
+    let outcome = async {
+        let mut peer = connect(&program).await?;
+        let client = reqwest::Client::builder().timeout(HANG_GUARD).build()?;
+        let admin = format!("http://127.0.0.1:{admin_port}");
+        let status = || unchecked_status(&client, &admin);
+        status().await?;
+        let page = client
+            .get(&admin)
+            .bearer_auth(bearer)
+            .send()
+            .await?
+            .error_for_status()?
+            .text()
+            .await?;
+        assert!(
+            page.contains("Software version not checked against a manual for synthetic"),
+            "{page}"
+        );
+
+        let message = std::str::from_utf8(ORU)?.rewrite("|SYN|LAB|", "|1.0|LAB|");
+        let wire = analyte_framing::hl7::encode(
+            message.as_bytes(),
+            analyte_framing::hl7::Limit::new(1048576)?,
+        )?;
+        peer.write_all(&wire).await?;
+        let ack = String::from_utf8(read_ack(&mut peer).await?)?;
+        assert!(ack.contains("MSA|AA|message1"), "{ack}");
+        let store = stored(&program)?;
+        assert_eq!(
+            store
+                .health(
+                    &analyte_model::Identifier::new("demo")?,
+                    jiff::Timestamp::now().as_second(),
+                    30
+                )?
+                .pending_count,
+            1
+        );
+        drop(store);
+        status().await
+    }
+    .await;
+    let _ = shutdown.send(());
+    tokio::time::timeout(HANG_GUARD, service).await???;
+    outcome
+}
+
+async fn unchecked_status(client: &reqwest::Client, admin: &str) -> Result<(), Error> {
+    #[derive(serde::Deserialize)]
+    struct Status {
+        reasons: Vec<String>,
+    }
+    let text = client
+        .get(format!("{admin}/status"))
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+    let status: Status = serde_json::from_str(&text)?;
+    assert!(
+        status
+            .reasons
+            .iter()
+            .any(|reason| reason == "machine_software_version_unchecked"),
+        "{text}"
+    );
+    assert!(
+        !status
+            .reasons
+            .iter()
+            .any(|reason| reason == "machine_software_version_changed"),
+        "{text}"
+    );
+    Ok(())
+}

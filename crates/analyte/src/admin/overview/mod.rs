@@ -23,6 +23,7 @@ use super::view::report::{Problem, Section, read_within};
 use super::view::{self, Tab, Tone, format, frame::Frame, icon::Icon};
 use crate::admin::{Error, error::CommandError};
 use crate::deadline;
+use analyte_config::software_version::Check;
 use analyte_model::OrderState;
 use analyte_store::{AlertKey, AlertState, FailingDestination, LastDelivered};
 use askama::Template as _;
@@ -247,11 +248,14 @@ async fn observe(
             .map_err(Reading::Orders.failed())?,
         ..attention::Facts::default()
     };
-    let checks: Vec<_> = state
-        .machines
-        .iter()
-        .filter_map(|machine| Some((machine.id.clone(), machine.software.clone()?)))
-        .collect();
+    let mut checks = Vec::new();
+    for machine in &state.machines {
+        match &machine.software {
+            Some(Check::Expected(expected)) => checks.push((machine.id.clone(), expected.clone())),
+            Some(Check::Unchecked) => facts.software_unchecked.push(machine.id.clone()),
+            None => {}
+        }
+    }
     facts.software = super::machines::software_version::warnings(&state.store, until, checks)
         .await
         .map_err(Reading::Alerts.failed())?;

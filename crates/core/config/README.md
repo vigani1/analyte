@@ -17,4 +17,10 @@
 - `choices`: The choices a definition declares and the lab's selections of them (ADR 0032).
 - `schema/law`: Explicit LAW profile selection (re-exported at the crate root).
 
+A software-version choice can pair a single documented band with
+`checked = false` for "Other version (not checked)". A choice that offers
+this value cannot select any settings. Use separate, explicitly selected
+modes for any settings that vary by version. A wire selector's bands list
+only the checked values.
+
 [Technical details and safety guidance](DETAILS.md).

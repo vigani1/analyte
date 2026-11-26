@@ -32,7 +32,7 @@ pub mod software_version;
 pub use choices::{
     ChoiceBlock, ChoiceKind, ChoiceLabel, ChoiceName, ChoiceSelections, ChoiceValue,
     MAX_CHOICE_COMBINATIONS, MAX_CHOICE_VALUES, MAX_CHOICES, MachineChoice, OrdersSwitch,
-    VidasChoice,
+    VersionEvidence, VidasChoice,
 };
 
 /// Declared evidence; loading never promotes it.
