@@ -2,126 +2,125 @@
 
 ## Machine
 
-The Roche cobas e 411 has disk and rack models and two ASTM host protocol
-types, Elecsys and cobas. This is a blocked machine definition, with
-`record.toml` available for a record-only connection. Normal operation needs
-the changes listed below and confirmation of the installed settings.
+The disk and rack versions use the same serial host interface. The analyzer
+offers two ASTM protocol types. Elecsys sends at most one record per frame
+and provides a per-test completion time. cobas can pack records and sends
+site-assigned host test codes. This definition is for result reception.
 
 ## Connection
 
-The analyzer uses the RS-232C HOST port. Roche recommends 9600 baud, eight
-data bits, no parity and one stop bit. Match the installed settings in Setup.
-The cable drawing loops the analyzer's handshake pins locally. It does not
-specify the host's flow-control setting, so Setup leaves that choice open.
-See HIM v2.3 §§3 and 5, and HIM v2.2 B.
+Use the analyzer's RS-232C HOST port. Roche recommends 9600 baud, eight
+data bits, no parity and one stop bit. The cable drawing loops the
+analyzer's handshake pins locally. Confirm the host flow-control setting
+against the installed cable and host configuration. See HIM v2.3 §3,
+Tables 1–3 and the cable drawing, and HIM v2.2 §B.
 
-The analyzer uses ASTM E1381-91 framing. Each frame has up to 240 text bytes
-(247 bytes including the envelope) and an uppercase hexadecimal checksum.
-The instrument wins simultaneous ENQ. The manual describes a 1-second
-contention delay, a 10-second retry delay after a non-ACK to ENQ, 15-second
-establishment and frame waits, and a six-count error retry limit. The
-15-second link timers do not specify the application query deadline. See
-HIM v2.3 §5, pp. 14–20.
+The stack uses LIS01 framing and link dialog and LIS02 records for the
+analyzer's E1381-91 and E1394-era interface. It accepts up to 240 text bytes
+per frame, uses uppercase checksum digits and yields to the analyzer on
+simultaneous ENQ. The host send and receive bounds are 15 seconds. Roche
+describes separate busy and contention retries and an optional analyzer
+recovery setting. See HIM v2.3 §5, pp. 14–20.
 
 ## Settings on the machine
 
-| Setting | What staff confirm | What Setup can ask today |
-| --- | --- | --- |
-| Protocol type | Elecsys for separate records or cobas for optional packing and different fields | Record-only asks for the exact installed type. |
-| RS-232C speed and character format | 4800, 9600 or 19200, and a supported bits/parity/stop combination | Record-only asks for the port and the five cable settings. |
-| Automatic result upload | Whether the machine initiates real-time uploads | Machine-side only. |
-| STAT upload | One upload per test or an upload after all tests finish | Machine-side only. |
-| Automatic session recovery (cobas) | Whether the machine reconnects after an error and rejects messages during recovery | Machine-side only. |
-| QC additional information (cobas) | Whether uploads include control name alone or include lot number | Machine-side only. |
-| Send result only (cobas) | Suppresses real-time order inquiries. Batch transfer is still possible. | Full definition blocked. |
-| Host test codes | Which codes are installed for the assays and generations in use | The lab app owns the code list. |
-| Communication trace | Whether the machine keeps a trace for review | Machine-side only. |
+### Setup questions
 
-See HIM v2.3 §3, Table 3. The separate batch upload option for results marked
-by exception review affects which results arrive (§6, p. 41).
+| Setup setting | Where to read it |
+| --- | --- |
+| Protocol type and QC additional information | On the analyzer, open Utility > System > Host Communication Setting > Condition. Read Protocol type. For cobas, also read QC additional information and choose Control name or Lot No. |
+| Serial speed, data bits, parity and stop bits | In the same Condition window, match RS232C Speed and Frame. |
+| Serial flow control | Confirm from the installed HOST cable and host serial configuration. The analyzer's documented menu has no flow-control field. |
+
+HIM v2.3 §3 recommends Elecsys and leaves the protocol selection to the
+installation. The definition requires an answer. Automatic upload, STAT
+upload by sample or test, communication trace, automatic recovery and
+Send result only are analyzer settings. Confirm them on the same screen.
+On the analyzer, Send result only suppresses real-time inquiries while
+batch transfer remains possible. See HIM v2.3 §3, Table 3, §4, Tables 4–5,
+and §6, p. 41 for exception filtering.
+
+Both HIM revisions name analyzer software 02-04 only in the note about
+duplicate orders. They describe one communication-program token, 1, in
+cobas H.5.2. Analyte checks that token and shows unknown when Elecsys omits
+the field. The token identifies the host communication program. An
+analyzer software Setup choice needs a second documented band.
 
 ## Supported workflows
 
-Record-only keeps the wire bytes and sends link acknowledgments after
-storage. A query gets a LIS02 query error. Roche documents real-time and
-batch patient and QC uploads, real-time patient order inquiries and batch
-order downloads. It does not send calibration results or query the host for
-QC orders. See HIM v2.3 §4, Tables 4–5.
+Normal connections interpret patient and QC uploads and retain the raw
+wire data. Outbound orders and query replies are disabled. When an inquiry
+arrives, Analyte journals and acknowledges the frames and sends no
+application reply. Roche also documents real-time and batch patient and QC
+uploads, real-time patient inquiries and batch order downloads. Calibration
+results and QC order queries are outside these workflows. See HIM v2.3
+§4, Tables 4–5.
 
-HIM v2.3 §6 field positions below count the record type as field 1.
+Ready models use the shared ASTM profile in record-only connections
+(ADR 0034). That profile stores chunks and refuses a packed frame with
+NAK. A normal cobas connection accepts verified packed frames.
 
-| Source | Elecsys | cobas |
-| --- | --- | --- |
-| Header | H.12 processing ID | H.5 sender and program version, H.10 receiver, H.11 purpose and real-time/batch subtype, H.12 processing ID, H.13 wire version |
-| Sample and position | O.3 sample ID, O.4 components 1/2/3 sequence/carrier/position, 5/6 sample/container type | Same positions with cobas codes. A barcode error can generate an `@` ID. |
-| Patient or QC | O.4.5 distinguishes SAMPLE and CONTROL. O.12 second repetition Q also marks QC. | O.4.5 QC and O.12 Q indicate QC. O.3 can include control and lot data. |
-| Test namespace (ADR 0029) | R.3.4 carries the application number including generation. | First slash-delimited part of R.3.4 carries the site-assigned host code, which can name a calculated result. The lab app must distinguish the two code systems. |
-| Dilution | R.3.5 is the dilution selector and R.3.6 the predilution indicator. | Second and third slash-delimited parts of R.3.4 carry those facts. |
-| Result | R.4 value or qualitative code with cutoff index, R.5 unit, R.6 range, R.7 flag, R.9 status, R.12/R.13 times | R.4 value with optional message code or qualitative code with cutoff index, R.5 unit, R.7 flag, R.9 initial/rerun status, R.11 operator, R.14 module identifier |
-| Query | Q.3 components 2–6, 8 and 9 carry ID and specimen context. | Q.3 components 3–7, 9 and 10 carry the same context in cobas form. |
-| Order | O.3 ID, O.4 echo context, O.5 repeated test and dilution, O.6 priority, O.12 action and O.26 report type | Same destinations with cobas codes, plus O.16 specimen descriptor. |
+### Gaps closed by this definition
 
-### Implementation gaps
+Field positions count the record identifier as position 1. See HIM v2.3 §6.
 
-| Manual locator | Layer | What needs support and why |
-| --- | --- | --- |
-| §5 pp. 14–15, §6 Tables 14, 16 and 18 | Config and framing | Normal definitions can now select the packing departure only in the cobas mode. Record-only already scopes packing by mode, but uses the shared ASTM capture frame limit and timers. Normal framing can declare the 247-byte limit through an evidenced departure. |
-| §5 pp. 17–20; §3 Table 3 | Dialog and settings | The normal receive timer can be set through a departure. Roche describes its receiver's 15-second countdown from the last ACK/NAK, separate contention and busy retry delays, error counts, and optional recovery. The normal stack exposes aggregate send/receive limits, not the whole timing and recovery policy. Check host-side applicability and retry counts on the installed revision. A timeout can leave order acceptance uncertain. |
-| §3 Table 3; §4 Tables 4–5; §6 p. 41 | Setup and order policy | Available choice blocks cannot distinguish disabling real-time inquiries from disabling all orders. Automatic upload, per-test STAT, exception filtering and trace settings are analyzer-owned. A per-test upload or a filtered upload cannot establish that an order is complete. |
-| §6 Tables 14 and 16; §7 pp. 48–50 | Query and order dialog | **Closed for documented layouts:** both Q.3 shapes are read; O.4 echoes the original coordinates. Missing/generated barcodes never reach the cache. Carrier markers are preserved with reliable barcodes. **Open:** installed failure traces and exact deadlines. |
-| §6 Tables 11–14 and 16; §7 pp. 48–50 | Order encoding | **Closed:** both real-time forms, O.26 and documented empty replies, plus the cobas batch form (HIM v2.3 p. 54). **Open:** the Elecsys batch wire details and installed behavior after a LIS02 Q error. |
-| §6 Tables 14, 16–17; §7 | Order mapping and lifecycle | **Closed:** per-test dilution, 18-test limit, duplicate refusal, O.16 precedence and Q.13 A inquiry cancellation. Duplicate orders are disallowed by the analyzer from 02-04, and the bridge refuses them in both profiles. Confirmed transfer records an uncertain replacement until reconciled. **Open:** installed assay codes, calculated upload-only codes and application acceptance evidence. |
-| section 6 Tables 16 and 18 | Mapping and result identity | **Closed for reading:** distinguishes patient labels from generated and control labels, preserving O.3. Confirm barcode or operator entry at the site. **Open:** reliable run evidence, especially for cobas mode. O.23 and the module identifier cannot distinguish successive measurements. |
-| section 6 Table 18 | Status and identity mapping | **Closed for reading:** cobas mode preserves C as rerun evidence without treating it as a correction. Elecsys recognizes the explicit release and unavailable codes. **Open:** a qualified run identity recipe for each installed mode. |
-| section 6 Tables 16–18 | Dilution and value mapping | **Closed:** both layouts retain the selector and predilution separately and read documented ratios. Whether the result already includes dilution remains unknown. No conversion is applied. |
-| section 3 Table 3; section 6 Tables 18–20 | Value, QC and alarm mapping | **Closed for reading:** interprets quantitative values and optional message codes, qualitative codes and cutoff indices, the explicit absent value, and structured alarm numbers and transmitted text. Recognizes controls and preserves the control name in name-only mode. **Open:** the installed test-kind table and alarm text encoding. The manual disagrees on lot-mode O.3, so the complete label is held without splitting it. |
-| §6 Table 16 and §7 | Syntax and site evidence | Resolve Elecsys O.7 versus O.8 request-time placement, the advertised transition to S0 in cobas queries, and dialect/firmware-specific text encoding for alarms. Preserve raw bytes and times with their source positions until those meanings are confirmed. |
+| Manual locator | What the definition handles |
+| --- | --- |
+| §5, pp. 14–20 | Both modes use the documented frame size and host receive bound. Only cobas allows packed inbound records. |
+| Tables 16 and 18 | Sample ID is O.3.1. O.4.5 retains the source specimen code and marks SAMPLE/CONTROL or cobas patient/control types. Order action O.12 also marks QC. QC labels and generated IDs are held without making them patient IDs. |
+| Table 18 | Elecsys uses the application number in R.3.4, including any generation digits sent. cobas uses the first slash part of R.3.4, which can identify a calculated result. The respective code systems are `roche.cobas-e411.elecsys-application` and `roche.cobas-e411.host-test-code`. The lab app owns assay and specimen names. |
+| Tables 17–18 | Elecsys reads dilution and predilution in R.3.5–6. cobas reads the remaining slash parts of R.3.4. Whether the analyzer already applied dilution remains unknown. |
+| Table 18 | The exact R.4 value, R.5 unit, R.6 range where present, R.7 flags and R.9 status are kept. No unit conversion is configured. Elecsys R.12–13 and cobas O.23 are retained as source times. O.23 describes sample-level reporting. |
+| Table 18 and ADR 0035 | The Elecsys identity requires the exact sample ID, test code and per-test R.13. The cobas R.9 C marks a rerun. Both initial cobas results and reruns are held for review when no per-measurement run key is available. |
+| Tables 19–20 | C.4 carries the alarm number and Elecsys can include transmitted text. The raw comment is kept. |
+| Table 11 | cobas H.5.2 is checked against the documented program token. H.13 is the wire-format version. |
+
+### Gaps still open
+
+| Manual locator | What still needs evidence |
+| --- | --- |
+| §3, Table 3 and §6, Tables 16 and 18 | Confirm the lab's exact host code table and which assays report quantitative or qualitative data. An ambiguous cobas value with a second component is kept for review without a confirmed test kind. The manuals describe the lot-mode QC label inconsistently, so the full label is retained unsplit. |
+| §5, pp. 17–20 | Confirm installed behavior for retry delays, counts and automatic session recovery. The shared link bounds do not model every Roche timer. |
+| §6, Table 18 | cobas omits R.13. O.23 and the module ID cannot establish separate runs. The manual gives no cobas correction code. |
+| §6, Tables 16 and 19 and §7 | Confirm Elecsys O.7 versus O.8 request time, the version that changes cobas query specimen types to S0, and alarm text encoding. |
+| §4, Tables 4–5, §6, Tables 11–17, and §7 | Confirm analyzer acceptance of host replies, exact query deadlines, handling of LIS02 query errors, and Elecsys batch download. The documented structured real-time order layouts have synthetic replay coverage only. |
 
 ## Departures
 
-`record.toml` declares ADR 0015 `astm_packed_records_in_frame` at documented
-level for inbound cobas mode only, with unknown firmware covered by HIM v2.3
-§5 p. 14 and HIM v2.2 D §1. Valid packed frames are stored and ACKed in
-cobas mode. Elecsys mode rejects packed frames. Invalid checksums are
-rejected and retained in either mode.
+The definition declares `astm_frame_limit` (247 bytes, HIM v2.3 §5 Table
+6 and HIM v2.2 §D p. D-3) and `astm_receive_timeout` (15 seconds,
+HIM v2.3 §5 p. 20 and HIM v2.2 §D Transfer Phase) in every mode. Only
+the two cobas profiles declare `astm_packed_records_in_frame` (HIM
+v2.3 §5 p. 14 and HIM v2.2 §D.1 p. D-2). The departures are documented,
+for inbound ASTM result connections, with the selected mode and firmware
+coverage stated in the definition. A bad checksum still receives NAK.
 
 ## Evidence
 
 Level: documented
 
-Synthetic ADR 0009 recordings cover both upload types, QC, an initial result
-followed by a rerun, bad checksum and retry, and a Roche query followed by
-Analyte's record-only error. Two additional synthetic conversations replay
-complete query replies in the documented cobas and Elecsys order profiles.
-Analyzer acceptance and test-list replacement remain unverified. No hardware
-or vendor simulator was used.
+Synthetic replays through the normal stack check Elecsys upload and
+delivery, cobas packed uploads, held control and rerun readings, bad-checksum
+rejection and retransmission, and query silence with orders disabled. The
+two structured-query recordings replay exact replies and cancellation
+with test-only order overrides. The supported communication-program token
+for cobas is 1 in both manual revisions. There are no hardware or
+vendor-simulator recordings.
 
 ## Open questions
 
-- Confirm the chassis, installed software and matching manual/errata.
-- Read the installed settings and host test-code table, including active assay
-  generations, units and quantitative/qualitative value types.
-- Collect de-identified traces for barcode read failure, barcode-free orders,
-  both QC settings, manual resends and reruns, and complete real-time and
-  batch order exchanges. Confirm the total query deadline and safe
-  failure behavior with the installed software.
-- Confirm how the lab app assigns order and result identities, which units
-  have explicit mappings, and whether any published value is dilution-adjusted.
-
-## Result identity evidence
-
-HIM v2.3 section 6, Table 18 supports a candidate Elecsys recipe using a
-confirmed sample ID, assay and R.13 completion time. In cobas mode, configure
-R.9 C as a rerun when the full recipe can be qualified. C identifies a rerun
-status, and a separate source field is still needed to tell successive reruns
-apart. The manual gives no correction code for this mode.
+- Confirm the installed software, host-code and specimen settings, along
+  with the analyzer's alarm text encoding.
+- Collect de-identified conversations for barcode failures, barcode-free
+  orders, both QC label settings, manual resends and reruns, and order
+  exchanges. Confirm whether cobas provides any separate run evidence.
+- Confirm whether published values already include dilution and whether the
+  Elecsys completion time distinguishes successive runs on the installed unit.
 
 ## Sources
 
 - Roche cobas e 411 Host Interface Manual v2.3 (March 2016), §§3–7.
-- Roche cobas e 411 Host Interface Manual v2.2 (November 2013), sections B–F.
+- Roche cobas e 411 Host Interface Manual v2.2 (November 2013), §§B–F.
 - CLSI LIS01-A2 §§3, 6 and LIS02-A2 §§5–12 for the Analyte baseline.
-- Roche Immunoassays test menu, for assay context. Installed host codes must
-  come from the analyzer.
 - [Background research](../../../docs/research/machines/cobas-e411.md) and
   [ASTM policy](../../../docs/protocols/astm/decisions.md).

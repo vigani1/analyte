@@ -1,8 +1,4 @@
-# Roche cobas e 411: how it talks, for a record-only connection (ADR 0034).
-# The protocol, the link, the host protocol type the lab reads off the
-# analyzer, and the one departure that type needs; the rest comes from
-# Analyte's shipped ASTM capture profile. Not a machine definition: nothing is
-# read or delivered.
+# Test fixture for a record-only ASTM model that offers packed frames.
 recording_schema_version = 1
 protocol = "astm"
 

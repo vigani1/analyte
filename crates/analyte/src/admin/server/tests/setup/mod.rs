@@ -2621,8 +2621,7 @@ async fn setup_page_asks_the_cobas_protocol_type_for_record_only() -> Result<(),
         cobas.join("README.md"),
         "# Roche cobas e 411\n\nA blocked machine definition.\n",
     )?;
-    let mut record: toml::Table =
-        include_str!("../../../../../../../machines/roche/cobas-e411/record.toml").parse()?;
+    let mut record: toml::Table = analyte_fixtures::ASTM_PACKED_RECORD_ONLY.parse()?;
     let mut transport = toml::Table::new();
     transport.insert("kind".into(), "tcp_server".into());
     record.insert("transport".into(), transport.into());
