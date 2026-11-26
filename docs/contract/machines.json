@@ -5,10 +5,10 @@
       "evidence_level": "documented",
       "model": "biocare/biolyte-2000",
       "name": "BioCARE Biolyte 2000",
-      "protocol": null,
-      "ready": false,
+      "protocol": "astm",
+      "ready": true,
       "specimen_system": null,
-      "test_system": null,
+      "test_system": "biocare/biolyte-2000",
       "vendor": "biocare"
     },
     {

@@ -283,9 +283,13 @@ mod tests {
             Some(State::Ready { name, level, .. })
                 if name.as_str() == "generic-synthetic" && *level == super::EvidenceLevel::Documented
         ));
-        // Each first-lab model names its protocol and link, so it can record only.
+        // ADR 0034 amendment: a definition written from the manuals ships ready.
+        assert!(matches!(
+            state("biocare/biolyte-2000"),
+            Some(State::Ready { level, .. }) if *level == super::EvidenceLevel::Documented
+        ));
+        // Each model still without a definition names its protocol and link, so it can record only.
         for key in [
-            "biocare/biolyte-2000",
             "biomerieux/vidas",
             "boule/swelab-lumi",
             "dialab/autolyser",

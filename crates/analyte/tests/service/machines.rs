@@ -1019,6 +1019,24 @@ fn every_record_file_loads_as_a_recording() -> Result<(), Error> {
             }
         }
     }
-    assert!(found >= 6, "the six first-lab models record: found {found}");
+    assert!(found > 0, "no record.toml was found");
+    // ADR 0034 amendment: each first-lab model either records only or ships
+    // its definition; it never loses both.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../machines");
+    for model in [
+        "biocare/biolyte-2000",
+        "biomerieux/vidas",
+        "boule/swelab-lumi",
+        "dialab/autolyser",
+        "roche/cobas-e411",
+        "yhlo/iflash-1200",
+    ] {
+        let folder = root.join(model);
+        assert!(
+            folder.join(analyte_config::RECORD_FILE).exists()
+                || folder.join("machine.toml").exists(),
+            "{model}: neither record.toml nor machine.toml"
+        );
+    }
     Ok(())
 }
