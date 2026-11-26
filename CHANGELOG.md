@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Machine definitions can offer "Other version (not checked)" in Setup.
+  Overview, status and the machine list keep a warning visible while results
+  continue to flow.
+
 - Add a documented Roche cobas e 411 definition for Elecsys and cobas ASTM
   result uploads. Hold results with unresolved measurement identity for review.
 - Remove the unused VIDAS retry count and backoff settings. Configuration

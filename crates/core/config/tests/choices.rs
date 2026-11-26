@@ -1,7 +1,7 @@
 //! Tests the choices a machine definition declares and the lab's selections in the site file (ADR 0032).
 use analyte_config::{
-    AckPoint, ChoiceBlock, ChoiceKind, Draft, Error, RecordTransport, Stack, Validated, Vidas,
-    VidasSampleLimit, declared_choices,
+    AckPoint, ChoiceBlock, ChoiceKind, Draft, Error, RecordTransport, Stack, Validated,
+    VersionEvidence, Vidas, VidasSampleLimit, declared_choices, software_version::Check,
 };
 use analyte_fixtures::ConfigEdit as _;
 const VIDAS: &str = include_str!("../examples/vidas_choices.toml");
@@ -11,6 +11,9 @@ const SITE: &str = include_str!("../examples/site.toml");
 const OVERRIDES: &str = "schema_version = 1";
 /// The version band, which the example leaves for the lab to choose.
 const V1: &str = "[choices]\nsoftware_version = \"v1\"\n";
+const OTHER: &str = "[choices]\nsoftware_version = 'other'\n";
+const VERSION_CHOICE: &str =
+    include_str!("../../../testing/fixtures/software-version-choices.toml");
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
@@ -86,6 +89,97 @@ fn declared_choices_load_with_the_suggestion_or_the_selection() -> TestResult {
         "a choice the definition suggests nothing for always differs from the suggestion"
     );
     assert_eq!(vidas(&config)?.ack_point, AckPoint::Checksum);
+    Ok(())
+}
+
+// ADR 0032 (2026-11-26): the unchecked value belongs to software and is
+// offered once, without a suggestion.
+#[test]
+fn unchecked_version_is_unique_and_requires_an_explicit_software_choice() -> TestResult {
+    for (from, to, words) in [
+        (
+            "kind = \"software_version\"",
+            "kind = \"mode\"",
+            "on at most one value",
+        ),
+        (
+            "label = \"Version 1\"",
+            "label = \"Version 1\"\nchecked = false",
+            "on at most one value",
+        ),
+        (
+            "label = \"Software version on the About screen\"",
+            "label = \"Version\"\nsuggested = \"other\"",
+            "select the unchecked version explicitly",
+        ),
+    ] {
+        let choices = VERSION_CHOICE.rewrite(from, to);
+        let refused = load(&format!("{ASTM}\n{choices}"), OTHER, OVERRIDES)
+            .expect_err("invalid unchecked declaration");
+        assert!(refused.to_string().contains(words), "{refused}");
+    }
+    Ok(())
+}
+
+// ADR 0032 (2026-11-26): choosing an unknown VIDAS version must never use a
+// sample ID limit from a checked band. The site needs a separate selection.
+#[test]
+fn unchecked_vidas_version_needs_a_separate_sample_limit_selection() -> TestResult {
+    let (settings, _) = VIDAS
+        .split_once("[[choices]]\nname = \"software_version\"")
+        .ok_or("VIDAS software-version fixture")?;
+    let (_, evidence) = VIDAS
+        .split_once("[evidence]")
+        .ok_or("VIDAS evidence fixture")?;
+    let settings = format!("{settings}[evidence]{evidence}\n");
+    let dependent = VERSION_CHOICE.rewrite(
+        "label = \"Version 1\"",
+        "label = \"Version 1\"\nvidas = {sample_limit = 12}",
+    );
+    let refused = load(&format!("{settings}{dependent}"), V1, OVERRIDES)
+        .expect_err("a definition with unsafe unchecked settings");
+    assert!(
+        refused
+            .to_string()
+            .contains("Use a separate explicit mode choice"),
+        "{refused}"
+    );
+
+    let limit = r#"
+[[choices]]
+name = "sample_limit"
+kind = "mode"
+label = "Sample ID limit on this analyzer"
+[[choices.values]]
+value = "short"
+label = "12 characters"
+vidas = {sample_limit = 12}
+[[choices.values]]
+value = "long"
+label = "17 characters"
+vidas = {sample_limit = 17}
+"#;
+    let safe = format!("{settings}{limit}\n{VERSION_CHOICE}");
+    assert!(
+        matches!(load(&safe, OTHER, OVERRIDES), Err(Error::MissingChoice { choice, .. })
+            if choice.as_str() == "sample_limit")
+    );
+    let checked = load(&safe, &format!("{V1}sample_limit = 'short'\n"), OVERRIDES)?;
+    assert_eq!(vidas(&checked)?.sample_limit, VidasSampleLimit::Twelve);
+    let unchecked = load(&safe, &format!("{OTHER}sample_limit = 'long'\n"), OVERRIDES)?;
+    assert_eq!(vidas(&unchecked)?.sample_limit, VidasSampleLimit::Seventeen);
+    assert!(matches!(
+        unchecked.effective().machine().software_version(),
+        Some(Check::Unchecked)
+    ));
+    assert!(
+        unchecked
+            .effective()
+            .choices()
+            .iter()
+            .any(|choice| choice.value.as_str() == "other"
+                && choice.version_evidence == VersionEvidence::Unchecked)
+    );
     Ok(())
 }
 

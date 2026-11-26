@@ -1,11 +1,19 @@
 //! Reads analyzer software metadata through the installed framing and syntax.
 use analyte_config::Validated;
-use analyte_config::software_version::{Selector, reported};
+use analyte_config::software_version::{Check, ExpectedVersions, Selector, reported};
 use analyte_model::{Digest, Identifier};
 
-/// Returns an unexpected version, with absent metadata preserved as unknown.
+/// The warning for a software version outside the definition's manual coverage.
+pub(crate) const UNCHECKED_WARNING: &str = "Software version not checked against a manual";
+
+/// Returns a wire warning when an active comparison finds unexpected or unknown
+/// metadata. Unchecked settings have no comparison and use their own warning.
 pub(crate) fn observe(config: &Validated, raw: &[u8]) -> Option<(Digest, Option<Identifier>)> {
-    let check = config.effective().machine().software_version()?;
+    let check = config
+        .effective()
+        .machine()
+        .software_version()
+        .and_then(Check::expected)?;
     let version = read(config, raw, check.selector);
     if version
         .as_ref()
@@ -71,7 +79,7 @@ fn hl7_version(message: &analyte_hl7::Message, position: usize) -> Option<Identi
 /// Operator wording shared by Overview and the machine detail.
 pub(crate) fn message(
     machine: &Identifier,
-    check: &analyte_config::software_version::Check,
+    check: &ExpectedVersions,
     warning: &analyte_store::SoftwareWarning,
 ) -> String {
     let checked = check

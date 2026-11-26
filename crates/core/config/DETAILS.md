@@ -74,6 +74,11 @@ returns each `Chosen` value, whether the site selected it and whether it
 differs from the suggestion. `declared_choices` reads a definition's choices
 with the same checks, for a page that asks them before the machine loads.
 
+Software choices with an unchecked value carry version coverage in
+`Chosen::version_evidence` and select no blocks. The resolved machine
+reports `software_version::Check::Unchecked` for that value, independent of
+whether the definition declares a wire selector.
+
 Local overrides contain
 `schema_version = 1` plus optional replacement sections. Sections and lists
 replace in full; there is no implicit array merging or expression language.
