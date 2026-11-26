@@ -204,9 +204,9 @@ async fn replay_model(folder: &Path, model: &Path, definition: &Path) -> Result<
             let (header, events) =
                 recording::read(std::fs::File::open(&path)?, recording::Limits::default())?;
             validate_gap(&events, answers.expected_gap.as_ref())?;
-            if let Some(vendor) = answers.vendor_worklist {
+if let Some(vendor) = answers.vendor_worklist {
                 // The fixture exercises an order-enabled test peer; the
-                // shipped definition only has to load with the same stack.
+                // shipped definition only has to speak the same stack.
                 let layers = if record_only {
                     let name = model
                         .join("record.toml")
@@ -218,7 +218,7 @@ async fn replay_model(folder: &Path, model: &Path, definition: &Path) -> Result<
                         .stack()
                         .layer_names()
                 } else {
-                    ready_definition(folder, &text, &answers)?
+                    ready_definition(&text, &answers)?
                         .effective()
                         .stack()
                         .layer_names()
@@ -578,15 +578,18 @@ async fn replay_ready(
     events: &[Event],
     answers: &ReplaySettings,
 ) -> Result<(), Error> {
-    let checked = ready_definition(folder, text, answers)?;
+    let checked = ready_definition(text, answers)?;
+    readme(
+        &folder.join("README.md"),
+        checked.effective().machine().evidence.level,
+    )?;
     let stack = checked.effective().stack();
     assert_eq!(header.stack, stack.layer_names(), "recording stack");
     replay_machine(model, text, events, header, stack, answers).await
 }
 
-/// Loads a ready definition with the replay's site answers and checks its README.
+/// Loads a shipped `machine.toml` with the replay's site choices, as a lab PC would.
 fn ready_definition(
-    folder: &Path,
     text: &str,
     answers: &ReplaySettings,
 ) -> Result<analyte_config::Validated, Error> {
@@ -601,17 +604,12 @@ fn ready_definition(
         _ => "127.0.0.1:5600".into(),
     };
     let site = site(&endpoint, answers, kind == "serial")?;
-    let checked = Draft::load(
+    Ok(Draft::load(
         ("machine", text),
         ("site", &site),
         ("overrides", "schema_version=1"),
     )?
-    .validate()?;
-    readme(
-        &folder.join("README.md"),
-        checked.effective().machine().evidence.level,
-    )?;
-    Ok(checked)
+    .validate()?)
 }
 
 fn transport_kind(table: &toml::Table) -> Result<&str, Error> {

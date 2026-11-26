@@ -294,15 +294,24 @@ mod tests {
             Some(State::Ready { name, level, .. })
                 if name.as_str() == "dialab-autolyser" && *level == super::EvidenceLevel::Documented
         ));
+        assert!(matches!(
+            state("biomerieux/vidas"),
+            Some(State::Ready { name, level, .. })
+                if name.as_str() == "biomerieux-vidas" && *level == super::EvidenceLevel::Documented
+        ));
         // First-lab models still awaiting definitions can record.
         for key in [
             "biocare/biolyte-2000",
             "biomerieux/vidas",
             "boule/swelab-lumi",
+            "dialab/autolyser",
             "yhlo/iflash-1200",
         ] {
             assert!(
-                matches!(state(key), Some(State::Blocked { record: Some(_) })),
+                matches!(
+                    state(key),
+                    Some(State::Ready { .. } | State::Blocked { record: Some(_) })
+                ),
                 "{key}"
             );
         }
