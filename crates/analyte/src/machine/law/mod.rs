@@ -414,12 +414,15 @@ impl<'a, 'm> Host<'a, 'm> {
         &mut self,
         token: protocol::ExchangeId,
     ) -> Result<Vec<Action>, Error> {
-        let (outcome, location) = intake::interpret_with_location(
+        let (outcome, diagnosis) = intake::interpret_with_location(
             self.store,
             self.machine.machine(),
             self.receipt(token)?,
         )
         .await?;
+        // LAW keeps its own acknowledgment rules (IHE LAW LAB-29); only the
+        // location is used here, never the HL7 held-upload rule.
+        let location = diagnosis.location;
         let detail = analyte_hl7::location_error(location.as_ref(), b"", b"");
         let location = location.as_ref().map(|_| protocol::Location {
             segment: detail.segment,

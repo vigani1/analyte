@@ -47,9 +47,12 @@ fn law_roles_validate_without_startup_io() -> Result<(), Error> {
     Ok(())
 }
 
-// HL7 2.5.1 §2.15.5.2; ADR 0003
+/// The parked finding for the second OBX without OBX-3 (ADR 0029).
+const HELD_MISSING_CODE: &str = "Position { record: 5, field: 3 }: MissingTest";
+
+// HL7 2.5.1 §2.9.2; ADR 0003; ADR 0010 (2026-11-26)
 #[tokio::test]
-async fn hl7_ae_reports_actual_mapping_location() -> Result<(), Error> {
+async fn hl7_held_uploads_get_aa_and_stay_parked() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     let program = Program::load(&path)?;
@@ -87,10 +90,21 @@ async fn hl7_ae_reports_actual_mapping_location() -> Result<(), Error> {
         analyte_framing::hl7::Limit::new(1048576)?,
     )?)
     .await?;
+    // HL7 2.5.1 §2.9.2; ADR 0010 (2026-11-26): stored and held for an operator,
+    // so the machine gets AA and the reason stays in the review queue.
     let ack = String::from_utf8(read_ack(&mut peer).await?)?;
-    assert!(ack.contains("MSA|AE|message2"));
-    assert!(ack.contains("ERR||OBX^2^3|207|E|operator-review"), "{ack}");
-    assert!(!stored(&program)?.parked(0)?.is_empty());
+    assert!(ack.contains("MSA|AA|message2"), "{ack}");
+    assert!(!ack.contains("ERR|"), "{ack}");
+    let parked: Vec<String> = stored(&program)?
+        .parked(0)?
+        .into_iter()
+        .map(|p| p.evidence)
+        .collect();
+    assert_eq!(parked.len(), 1, "{parked:?}");
+    assert!(
+        parked.iter().any(|p| p.contains(HELD_MISSING_CODE)),
+        "{parked:?}"
+    );
     assert_eq!(
         stored(&program)?
             .health(
@@ -109,9 +123,69 @@ async fn hl7_ae_reports_actual_mapping_location() -> Result<(), Error> {
         analyte_framing::hl7::Limit::new(1048576)?,
     )?)
     .await?;
+    // A conflicting result is held too (rule 4): AA, parked, never delivered.
     let ack = String::from_utf8(read_ack(&mut peer).await?)?;
-    assert!(ack.contains("MSA|AE|message3"));
-    assert!(ack.contains("ERR|||207|E|operator-review"), "{ack}");
+    assert!(ack.contains("MSA|AA|message3"), "{ack}");
+    assert!(!ack.contains("ERR|"), "{ack}");
+    assert_eq!(stored(&program)?.parked(0)?.len(), 2);
+    shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
+    tokio::time::timeout(HANG_GUARD, service).await???;
+    Ok(())
+}
+
+// HL7 2.5.1 §2.7.4, §2.9.2; ADR 0010 (2026-11-26): the held-upload rule leaves
+// these refusals as they were.
+#[tokio::test]
+async fn hl7_unparseable_and_unsupported_refusals_are_unchanged() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), false)?;
+    let program = Program::load(&path)?;
+    let (shutdown, service) = start_service(&path)?;
+    let mut peer = connect(&program).await?;
+    // Bytes the HL7 parser rejects are not a message. They are kept and parked
+    // with no reply at all, so the next answer belongs to the following message.
+    let broken = String::from_utf8(ORU.to_vec())?
+        .rewrite("message1", "message4")
+        .rewrite("|12.30|", "|12\\Q\\30|");
+    let next = String::from_utf8(ORU.to_vec())?
+        .rewrite("message1", "message5")
+        .rewrite("||00012|", "||00013|");
+    for message in [&broken, &next] {
+        peer.write_all(&analyte_framing::hl7::encode(
+            message.as_bytes(),
+            analyte_framing::hl7::Limit::new(1048576)?,
+        )?)
+        .await?;
+    }
+    let ack = String::from_utf8(read_ack(&mut peer).await?)?;
+    assert!(ack.contains("MSA|AA|message5"), "{ack}");
+    let store = stored(&program)?;
+    assert_eq!(store.parked(0)?.len(), 1);
+    assert!(
+        store
+            .receipts("")?
+            .iter()
+            .any(|r| store.receipt(r.id).ok().flatten().is_some_and(|raw| raw
+                .raw
+                .windows(b"12\\Q\\30".len())
+                .any(|w| w == b"12\\Q\\30"))),
+        "the unparseable bytes are kept"
+    );
+    drop(store);
+    // HL7 2.5.1 §2.9.2: a transaction this result connection does not read
+    // keeps its AE refusal, located at MSH-9.
+    let unsupported = String::from_utf8(ORU.to_vec())?
+        .rewrite("message1", "message6")
+        .rewrite("ORU^R01^ORU_R01", "ADT^A01^ADT_A01");
+    peer.write_all(&analyte_framing::hl7::encode(
+        unsupported.as_bytes(),
+        analyte_framing::hl7::Limit::new(1048576)?,
+    )?)
+    .await?;
+    let ack = String::from_utf8(read_ack(&mut peer).await?)?;
+    assert!(ack.contains("MSA|AE|message6"), "{ack}");
+    assert!(ack.contains("ERR||MSH^1^9|207|E|operator-review"), "{ack}");
+    assert_eq!(stored(&program)?.parked(0)?.len(), 2);
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
     tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())
