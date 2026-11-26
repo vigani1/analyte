@@ -283,21 +283,39 @@ mod tests {
             Some(State::Ready { name, level, .. })
                 if name.as_str() == "generic-synthetic" && *level == super::EvidenceLevel::Documented
         ));
+        // ADR 0034 amendment: a definition written from the manuals ships ready.
+        assert!(matches!(
+            state("biocare/biolyte-2000"),
+            Some(State::Ready { level, .. }) if *level == super::EvidenceLevel::Documented
+        ));
         assert!(matches!(
             state("roche/cobas-e411"),
             Some(State::Ready { name, level, .. })
                 if name.as_str() == "cobas-e411" && *level == super::EvidenceLevel::Documented
         ));
+        // ADR 0034 amendment: written from its manual, so ready at documented.
+        assert!(matches!(
+            state("dialab/autolyser"),
+            Some(State::Ready { name, level, .. })
+                if name.as_str() == "dialab-autolyser" && *level == super::EvidenceLevel::Documented
+        ));
+        assert!(matches!(
+            state("biomerieux/vidas"),
+            Some(State::Ready { name, level, .. })
+                if name.as_str() == "biomerieux-vidas" && *level == super::EvidenceLevel::Documented
+        ));
         // First-lab models still awaiting definitions can record.
         for key in [
-            "biocare/biolyte-2000",
             "biomerieux/vidas",
             "boule/swelab-lumi",
             "dialab/autolyser",
             "yhlo/iflash-1200",
         ] {
             assert!(
-                matches!(state(key), Some(State::Blocked { record: Some(_) })),
+                matches!(
+                    state(key),
+                    Some(State::Ready { .. } | State::Blocked { record: Some(_) })
+                ),
                 "{key}"
             );
         }
