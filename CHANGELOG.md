@@ -8,6 +8,13 @@
 
 - Add a documented Roche cobas e 411 definition for Elecsys and cobas ASTM
   result uploads. Hold results with unresolved measurement identity for review.
+
+- The bioMérieux VIDAS now ships a full machine definition at level
+  documented, written from the BCI Link guide and the VIDAS PC manual. It
+  reads and delivers uploaded results, with result identity from sample ID,
+  assay and completion minute. Setup asks Literal or Alternate and the VIDAS
+  PC software band, which also sets the 12- or 17-character sample-ID limit.
+  Work-list downloads stay off. Its record-only profile is removed.
 - Remove the unused VIDAS retry count and backoff settings. Configuration
   reports either old key as an unknown field.
 - `analyte doctor` reports missing or invalid lab app keys as failures and
