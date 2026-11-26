@@ -1639,7 +1639,7 @@ async fn record_only_is_set_and_left_through_the_save_step() -> Result<(), Error
 
 // ADR 0034 with ADR 0015; cobas e 411 HIM v2.3 Host communication setting
 // (p. 7) and section 5 (p. 14): `machines set --analyzer-mode` writes the
-// protocol type the shipped record file asks, so packing follows the lab's
+// protocol type the record-only fixture asks, so packing follows the lab's
 // answer, and a value the model does not offer changes nothing.
 #[tokio::test(flavor = "multi_thread")]
 async fn record_only_takes_the_cobas_protocol_type_from_the_command_line() -> Result<(), Error> {
@@ -1647,7 +1647,7 @@ async fn record_only_takes_the_cobas_protocol_type_from_the_command_line() -> Re
     let blocked = install.root.join("machines/roche/cobas-e411");
     std::fs::write(
         blocked.join(analyte_config::RECORD_FILE),
-        include_str!("../../../../../../machines/roche/cobas-e411/record.toml"),
+        analyte_fixtures::ASTM_PACKED_RECORD_ONLY,
     )?;
     assert_eq!(install.machines(&["add", "cobas-1"]).await?, Outcome::Done);
     let packed = |install: &Install| -> Result<(bool, Option<String>), Error> {

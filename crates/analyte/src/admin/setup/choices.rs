@@ -6,7 +6,10 @@
 //! `[choices]`. The config loader checks them, as it checks every layer.
 use super::SetupError;
 use super::wizard::Draft;
-use analyte_config::{ChoiceKind, ChoiceName, ChoiceSelections, Chosen, MachineChoice};
+use crate::machine::software_version::UNCHECKED_WARNING;
+use analyte_config::{
+    ChoiceKind, ChoiceLabel, ChoiceName, ChoiceSelections, Chosen, MachineChoice, VersionEvidence,
+};
 
 /// The prefix of a choice's form field: `choice.<name>`.
 pub(in crate::admin::setup) const FIELD: &str = "choice.";
@@ -105,9 +108,23 @@ pub(in crate::admin::setup) const fn hint(kind: ChoiceKind) -> &'static str {
     }
 }
 
+/// The displayed value, with the warning when it is outside the manuals.
+pub(in crate::admin::setup) fn value_words(
+    label: &ChoiceLabel,
+    evidence: VersionEvidence,
+) -> String {
+    match evidence {
+        VersionEvidence::Checked => label.as_str().to_owned(),
+        VersionEvidence::Unchecked => format!("{} ({UNCHECKED_WARNING})", label.as_str()),
+    }
+}
+
 /// One choice in words: "Protocol: Alternate (the manual suggests Literal)".
 fn word(chosen: &Chosen) -> String {
-    let value = chosen.value_label.as_str();
+    let value = value_words(&chosen.value_label, chosen.version_evidence);
+    if chosen.version_evidence == VersionEvidence::Unchecked {
+        return format!("{}: {value}", chosen.label.as_str());
+    }
     match (&chosen.suggested, chosen.differs()) {
         (_, false) => format!("{}: {value}", chosen.label.as_str()),
         (Some((_, suggested)), true) => format!(

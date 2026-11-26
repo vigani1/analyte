@@ -272,7 +272,7 @@ mod tests {
     }
 
     // machines/README.md: a model folder without machine.toml is blocked; the
-    // shipped tree lists the synthetic example as ready.
+    // shipped tree lists the synthetic example and documented Roche model as ready.
     #[test]
     fn shipped_tree_lists_ready_and_blocked_definitions() -> Result<(), crate::Error> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../machines");
@@ -284,18 +284,21 @@ mod tests {
                 if name.as_str() == "generic-synthetic" && *level == super::EvidenceLevel::Documented
         ));
         assert!(matches!(
+            state("roche/cobas-e411"),
+            Some(State::Ready { name, level, .. })
+                if name.as_str() == "cobas-e411" && *level == super::EvidenceLevel::Documented
+        ));
+        assert!(matches!(
             state("biomerieux/vidas"),
             Some(State::Ready { name, level, .. })
                 if name.as_str() == "biomerieux-vidas" && *level == super::EvidenceLevel::Documented
         ));
-        // Each first-lab model is ready or names its protocol and link, so it
-        // can record only.
+        // First-lab models still awaiting definitions can record.
         for key in [
             "biocare/biolyte-2000",
             "biomerieux/vidas",
             "boule/swelab-lumi",
             "dialab/autolyser",
-            "roche/cobas-e411",
             "yhlo/iflash-1200",
         ] {
             assert!(

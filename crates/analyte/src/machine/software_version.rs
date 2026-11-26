@@ -1,11 +1,19 @@
 //! Reads analyzer software metadata through the installed framing and syntax.
 use analyte_config::Validated;
-use analyte_config::software_version::{Selector, reported};
+use analyte_config::software_version::{Check, ExpectedVersions, Selector, reported};
 use analyte_model::{Digest, Identifier};
 
-/// Returns an unexpected version, with absent metadata preserved as unknown.
+/// The warning for a software version outside the definition's manual coverage.
+pub(crate) const UNCHECKED_WARNING: &str = "Software version not checked against a manual";
+
+/// Returns a wire warning when an active comparison finds unexpected or unknown
+/// metadata. Unchecked settings have no comparison and use their own warning.
 pub(crate) fn observe(config: &Validated, raw: &[u8]) -> Option<(Digest, Option<Identifier>)> {
-    let check = config.effective().machine().software_version()?;
+    let check = config
+        .effective()
+        .machine()
+        .software_version()
+        .and_then(Check::expected)?;
     let version = read(config, raw, check.selector);
     if version
         .as_ref()
@@ -19,7 +27,7 @@ pub(crate) fn observe(config: &Validated, raw: &[u8]) -> Option<(Digest, Option<
 fn read(config: &Validated, raw: &[u8], selector: Selector) -> Option<Identifier> {
     let payload = super::protocols::payload(config, raw).ok()?;
     match selector {
-        Selector::AstmSenderThirdComponent => {
+        Selector::AstmSenderSecondComponent | Selector::AstmSenderThirdComponent => {
             let syntax = config.effective().stack().astm_syntax()?;
             let messages = crate::reading::astm_messages(&payload, syntax).ok()?;
             let [message] = messages.as_slice() else {
@@ -29,7 +37,12 @@ fn read(config: &Validated, raw: &[u8], selector: Selector) -> Option<Identifier
             let [components] = field.repeats() else {
                 return None;
             };
-            let component = components.get(2)?;
+            let index = if matches!(selector, Selector::AstmSenderSecondComponent) {
+                1
+            } else {
+                2
+            };
+            let component = components.get(index)?;
             if component.has_control_character() || component.has_unsupported_escape() {
                 return None;
             }
@@ -66,7 +79,7 @@ fn hl7_version(message: &analyte_hl7::Message, position: usize) -> Option<Identi
 /// Operator wording shared by Overview and the machine detail.
 pub(crate) fn message(
     machine: &Identifier,
-    check: &analyte_config::software_version::Check,
+    check: &ExpectedVersions,
     warning: &analyte_store::SoftwareWarning,
 ) -> String {
     let checked = check
@@ -146,6 +159,30 @@ mod tests {
         transfer.extend(encode(b"L|1|N\r", FrameNumber::FIRST.next(), Limit::default())?.flatten());
         let (_, version) = observe(&config, &transfer).ok_or("expected warning")?;
         assert_eq!(version.as_ref().map(Identifier::as_str), Some("2.0"));
+        Ok(())
+    }
+
+    // Roche cobas e 411 HIM v2.3 section 6, Table 11.
+    #[test]
+    fn astm_reads_the_second_sender_component_independently_of_wire_version() -> TestResult {
+        use analyte_framing::astm::{FrameNumber, Limit, encode};
+        let config = config(true, Some("astm_sender_second_component"))?;
+        for (sender, expected) in [("Synthetic^1.0", None), ("Synthetic^2.0", Some("2.0"))] {
+            let header = format!("H|\\^&|||{sender}|||||||P|1\r");
+            let mut transfer: Vec<u8> =
+                encode(header.as_bytes(), FrameNumber::FIRST, Limit::default())?
+                    .flatten()
+                    .collect();
+            transfer
+                .extend(encode(b"L|1|N\r", FrameNumber::FIRST.next(), Limit::default())?.flatten());
+            match expected {
+                None => assert!(observe(&config, &transfer).is_none()),
+                Some(expected) => {
+                    let (_, version) = observe(&config, &transfer).ok_or("expected warning")?;
+                    assert_eq!(version.as_ref().map(Identifier::as_str), Some(expected));
+                }
+            }
+        }
         Ok(())
     }
 

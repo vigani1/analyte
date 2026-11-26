@@ -45,8 +45,8 @@ pub use schema::{
     MachineDeparture, Mappings, NoSubId, OrderNamespace, OrdersSwitch, Overrides, Parity,
     PeerSupport, Poct, PoctIdentity, Priority, QcRule, Responsibility, SampleSelection,
     SampleSource, Serial, SerialSetting, SerialValues, Site, SubId, Syntax, Terminator, Transport,
-    TransportKind, UnitMapping, ValueExpectation, ValueKind, Vidas, VidasChoice, VidasIdentity,
-    VidasResultControlLabels, VidasSampleLimit,
+    TransportKind, UnitMapping, ValueExpectation, ValueKind, VersionEvidence, Vidas, VidasChoice,
+    VidasIdentity, VidasResultControlLabels, VidasSampleLimit,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

@@ -8,7 +8,7 @@
 use crate::schema::{
     ChoiceBlock, ChoiceKind, ChoiceLabel, ChoiceName, ChoiceSelections, ChoiceValue,
     MAX_CHOICE_COMBINATIONS, MAX_CHOICE_VALUES, MAX_CHOICES, MachineChoice, MachineDocument,
-    OrdersSwitch,
+    OrdersSwitch, VersionEvidence,
 };
 use crate::validation::validate_machine;
 use crate::{Error, invalid};
@@ -27,6 +27,8 @@ pub struct Chosen {
     pub value: ChoiceName,
     /// The value in use in the analyzer's words.
     pub value_label: ChoiceLabel,
+    /// Whether the selected software version is covered by the manuals.
+    pub version_evidence: VersionEvidence,
     /// The definition's suggestion and its words; none when it suggests none.
     pub suggested: Option<(ChoiceName, ChoiceLabel)>,
     /// The site file chose it; otherwise the suggestion applies.
@@ -259,7 +261,8 @@ fn check_choice(
         return Err(invalid(path, &key, "offer 2 to 16 values"));
     };
     let blocks = first.blocks();
-    if blocks.is_empty() {
+    let has_unchecked = check_unchecked(choice, path, &key)?;
+    if blocks.is_empty() && !has_unchecked {
         return Err(invalid(
             path,
             &key,
@@ -335,6 +338,40 @@ fn check_choice(
         ));
     }
     Ok(blocks)
+}
+
+/// An unchecked version cannot supply a setting that was inferred from a manual.
+fn check_unchecked(choice: &MachineChoice, path: &str, key: &str) -> Result<bool, Error> {
+    let mut unchecked = choice
+        .values
+        .iter()
+        .filter(|value| value.version_evidence == VersionEvidence::Unchecked);
+    let Some(value) = unchecked.next() else {
+        return Ok(false);
+    };
+    let value_key = format!("{key}.values.{}.checked", value.value);
+    if choice.kind != ChoiceKind::SoftwareVersion || unchecked.next().is_some() {
+        return Err(invalid(
+            path,
+            &value_key,
+            "only a software_version choice may offer checked = false, on at most one value",
+        ));
+    }
+    if choice.suggested.as_ref() == Some(&value.value) {
+        return Err(invalid(
+            path,
+            &format!("{key}.suggested"),
+            "select the unchecked version explicitly in the site file",
+        ));
+    }
+    if choice.values.iter().any(|value| !value.blocks().is_empty()) {
+        return Err(invalid(
+            path,
+            key,
+            "a choice offering an unchecked version cannot select settings. Use a separate explicit mode choice for settings that depend on the version",
+        ));
+    }
+    Ok(true)
 }
 
 /// Validates the definition with every combination of its choices applied,
@@ -540,6 +577,7 @@ pub(crate) fn chosen(choices: &[MachineChoice], resolved: &[(usize, bool)]) -> V
                 label: choice.label.clone(),
                 value: value.value.clone(),
                 value_label: value.label.clone(),
+                version_evidence: value.version_evidence,
                 suggested: choice.suggested.as_ref().and_then(|suggested| {
                     choice
                         .value(suggested)

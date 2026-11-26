@@ -14,11 +14,10 @@ const PACKED_RESULT: &[u8] = b"H|\\^&|||Analyzer|||||||P|LIS2-A2|20261123120000\
 /// The stack a record-only ASTM capture names.
 const STACK: [&str; 4] = ["tcp_server", "astm_lis01", "astm_link", "astm_lis02"];
 
-/// The shipped cobas e 411 record file with a loopback listener in place of
+/// The cobas e 411 record-only test fixture with a loopback listener in place of
 /// its serial link; everything else, the departure above all, as shipped.
 fn cobas_on_loopback() -> Result<String, Error> {
-    let mut table: toml::Table =
-        include_str!("../../../../machines/roche/cobas-e411/record.toml").parse()?;
+    let mut table: toml::Table = analyte_fixtures::ASTM_PACKED_RECORD_ONLY.parse()?;
     let mut transport = toml::Table::new();
     transport.insert("kind".into(), "tcp_server".into());
     table.insert("transport".into(), transport.into());

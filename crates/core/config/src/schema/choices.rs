@@ -107,16 +107,49 @@ impl From<ChoiceLabel> for String {
     }
 }
 
-/// What kind of question a choice is, which only changes how Setup asks it.
+/// Whether the lab is choosing an analyzer mode or identifying its software.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChoiceKind {
     /// A mode the analyzer offers on its own settings screen.
     Mode,
     /// The installed software version, read from the analyzer's About screen;
-    /// its values are version bands whose facts follow from it. At most one
-    /// per definition.
+    /// its values are version bands and may include an unchecked version.
+    /// At most one per definition.
     SoftwareVersion,
+}
+
+/// Whether a software version choice value is covered by a manual.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "bool", into = "bool")]
+pub enum VersionEvidence {
+    /// A version band covered by the definition's manuals.
+    #[default]
+    Checked,
+    /// An explicitly selected version outside the definition's manual coverage.
+    Unchecked,
+}
+
+impl VersionEvidence {
+    const fn is_checked(&self) -> bool {
+        matches!(self, Self::Checked)
+    }
+}
+
+impl From<bool> for VersionEvidence {
+    fn from(checked: bool) -> Self {
+        if checked {
+            Self::Checked
+        } else {
+            Self::Unchecked
+        }
+    }
+}
+
+impl From<VersionEvidence> for bool {
+    fn from(evidence: VersionEvidence) -> Self {
+        evidence.is_checked()
+    }
 }
 
 /// Whether the definition's `[orders]` apply: a "send results only" mode
@@ -205,6 +238,13 @@ pub struct ChoiceValue {
     pub value: ChoiceName,
     /// The value as the analyzer's screen or manual names it.
     pub label: ChoiceLabel,
+    /// Only a software version value can set `checked = false`.
+    #[serde(
+        rename = "checked",
+        default,
+        skip_serializing_if = "VersionEvidence::is_checked"
+    )]
+    pub version_evidence: VersionEvidence,
     /// Replaces the definition's whole `[mappings]` table.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mappings: Option<Mappings>,
