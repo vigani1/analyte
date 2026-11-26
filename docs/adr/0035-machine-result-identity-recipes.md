@@ -71,3 +71,36 @@ The protected comparison records access before showing result data. Both
 interfaces submit the displayed snapshot. The store rechecks it in the same
 transaction as the resolution and any enqueue. If the item or comparison
 changes, reopen it and review the evidence again.
+
+## Amendment 2026-11-26: the lab can always be asked about repeats
+
+The owner approved a per-machine site setting, **Repeated results**, on
+2026-11-26.
+
+- `automatic` is the default and is not written to the site file. The decisions
+  above apply unchanged. A resend is stored once and not delivered again. A new
+  key is a new result. A correction advances the revision, and changed content
+  under the same key is held.
+- `always_ask` is for a lab that wants a person to see every repeat. Analyte
+  holds a result when an earlier upload from the same machine already retained
+  its identity key. This includes purged history. The result keeps its claimed
+  key and appears in Needs review with the same comparison and the decisions
+  **This is a resend** and **This is a rerun**. This applies to
+  byte-identical resends, corrections and same-key changes alike. A first-seen
+  key still flows normally. A receipt that is read again, such as after
+  reprocessing, is not a repeat of itself.
+- The switch can only make handling more manual. It never creates a recipe,
+  never resolves an unresolved result and never relaxes a hold. A held repeat
+  reaches the protocol as any other held result does. For example, HL7 answers
+  it with the content-error acknowledgment that it already uses for a held
+  conflict.
+- The store makes the decision in one place, the revision assignment for
+  ordinary reconciliation. The host passes the machine's effective setting in
+  through `ReconcileMode::Standard`. IHE LAW and POCT keep their
+  protocol-owned rules, and record-only connections read no results. The site
+  file refuses `always_ask` for these, so the setting is never silently ignored.
+- The value is part of the effective snapshot, and changing it changes the
+  settings version. A rerun decision still requires the configuration that
+  received the result. Resolve held repeats before switching the setting back.
+- Setup step 2 and `analyte machines set --repeated-results` share one plan
+  and save path. The machine's page and `machines list` show the choice in use.

@@ -271,6 +271,21 @@ impl crate::StackChoice {
     pub const fn connection_context(self) -> bool {
         self.capabilities().connection_context
     }
+    /// Whether results reconcile through ordinary identity recipes, which the
+    /// site's repeated-results choice governs (ADR 0035, 2026-11-26). IHE LAW
+    /// and POCT keep their protocol-owned rules, so the choice does not apply.
+    #[must_use]
+    pub const fn asks_repeated_results(self) -> bool {
+        match self {
+            Self::AstmLis02
+            | Self::Hl7V2
+            | Self::FileAstm
+            | Self::FileHl7
+            | Self::VidasLiteral
+            | Self::Autolyser => true,
+            Self::LawManager | Self::Poct => false,
+        }
+    }
     pub(crate) const fn has_autolyser_orders(self) -> bool {
         self.capabilities().has_autolyser_orders
     }

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- New per-machine **Repeated results** setting in Setup and
+  `analyte machines set --repeated-results`. **Handle automatically**
+  (default) keeps today's resend, correction and rerun handling. **Always ask
+  me** holds every repeat of a measurement in Needs review for a person, while
+  new measurements still flow. The machine's page and `machines list` show the
+  setting (ADR 0035, amended 2026-11-26).
+
 - Machine definitions can offer "Other version (not checked)" in Setup.
   Overview, status and the machine list keep a warning visible while results
   continue to flow.

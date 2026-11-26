@@ -1,7 +1,8 @@
 //! Assigns result revisions within one transaction and bounded batch state, checking status progression.
 use super::{
-    Error, IdentityStatus, Interpretation, Reading, ReceiptId, ResultContent, ResultStatus,
-    Revision, RevisionOutcome, StatusLifecycle, clinical_digest, key, status_policy,
+    ASK_REPEAT_REASON, Error, IdentityStatus, Interpretation, Reading, ReceiptId, RepeatPolicy,
+    ResultContent, ResultStatus, Revision, RevisionOutcome, StatusLifecycle, clinical_digest, key,
+    status_policy,
 };
 pub(super) type AssignedRevision = (String, i64, analyte_model::Digest);
 
@@ -20,6 +21,7 @@ pub(super) struct Reconciliation<'a, 'db> {
     pub(super) rows: usize,
     pub(super) lifecycle: Option<StatusLifecycle<'a>>,
     pub(super) edit_guard: Option<&'a str>,
+    pub(super) repeats: RepeatPolicy,
 }
 
 impl Reconciliation<'_, '_> {
@@ -68,6 +70,17 @@ impl Reconciliation<'_, '_> {
             result.identity = IdentityStatus::Unresolved(
                 analyte_model::Reason::new("multiple final runs under the same order and test")
                     .map_err(crate::StorageError::Text)?,
+            );
+            batch.outcomes.push(RevisionOutcome::Conflict);
+            return Ok(());
+        }
+        // ADR 0035 (2026-11-26): the one place the machine's repeat choice
+        // decides; asking only ever adds a hold, before any automatic outcome.
+        if self.repeats == RepeatPolicy::AlwaysAsk
+            && self.retained_by_other_upload(&identity_key, receipt)?
+        {
+            result.identity = IdentityStatus::Unresolved(
+                analyte_model::Reason::new(ASK_REPEAT_REASON).map_err(crate::StorageError::Text)?,
             );
             batch.outcomes.push(RevisionOutcome::Conflict);
             return Ok(());

@@ -349,6 +349,7 @@ pub(crate) fn definition_details(
         serial: file.transport.serial,
         choices: Vec::new(),
         asks_autolyser_poll: false,
+        asks_repeated_results: false,
         asks_vidas_patient_namespace: false,
         analyzer_mode: file.analyzer_mode,
     })
@@ -515,6 +516,13 @@ pub fn load(model: (&str, &str), site: (&str, &str)) -> Result<Validated, Error>
             site.0,
             "choices",
             "record only asks its own questions in [recording]; remove [choices]",
+        ));
+    }
+    if !resolved.repeated_results.is_automatic() {
+        return Err(invalid(
+            site.0,
+            "repeated_results",
+            "record-only connections read no results; remove repeated_results",
         ));
     }
     let profile = protocol.profile()?;

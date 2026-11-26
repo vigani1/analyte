@@ -11,7 +11,7 @@ use super::{
 };
 use crate::installation::config::{Program, connections};
 use crate::machine::link::status::Link;
-use analyte_config::{AllowedPeers, Endpoint, TransportKind};
+use analyte_config::{AllowedPeers, Endpoint, RepeatedResults, TransportKind};
 use analyte_model::Identifier;
 use analyte_transport::serial;
 use serde::Deserialize;
@@ -359,6 +359,49 @@ pub(super) fn saved_autolyser_poll(table: &toml::Table) -> Option<String> {
         .map(|seconds| seconds.to_string())
 }
 
+/// The repeated-results choice saved in a site table, as a form value.
+pub(super) fn saved_repeated_results(table: &toml::Table) -> Option<String> {
+    table
+        .get("repeated_results")
+        .and_then(toml::Value::as_str)
+        .map(str::to_owned)
+}
+
+/// The repeated-results choice to save (ADR 0035, 2026-11-26): the draft's,
+/// else the saved one, else automatic. Only a model whose results reconcile
+/// through identity recipes asks it; for any other the key goes, and a value
+/// other than automatic given for it is refused rather than ignored.
+pub(super) fn repeated_results_of(
+    definition: &analyte_config::DefinitionDetails,
+    draft: &wizard::Draft,
+    current: &toml::Table,
+) -> Result<RepeatedResults, SetupError> {
+    let given = draft
+        .repeated_results
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let parse = |value: &str| {
+        RepeatedResults::parse(value).ok_or(SetupError::Connection(
+            "choose how repeated results are handled: automatic or always_ask",
+        ))
+    };
+    if !definition.asks_repeated_results {
+        return match given.map(parse).transpose()? {
+            None | Some(RepeatedResults::Automatic) => Ok(RepeatedResults::Automatic),
+            Some(RepeatedResults::AlwaysAsk) => Err(SetupError::Connection(
+                "this model keeps its protocol's own rules for repeated results; it has no repeated-results choice",
+            )),
+        };
+    }
+    match given {
+        Some(value) => parse(value),
+        None => saved_repeated_results(current)
+            .as_deref()
+            .map_or(Ok(RepeatedResults::Automatic), parse),
+    }
+}
+
 /// Everything a save or a test needs, checked and validated in memory.
 pub(super) struct Plan {
     pub(super) program: String,
@@ -435,10 +478,11 @@ pub(super) fn plan(setup: &Setup, id: &str, draft: &wizard::Draft) -> Result<Pla
             })
             .flatten()
             .filter(|value| !value.is_empty());
+        let repeats = repeated_results_of(&details, draft, &current)?;
         site::candidate(
             current,
             (link.0, link.1, link.2, &chosen),
-            (poll, vidas_namespace.as_deref()),
+            (poll, vidas_namespace.as_deref(), repeats),
             &lab_app,
             &scan.file,
             &scan.settings(),
@@ -501,6 +545,8 @@ pub(super) struct Saved {
     pub(super) cable: Option<String>,
     /// The model's own choices in words; none when it declares none.
     pub(super) choices: Option<String>,
+    /// How repeated results are handled, where the model asks it (ADR 0035).
+    pub(super) repeated_results: Option<RepeatedResults>,
     /// The save moved a lab app into `lab-apps.toml`.
     pub(super) moved: bool,
     pub(super) backups: Vec<PathBuf>,
@@ -510,7 +556,7 @@ impl Saved {
     /// The audit reason: the connection and the lab app saved through `via`.
     pub(super) fn reason(&self, via: Via) -> String {
         format!(
-            "{} saved: {}{}{}, {}{}",
+            "{} saved: {}{}{}{}, {}{}",
             via.machines(),
             site::describe(&self.connection),
             self.cable
@@ -521,6 +567,12 @@ impl Saved {
                 .as_deref()
                 .map(|choices| format!(", analyzer settings {choices}"))
                 .unwrap_or_default(),
+            // Named only when it is not the default, so earlier audit rows
+            // and an automatic save read as before (ADR 0035, 2026-11-26).
+            match self.repeated_results {
+                Some(RepeatedResults::AlwaysAsk) => ", repeated results: always ask me",
+                Some(RepeatedResults::Automatic) | None => "",
+            },
             self.lab_app.as_ref().map_or_else(
                 || "record only, no lab app".to_owned(),
                 |lab_app| format!(
@@ -573,6 +625,7 @@ pub(super) fn save_blocking(
         lab_app: plan.validated.effective().site().destination.clone(),
         cable,
         choices,
+        repeated_results: plan.validated.effective().repeated_results(),
         moved,
         backups: written.backups,
     })

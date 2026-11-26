@@ -397,6 +397,8 @@ where
         rows: store.limits.page_rows,
         lifecycle: None,
         edit_guard: None,
+        // The host-assigned run is a new key; the operator already decided.
+        repeats: super::RepeatPolicy::Automatic,
     };
     let mut batch = super::assignment::RevisionBatch::default();
     reconciler.assign_result(result, receipt, false, &mut batch)?;

@@ -28,7 +28,9 @@ impl Context<'_> {
         } else if stack.choice().connection_context() {
             Ok(crate::machine::poct::policy())
         } else {
-            Ok(Policy::standard())
+            Ok(Policy::standard(
+                machine.snapshot.effective().site().repeated_results,
+            ))
         }
     }
 }

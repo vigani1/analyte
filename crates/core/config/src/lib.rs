@@ -10,6 +10,8 @@ mod peers;
 pub use lab_apps::{LAB_APPS_FILE, LabAppProblem, LabAppSource, LabApps, MAX_LAB_APPS};
 pub use peers::AllowedPeers;
 mod orders;
+mod repeated_results;
+pub use repeated_results::RepeatedResults;
 mod retention;
 pub use retention::Retention;
 mod time_zone;
@@ -436,6 +438,9 @@ pub struct DefinitionDetails {
     pub choices: Vec<MachineChoice>,
     /// Whether the definition requires a site polling interval.
     pub asks_autolyser_poll: bool,
+    /// Whether Setup asks the repeated-results choice (ADR 0035, 2026-11-26):
+    /// only for stacks that reconcile through ordinary identity recipes.
+    pub asks_repeated_results: bool,
     /// Whether the definition requires a site VIDAS patient namespace.
     pub asks_vidas_patient_namespace: bool,
     /// The analyzer mode the capture profile asks the lab to choose, if any.
@@ -453,8 +458,12 @@ impl DefinitionDetails {
         }
         let document: MachineDocument = load_table(path, table, None)?;
         choices::check(&document, path)?;
+        let asks_repeated_results =
+            selection::derive(&document.protocol, document.transport.kind, path)?
+                .asks_repeated_results();
         Ok(Self {
             asks_autolyser_poll: uses_site_autolyser_poll(&document),
+            asks_repeated_results,
             asks_vidas_patient_namespace: uses_site_vidas_namespace(&document),
             identity: Some((document.name, document.evidence.level)),
             protocol: document.protocol,
@@ -661,6 +670,7 @@ impl Draft {
             self.paths.first().map_or("machine", String::as_str),
         )?;
         validate_site(&self.site, &self.machine.transport, path)?;
+        refuse_unused_repeat_choice(&self.site, &stack, site_path)?;
         // Preserve the existing sorted TOML layout, including explicit input settings
         // that have no runtime role. Runtime consumers cannot access this document.
         let document = toml::Value::try_from(Canonical {
@@ -695,6 +705,19 @@ impl Draft {
             digest,
         })
     }
+}
+
+/// Refuses "always ask" where the choice cannot apply (ADR 0035, 2026-11-26):
+/// IHE LAW and POCT keep their own rules, so it is never silently ignored.
+fn refuse_unused_repeat_choice(site: &Site, stack: &Stack, path: &str) -> Result<(), Error> {
+    if site.repeated_results.is_automatic() || stack.choice().asks_repeated_results() {
+        return Ok(());
+    }
+    Err(invalid(
+        path,
+        "repeated_results",
+        "IHE LAW and POCT keep their own rules for repeated results; remove repeated_results",
+    ))
 }
 
 /// Applies the local override layer's explicit replacements; sections replace in full.
@@ -944,6 +967,14 @@ impl Effective {
     #[must_use]
     pub const fn records_only(&self) -> bool {
         matches!(self.machine.stack, Stack::Record(_))
+    }
+
+    /// The repeated-results choice in use (ADR 0035, 2026-11-26); none where
+    /// it does not apply: record only, IHE LAW and POCT.
+    #[must_use]
+    pub fn repeated_results(&self) -> Option<RepeatedResults> {
+        (!self.records_only() && self.machine.stack.choice().asks_repeated_results())
+            .then_some(self.site.repeated_results)
     }
 
     /// Where the lab app in `site().destination` was written. It is not part of

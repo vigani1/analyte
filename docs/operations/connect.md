@@ -14,7 +14,7 @@ Use a nonclinical installation ID, never a patient or sample ID.
 | Layer | Contents |
 | --- | --- |
 | Shipped definition | Protocol, mappings, departures and evidence; qualified definitions belong under `machines/`. For a serial machine, `[transport.serial]` holds the manual's usual cable settings as a suggestion. The model's own choices (`[[choices]]`), each with its allowed values and the manual's suggestion. |
-| Site file | `schema_version = 1`, endpoint (or `usb_serial` for a serial port), required retention period, the lab app it sends to (`lab_app = "<name>"`), optional `time_zone`, for a serial machine the cable settings the lab chose (`[serial]`, see [Serial cable settings](#serial-cable-settings)), and the lab's value for each of the model's choices (`[choices]`, see [Analyzer settings](#analyzer-settings)). |
+| Site file | `schema_version = 1`, endpoint (or `usb_serial` for a serial port), required retention period, the lab app it sends to (`lab_app = "<name>"`), optional `time_zone`, for a serial machine the cable settings the lab chose (`[serial]`, see [Serial cable settings](#serial-cable-settings)), the lab's value for each of the model's choices (`[choices]`, see [Analyzer settings](#analyzer-settings)), and optional `repeated_results` (see [Repeated results](#repeated-results)). |
 | Optional local overrides | `schema_version = 1` and explicit replacement sections for this installation. |
 
 Overrides replace whole sections and lists; an override's `endpoint` or
@@ -639,3 +639,22 @@ on the model, these can include the installed protocol mode, its character
 encoding, and the Autolyser report layout, recovery and work-list settings.
 When the model asks for a report poll interval, enter the lab's interval in
 whole seconds from 1 to 300. Setup saves it with the other site settings.
+
+### Repeated results
+
+Step 2 also asks how to handle a result that the machine sends again
+([ADR 0035](../adr/0035-machine-result-identity-recipes.md)):
+
+| Choice | What happens |
+| --- | --- |
+| Handle automatically (recommended) | A resend is kept once and not delivered again. A correction goes to the lab app as a new revision. Changed content under the same measurement is held in Needs review. |
+| Always ask me | Every result whose measurement Analyte already holds from an earlier upload waits in Needs review. A person decides whether it is a resend or a rerun. New measurements still flow normally. |
+
+The setting can only make handling more manual. Setup writes
+`repeated_results = "always_ask"` to the site file. Automatic is the default
+and is not written. From the command line, use `analyte machines set <id>
+--repeated-results always_ask` or `automatic`. The machine's page and
+`analyte machines list` show the choice in use. IHE LAW, POCT and record-only
+connections keep their own rules, so Setup does not ask this question for
+them. Resolve held repeats before switching back to automatic, because a rerun
+decision needs the settings that received the result.
