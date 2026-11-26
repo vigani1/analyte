@@ -61,7 +61,7 @@ pub(crate) fn observation(
                 .rerun_status_codes
                 .iter()
                 .any(|code| code.as_str() == "C");
-        if settings.evidence.is_none() || undeclared_rerun {
+        if settings.evidence.is_none() || settings.run.is_empty() || undeclared_rerun {
             // An upload layout describes syntax, and cannot qualify a stable measurement key.
             finding(
                 output,

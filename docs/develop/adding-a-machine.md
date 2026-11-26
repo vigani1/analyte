@@ -539,8 +539,8 @@ own link rules, each with its source section. The machine tests load every
 If the analyzer's own screen offers a mode that changes how it frames records
 and its manual says one mode packs several ASTM records in one frame, the file
 may ask that mode and declare the packing departure for that mode only (ADR
-0034 decision 10). [The cobas e 411's](../../machines/roche/cobas-e411/record.toml)
-is the example: `[analyzer_mode]` with a label and its values (no
+0034 decision 10). The [cobas e 411 record-only test fixture](../../crates/testing/fixtures/astm-packed-record-only.toml)
+shows `[analyzer_mode]` with a label and its values (no
 suggestion), then one `astm_packed_records_in_frame` entry in `deviations`
 with the full [ADR 0015 scope and evidence](#declare-departures-do-not-program-around-them),
 the scope's `model` being the folder key and its `mode` one of the values. No

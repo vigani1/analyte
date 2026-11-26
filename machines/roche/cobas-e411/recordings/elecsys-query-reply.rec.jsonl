@@ -1,4 +1,4 @@
-{"version":1,"stack":["serial","astm_lis01","astm_link","astm_lis02"],"machine":"roche/cobas-e411","software":null,"evidence":"synthetic","de_identification":"Invented data throughout","source":"Synthetic HIM v2.3 Tables 11-17 and section 17 structured order reply","exceptions":[]}
+{"version":1,"stack":["serial","astm_lis01","astm_link","astm_lis02"],"machine":"roche/cobas-e411","software":null,"evidence":"synthetic","de_identification":"Invented data throughout","source":"Synthetic HIM v2.3 section 6 Tables 11-17 and section 7 structured order reply","exceptions":[]}
 {"direction":"machine_to_host","time_ms":0,"bytes":"BQ=="}
 {"direction":"host_to_machine","time_ms":0,"bytes":"Bg=="}
 {"direction":"machine_to_host","time_ms":0,"bytes":"AjFIfFxeJnx8fHx8fHx8fHxQfHwNAzA1DQo="}
