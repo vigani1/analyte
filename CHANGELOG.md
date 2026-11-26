@@ -28,6 +28,12 @@
   seconds if the folder cannot be checked in time, even on a stalled share.
 - Setup and `analyte machines set --dry-run` now report the same machine
   configuration errors as startup, before Save writes any settings.
+- The BioCARE Biolyte 2000 has a machine definition written from its Service
+  Manual V4.2A (evidence level documented) and is no longer record-only.
+  Results keep their value text and unit spelling and are held for staff,
+  because the manual documents no result identity or control marker. Setup
+  asks the software version (4.2A or another, not checked); with 4.2A a
+  different version reported by the analyzer raises a warning.
 
 ## 0.1.0 - 2026-11-23
 

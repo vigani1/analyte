@@ -1,0 +1,14 @@
+# Site answers for the synthetic recordings. The definition suggests no
+# software version, so each replay names one; both values are exercised.
+# The recordings report 0.0.0.0 in H.5.3, which the 4.2A band only warns about.
+["broken-checksum.rec.jsonl".choices]
+software_version = "other"
+
+["empty-optional-fields.rec.jsonl".choices]
+software_version = "v4-2a"
+
+["patient.rec.jsonl".choices]
+software_version = "v4-2a"
+
+["qc.rec.jsonl".choices]
+software_version = "v4-2a"
