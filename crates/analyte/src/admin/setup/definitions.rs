@@ -290,13 +290,18 @@ mod tests {
             "boule/swelab-lumi",
             "dialab/autolyser",
             "roche/cobas-e411",
-            "yhlo/iflash-1200",
         ] {
             assert!(
                 matches!(state(key), Some(State::Blocked { record: Some(_) })),
                 "{key}"
             );
         }
+        // ADR 0034 amendment: a model written from its manuals ships ready.
+        assert!(matches!(
+            state("yhlo/iflash-1200"),
+            Some(State::Ready { name, level, .. })
+                if name.as_str() == "yhlo-iflash-1200" && *level == super::EvidenceLevel::Documented
+        ));
         assert!(definitions.iter().all(|d| !d.key.contains("..")));
         let display = |key: &str| {
             definitions

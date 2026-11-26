@@ -1,0 +1,233 @@
+# YHLO iFlash 1200: machine definition written from the interface manuals
+# (ADR 0034 amendment, 2026-11-26). DOCUMENTED ONLY: no real analyzer has
+# confirmed it. Sources, in our own words, are in README.md:
+# - YHLO LIS Protocol Manual V1.1 (2018), written for the iFlash 3000 PC
+#   software (cited below as "LIS V1.1");
+# - YHLO iFlash 1200 Service Manual AF-14-iF10-001/A0 (2020), which installs
+#   the 1200 from the same iFlash 3000 PC software (cited as "service").
+schema_version = 2
+protocol = "hl7"
+name = "yhlo-iflash-1200"
+# Every departure depends on the communication type the lab picks, so all of
+# them are declared per mode in [[choice_departures]] below (ADR 0015, 0032).
+deviations = []
+# LIS V1.1 §1.1 and §2: the interface manual describes the iFlash series
+# protocol, not one software build, so these declarations cover the
+# installed build the lab has not read yet (as the cobas e 411 does).
+departure_scope = {model="yhlo/iflash-1200",firmware="unknown",mode="two-way",edition={protocol="hl7",edition="v231"},direction="machine_to_host",message="oru_r01"}
+
+[transport]
+# Service §6.4.1: with TCP/IP the iFlash PC connects to the LIS server's
+# address and port, so Analyte listens. The lab chooses address and port in
+# its site file; the manuals give no fixed port. The serial link of LIS V1.1
+# §1.2 is not offered: its cable settings and framing are unconfirmed.
+kind = "tcp_server"
+# Analyte's bound on one transport read or write (AGENTS rule 7).
+operation_timeout_ms = 10000
+
+[framing]
+# LIS V1.1 §2.1.3: MLLP blocks (VT, message, FS CR). Analyte's bound on one
+# message (AGENTS rule 7); OBX-5 alone may be 64 KiB (LIS V1.1 §2.3.5).
+limit = 1048576
+
+[dialog]
+# Analyte's own bounds (AGENTS rule 7). Service §6.4.2.1: the PC waits 15 s
+# by default for the LIS, so the reply deadline stays at 15 s.
+receive_timeout_ms = 30000
+send_timeout_ms = 15000
+# LIS V1.1 §2.2.1.2 and §2.3.2: every ORU^R01 gets an ACK^R01; Analyte sends
+# AA only after the bytes are durably stored (ADR 0003).
+acknowledgment = "store_and_forward"
+
+[syntax]
+# LIS V1.1 §1.3 and §2.3.1: MSH-18 says ASCII. The "ASCII" option really uses
+# the PC's local code page; Analyte reads strict ASCII and refuses other bytes
+# visibly. The UTF-8 option's MSH-18 label is undocumented, so it is not
+# offered (README, open gaps).
+encoding = "ascii"
+# LIS V1.1 §2.1.1: HL7 2.3.1.
+edition = "v231"
+# LIS V1.1 §2.1.4: every segment ends with CR.
+terminator = "cr"
+# LIS V1.1 §2.1.5: the standard escapes; anything else is refused, not guessed.
+escapes = "reject"
+# Analyte's bounds (AGENTS rule 7). OBR has 47 fields (LIS V1.1 §2.3.4).
+bytes = 1048576
+records = 4096
+record_bytes = 65536
+fields = 256
+repetitions = 256
+components = 256
+
+[mappings]
+# LIS V1.1 §2.3.5 and service §6.4.2.2: OBX-3 is the assay's LIS channel
+# number that staff set on the iFlash PC. It is the machine's own code, kept
+# as sent; the lab app owns the names (ADR 0029). No test list is shipped.
+test_system = "yhlo/iflash-1200"
+# OBX-6 keeps the unit as written; no unit is converted or supplied.
+units = []
+# MSH-16 = 2 marks QC uploads (LIS V1.1 §2.3.1); no field rule is needed.
+qc = []
+
+[mappings.sample]
+# LIS V1.1 §2.3.4.1: OBR-2 carries the sample barcode, scanned at the
+# analyzer or entered at the PC; kept as a string with case and zeros.
+source = "barcode"
+[mappings.sample.field]
+group = "order"
+record = "OBR"
+field = 2
+component = 1
+repetition = 1
+
+# ADR 0035 recipe: the barcode (sample above), the sample serial number in
+# OBR-3 and the observation end time in OBR-8, with the channel number. A
+# result missing any of them stays held for an operator. The manual
+# documents only F in OBX-11, so no correction or rerun code is declared:
+# changed content under the same key is held, never merged.
+[mappings.identity]
+order_id = {group="order",record="OBR",field=3,component=1,repetition=1}
+order_namespace = {fixed="iflash-sample-serial"}
+sub_id = "none"
+run = [{group="order",record="OBR",field=8,component=1,repetition=1}]
+correction_status_codes = []
+evidence = {manual="YHLO LIS Protocol Manual V1.1 (2018)", section="2.3.4.1 OBR fields 2, 3 and 8"}
+
+# Barcode queries (LIS V1.1 §§2.2.2, 2.3.6-2.3.11, 2.4.2.1). Used only when
+# the lab picks two-way below, and answered only from a trusted order cache:
+# an unavailable or stale cache gets an AE, never "no orders" (ADR 0003 rule 9).
+[orders]
+send_ahead = false
+# LIS V1.1 §2.3.10, DSP field 24: Y for an emergency sample, N otherwise.
+# The app's "urgent" has no documented code, so such orders are refused.
+priorities = [{app="routine",machine="N"},{app="stat",machine="Y"}]
+[orders.query]
+# Service §6.4.2.1: the PC's default respond timeout is 15 s.
+deadline_ms = 15000
+when_untrusted = "error"
+[orders.hl7]
+# LIS V1.1 §2.3.6: QRD-8 holds the barcode, QRD-9 is OTH and QRD-12 is T.
+sample_field = 8
+sample_suffix = ""
+filters = [{field=9,value="OTH"},{field=12,value="T"}]
+# LIS V1.1 §2.3.7 and §2.4.2: QRF-1 names the device model, iFlash3000 in the
+# manual. The 1200 runs the same iFlash 3000 PC software (service §6.3); a
+# different QRF-1 gets an AE, never an answer (README, open questions).
+record_location = "iFlash3000"
+# Service §6.4.2.1: the same 15 s default for the ACK^Q03 of each page.
+acknowledgment_ms = 15000
+lines = []
+
+# Service §6.4.1 and the LIS settings screen (Figure 6-49): the lab picks
+# one-way (results only) or two-way (results and barcode queries). The
+# manuals give no factory default, so the lab must answer.
+[[choices]]
+name = "communication_type"
+kind = "mode"
+label = "Communication type on iFlash PC > Utility > System settings > LIS settings"
+[[choices.values]]
+value = "one-way"
+label = "One-way (send results only)"
+orders = "off"
+departures = ["hl7_msh16_message_category", "hl7_categorized_oru_results"]
+[[choices.values]]
+value = "two-way"
+label = "Two-way (send results and query sample information by barcode)"
+orders = "on"
+departures = ["hl7_msh16_message_category", "hl7_categorized_oru_results", "hl7_record_display_query"]
+
+# LIS V1.1 §2.3.1: MSH-16 carries the upload category (0 patient,
+# 1 calibration, 2 QC) in ORU^R01.
+[[choice_departures]]
+rule = "hl7_msh16_message_category"
+[choice_departures.declaration]
+level = "documented"
+scope = {model="yhlo/iflash-1200",firmware="unknown",mode="one-way",edition={protocol="hl7",edition="v231"},direction="machine_to_host",message="oru_r01"}
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "YHLO-LIS-V1.1"
+title = "YHLO LIS Protocol Manual"
+revision = "V1.1 (2018-01-17)"
+section = "2.2.1, 2.3.1 (MSH-16), 2.4.1"
+guarantee = "msh16_message_category"
+covers_unknown_firmware = true
+contradicts = false
+
+[[choice_departures]]
+rule = "hl7_msh16_message_category"
+[choice_departures.declaration]
+level = "documented"
+scope = {model="yhlo/iflash-1200",firmware="unknown",mode="two-way",edition={protocol="hl7",edition="v231"},direction="machine_to_host",message="oru_r01"}
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "YHLO-LIS-V1.1"
+title = "YHLO LIS Protocol Manual"
+revision = "V1.1 (2018-01-17)"
+section = "2.2.1, 2.3.1 (MSH-16), 2.4.1"
+guarantee = "msh16_message_category"
+covers_unknown_firmware = true
+contradicts = false
+
+# LIS V1.1 §§2.3.4.1, 2.3.4.2 and 2.3.5: OBR-9 dilution, OBR-10 rack and
+# position, OBX-9/OBX-10 qualitative call, BOTH and SI component values,
+# OBX-13 raw result, and OBR-only QC arrays.
+[[choice_departures]]
+rule = "hl7_categorized_oru_results"
+[choice_departures.declaration]
+level = "documented"
+scope = {model="yhlo/iflash-1200",firmware="unknown",mode="one-way",edition={protocol="hl7",edition="v231"},direction="machine_to_host",message="oru_r01"}
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "YHLO-LIS-V1.1"
+title = "YHLO LIS Protocol Manual"
+revision = "V1.1 (2018-01-17)"
+section = "2.3.4.1, 2.3.4.2, 2.3.5, 2.4.1"
+guarantee = "categorized_oru_results"
+covers_unknown_firmware = true
+contradicts = false
+
+[[choice_departures]]
+rule = "hl7_categorized_oru_results"
+[choice_departures.declaration]
+level = "documented"
+scope = {model="yhlo/iflash-1200",firmware="unknown",mode="two-way",edition={protocol="hl7",edition="v231"},direction="machine_to_host",message="oru_r01"}
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "YHLO-LIS-V1.1"
+title = "YHLO LIS Protocol Manual"
+revision = "V1.1 (2018-01-17)"
+section = "2.3.4.1, 2.3.4.2, 2.3.5, 2.4.1"
+guarantee = "categorized_oru_results"
+covers_unknown_firmware = true
+contradicts = false
+
+# LIS V1.1 §§2.2.2, 2.3.6-2.3.11 and 2.4.2.1: record-format barcode query
+# with positional DSP replies, one DSR page per sample and ACK^Q03 per page.
+[[choice_departures]]
+rule = "hl7_record_display_query"
+[choice_departures.declaration]
+level = "documented"
+scope = {model="yhlo/iflash-1200",firmware="unknown",mode="two-way",edition={protocol="hl7",edition="v231"},direction="machine_to_host",message="qry_q02"}
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "YHLO-LIS-V1.1"
+title = "YHLO LIS Protocol Manual"
+revision = "V1.1 (2018-01-17)"
+section = "2.2.2, 2.3.6-2.3.11, 2.4.2.1"
+guarantee = "record_display_query"
+covers_unknown_firmware = true
+contradicts = false
+
+# Built from the manuals only; synthetic recordings do not raise the level.
+[evidence]
+level = "documented"
+[[evidence.capabilities]]
+model = "yhlo/iflash-1200"
+firmware = "unknown"
+driver = "0.1.0"
+config_digest = "untested"
+transport = "tcp_server"
+dialogs = []
+failure_cases = []
+platform = "untested"
+evidence_files = []

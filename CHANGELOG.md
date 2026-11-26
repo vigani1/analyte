@@ -10,6 +10,13 @@
   seconds if the folder cannot be checked in time, even on a stalled share.
 - Setup and `analyte machines set --dry-run` now report the same machine
   configuration errors as startup, before Save writes any settings.
+- **YHLO iFlash 1200:** ship a machine definition written from the YHLO
+  LIS Protocol Manual V1.1 and the iFlash 1200 service manual, at evidence
+  level documented; it replaces the record-only `record.toml`. Setup asks
+  the one-way or two-way communication type; barcode queries are answered
+  only in two-way and only from a trusted order cache. Uploads without the
+  documented identity fields (OBR-2, OBR-3, OBR-8) or a final report status
+  are kept, held for an operator and answered AE.
 
 ## 0.1.0 - 2026-11-23
 

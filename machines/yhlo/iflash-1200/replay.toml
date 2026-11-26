@@ -1,3 +1,23 @@
+# Site answers for replaying each recording through machine.toml.
+["barcode-query.rec.jsonl".choices]
+communication_type = "one-way"
+
+["malformed.rec.jsonl".choices]
+communication_type = "one-way"
+
+["qualitative.rec.jsonl".choices]
+communication_type = "one-way"
+
+["quality-control.rec.jsonl".choices]
+communication_type = "one-way"
+
+["quantitative.rec.jsonl".choices]
+communication_type = "one-way"
+
+["query-unavailable.rec.jsonl".choices]
+communication_type = "one-way"
+
+# Synthetic normal-mode query replays with the settings in replay-orders.toml.
 ["barcode-orders.rec.jsonl"]
 order_cache = "seeded"
 

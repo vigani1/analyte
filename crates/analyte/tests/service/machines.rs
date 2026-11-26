@@ -231,10 +231,13 @@ async fn replay_model(folder: &Path, model: &Path, definition: &Path) -> Result<
                 assert_eq!(header.stack, validated.effective().stack().layer_names());
                 replay_vendor_worklist(vendor, &header, &events).await
             } else if let Some(cache) = answers.order_cache {
-                if !record_only || answers.choices.is_some() || answers.recording.is_some()
+                // The query exchange replays the synthetic HL7 definition with the
+                // model's replay-orders.toml, for a ready or a blocked model alike.
+                if answers.choices.is_some()
+                    || answers.recording.is_some()
                     || answers.expected_gap.is_some()
                 {
-                    return Err("synthetic order replay needs a blocked definition and no other replay settings".into());
+                    return Err("synthetic order replay takes no other replay settings".into());
                 }
                 record_display::replay(folder, &header, &events, cache).await
             } else if record_only {
@@ -1019,6 +1022,8 @@ fn every_record_file_loads_as_a_recording() -> Result<(), Error> {
             }
         }
     }
-    assert!(found >= 6, "the six first-lab models record: found {found}");
+    // Models move to machine.toml as their definitions ship (ADR 0034
+    // amendment); the Swelab Lumi records until its LIS document arrives.
+    assert!(found >= 1, "a model still records: found {found}");
     Ok(())
 }
