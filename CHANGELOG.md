@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The Dialab Autolyser has a full machine definition written from its
+  Operator's Manual Rev18 (evidence level documented) and replaces its
+  record-only settings. It reads results and holds them for staff, since
+  the report has no run identity. Setup asks the poll interval, the
+  "Send also the controls" setting and last-report recovery. Work lists stay
+  off.
+
 - HL7 v2 uploads that Analyte has stored but holds for review (missing
   identity, a mapping problem such as a missing OBX-3, a conflicting result)
   are now acknowledged AA, or CA then AA in enhanced mode, instead of AE. The
@@ -9,11 +16,9 @@
   it or mark it "not received". Storage failures, unparseable bytes, HL7
   syntax errors, unsupported message types and IHE LAW keep their current
   answers (ADR 0010).
-
 - Machine definitions can offer "Other version (not checked)" in Setup.
   Overview, status and the machine list keep a warning visible while results
   continue to flow.
-
 - Add a documented Roche cobas e 411 definition for Elecsys and cobas ASTM
   result uploads. Hold results with unresolved measurement identity for review.
 

@@ -1,0 +1,108 @@
+# Dialab Autolyser REF 20010D, internal host protocol (Operator's Manual
+# Rev18, software 21.18 / 21.18M, chapter 23). Written from the manual
+# (ADR 0034 amendment, 2026-11-26): DOCUMENTED ONLY, not yet run against an
+# installed analyzer. See README.md for what is still open.
+schema_version = 2
+protocol = "autolyser"
+name = "dialab-autolyser"
+# ADR 0015: no typed departure or qualifying vendor evidence is declared.
+deviations = []
+
+[transport]
+# Rev18 §23.1 and §23.4: RS-232 from the analyzer's PC, the host polls. The
+# manual does not state the installed serial values, so there is no
+# [transport.serial] suggestion: the lab chooses all five from the
+# analyzer's Utility / Setup Analyzer / Serial screen (ADR 0031).
+kind = "serial"
+# Analyte's bound on one transport read or write (AGENTS rule 7).
+operation_timeout_ms = 10000
+
+[framing]
+# Rev18 §§23.2-23.3: the largest response layout (controls block, 999
+# results, checksum and EOT).
+limit = 11038
+
+[dialog]
+# Analyte's own bounds; Rev18 §§23.1-23.2 give no numbers. They match the
+# response and acknowledgment deadlines in [autolyser].
+receive_timeout_ms = 10000
+send_timeout_ms = 5000
+
+[syntax]
+encoding = "ascii"
+bytes = 11038
+# One report per response; every count below is bounded by its bytes.
+records = 1
+record_bytes = 11038
+fields = 999
+# Rev18 §23.1: a work list names at most 99 tests (two digits).
+repetitions = 99
+components = 1
+
+[autolyser]
+# ADR 0032 decision 8: the lab sets whole seconds (1 to 300) in Setup; the
+# manual gives no interval, so there is no suggestion.
+poll_ms = "site"
+# Analyte's deadlines (AGENTS rule 7); Rev18 §§23.1-23.2 give no numbers.
+acknowledgment_ms = 5000
+response_ms = 10000
+interbyte_ms = 5000
+storage_ms = 5000
+# Work lists stay off. Rev18 §23.1 work lists need the lab app's patient
+# namespace and a clone policy, which only the lab can give and which Setup
+# cannot ask for an Autolyser yet; see README "Implementation gaps".
+download = false
+
+[codes]
+# The analyzer's own 4-byte analysis codes pass through as sent, padding
+# included; the lab app owns the test names (ADR 0029). Rev18 §23.2 sends no
+# units, so no unit spelling is mapped.
+test_system = "dialab-autolyser"
+units = []
+
+# Rev18 p.119 and §23.2: "Send also the controls" changes the layout of every
+# report, so it is read from the analyzer, never detected (decisions.md 4).
+[[choices]]
+name = "controls"
+kind = "mode"
+label = "On the Autolyser PC, Utility > Setup Analyzer > Serial: is \"Send also the controls\" ticked?"
+[[choices.values]]
+value = "off"
+label = "Not ticked: reports carry patient results only"
+autolyser = { controls = false }
+[[choices.values]]
+value = "on"
+label = "Ticked: reports also carry controls, with level and lot"
+autolyser = { controls = true }
+
+# Rev18 §23.2: L asks again for the last report after a reception problem.
+# The manual sets no retry policy, so the lab chooses (decisions.md 9).
+[[choices]]
+name = "recovery"
+kind = "mode"
+label = "After a damaged report, should Analyte ask the Autolyser for the last report (L) at the next poll?"
+[[choices.values]]
+value = "ask-last"
+label = "Yes: ask for the last report again at the next poll"
+autolyser = { recover_last_on_poll = true }
+[[choices.values]]
+value = "stop"
+label = "No: stop polling until staff reconcile it"
+autolyser = { recover_last_on_poll = false }
+
+# Rev18 §23.2 pp.177-178 has no stable run or revision field, so no result
+# identity recipe is declared: every result stays unresolved and held for
+# staff (ADR 0035).
+
+[evidence]
+level = "documented"
+[[evidence.capabilities]]
+model = "Autolyser REF 20010D"
+firmware = "unknown"
+driver = "0.1.0"
+config_digest = "untested"
+transport = "serial"
+dialogs = []
+failure_cases = []
+platform = "untested"
+evidence_files = []

@@ -1,5 +1,9 @@
-{"version":1,"stack":["serial","autolyser","autolyser","autolyser"],"machine":"Dialab Autolyser REF 20010D","software":null,"evidence":"synthetic","de_identification":"All identifiers, values and lot numbers were invented.","source":"Synthetic corrupt next-report reply; Dialab Autolyser Operator's Manual Rev18 sections 23.2-23.3 and ADR 0034 (record-only never requests the last report)."}
+{"version":1,"stack":["serial","autolyser","autolyser","autolyser"],"machine":"Dialab Autolyser REF 20010D","software":null,"evidence":"synthetic","de_identification":"All identifiers, values and lot numbers were invented.","source":"Synthetic corrupt next-report reply (checksum off by one), then last-report recovery; Dialab Autolyser Operator's Manual Rev18 sections 23.2-23.3 (L resends the last report after a reception problem)."}
 {"direction":"host_to_machine","time_ms":0,"bytes":"Ag=="}
 {"direction":"machine_to_host","time_ms":10,"bytes":"Bg=="}
 {"direction":"host_to_machine","time_ms":20,"bytes":"UgQ="}
 {"direction":"machine_to_host","time_ms":30,"bytes":"MDAwN3hRMjkgICAgICAgVFMwMDJaOVEgIDwwLjEyNUEwWDcgMTIuMzQ1MTg0BA=="}
+{"direction":"host_to_machine","time_ms":1030,"bytes":"Ag=="}
+{"direction":"machine_to_host","time_ms":1040,"bytes":"Bg=="}
+{"direction":"host_to_machine","time_ms":1050,"bytes":"TAQ="}
+{"direction":"machine_to_host","time_ms":1060,"bytes":"MDAwN3hRMjkgICAgICAgVFMwMDJaOVEgIDwwLjEyNUEwWDcgMTIuMzQ1MTgzBA=="}
