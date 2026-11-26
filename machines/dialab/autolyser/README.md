@@ -7,50 +7,73 @@ without a sample barcode reader. The lab must verify that the patient code
 on the analyzer identifies the tube in its lab app and that the operator
 loads the correct cup.
 
-This is a blocked machine definition, with [record-only settings](record.toml)
-for the first visit. A normal definition must supply a poll interval and choose
-the report layout before it can load. Setup cannot yet collect those choices
-for a normal Autolyser connection. The record-only profile can collect both
-answers and keeps the exact bytes in protected storage.
+This is a full [machine definition](machine.toml) written from the Operator's
+Manual Rev18 under the 2026-11-26 amendment to ADR 0034. It reads results:
+each report's patient code, analysis codes and values reach the lab app, held
+for staff because the report carries no run identity (see Departures). It is
+not blocked any more, but it has never run against an installed analyzer,
+so its evidence stays `documented`.
 
 ## Connection
 
 Use RS-232 from the analyzer's PC. Rev18 §23.4 p.179 shows a fully wired,
 crossed 9-pin female–female cable, including handshake lines. Verify the
-ports and cable on site. Use the separate host port on the PC. Keep COM
-port, baud, data bits, parity, stop bits and flow control as lab values
-without suggestions. Rev18 p.119 shows configurable baud and handshaking.
-The serial utility settings in §23.6 apply to the utilities. Figure 15-7
-shows a TCP/IP option, but its host interface is undocumented.
+ports and cable on site. Use the separate host port on the PC. The
+definition suggests no COM port, baud, data bits, parity, stop bits or flow
+control: the manual does not state the installed values, so the lab chooses
+all five in Setup from what the analyzer's Serial screen shows (ADR 0031).
+Rev18 p.119 shows configurable baud and handshaking. The serial utility
+settings in §23.6 apply to the utilities. Figure 15-7 shows a TCP/IP
+option, but its host interface is undocumented, so only serial is offered.
 
 ## Settings on the machine
 
-In Utility / Setup Analyzer / Serial, confirm the **internal** protocol,
-the serial settings, and whether **Send also the controls** is enabled.
-Record the controls answer and the lab's polling interval in the site
-file's `[recording]` section. The controls answer determines the layout
-of every report. The capture profile supplies Analyte's own communication
-deadlines. Rev18 §§23.1–23.2 sets no numeric poll, ACK, inter-byte or
-response deadlines. Storage deadlines are local safeguards.
+In Utility / Setup Analyzer / Serial, confirm **Present**, the **internal**
+protocol and the serial settings. The variable protocol is refused (Rev18
+§23.5; see Departures). Rev18 §§23.1–23.2 set no numeric poll, ACK,
+inter-byte or response deadlines, so the definition carries Analyte's own
+bounds (5 s acknowledgment, 10 s response, 5 s between bytes, 5 s storage).
 
-Record whether staff manually release reports through Utility / RS232 or
-whether the analyzer releases them automatically. Release makes results
-eligible for polling. Enable transmission of non-calculable (NC) results
-so they remain visible to the host. With that option off, the analyzer
-removes NC results from the outgoing queue (Rev18 p.119 and §23.2 p.177).
-Preserve queued reports during qualification and recovery.
+Decide whether staff release reports through Utility / RS232 ("Accept
+result to be sent") or whether "All results must be sent automatically" is
+on. Release makes results eligible for polling; Analyte cannot tell an
+unreleased queue from an empty one. Turn on "Send the results with <NC>
+instead of the value" so non-calculable results reach the host. With that
+option off, the analyzer deletes NC results from the outgoing queue (Rev18
+p.119 and §23.2 p.177).
+
+### Setup questions
+
+Setup step 2 asks these for every Autolyser. None has a suggestion: only the
+lab can answer them.
+
+| Setup question | Values | Where staff find the answer |
+| --- | --- | --- |
+| Seconds between polls (`autolyser_poll_seconds`) | whole seconds, 1–300 | Lab policy. Rev18 §23.2 gives no interval. |
+| Send also the controls (`controls`) | `off`, `on` | Autolyser PC: Utility > Setup Analyzer > Serial, "Send also the controls" (Rev18 p.119). |
+| Last report after damage (`recovery`) | `ask-last`, `stop` | Lab policy on Analyte. Rev18 §23.2 offers `L` but sets no retry rule. |
+| Serial cable (`[serial]`) | the five standard settings | Autolyser PC: Utility > Setup Analyzer > Serial, Baud-Rate and Hand-Shake (Rev18 p.119). Confirm data bits, parity and stop bits with Dialab. |
+
+There is no software-version question. The Autolyser does not send its
+version on the wire, and Rev18 lists no host-interface change from 21.7
+through 21.18. The `M` suffix marks the open-parameters build (Rev18 §7.3 p.38);
+it does not change the host interface.
 
 ## Supported workflows
 
-**Record only.** The host sends STX, waits for ACK, then sends `R` and EOT.
-The analyzer replies with a report ending in EOT, or a single NAK for an
-empty queue. Analyte keeps the reply before the next poll. There is no
-receipt ACK from the host. Corrupt or incomplete input stops record-only
-polling and leaves its cursor guard unresolved across restarts. An operator
-must reconcile that guard before polling resumes. Rev18 §23.2 assigns
-`L` to last-report recovery and `A` to restart retrieval at the first
-available report. Archive retrieval requires an explicit operation and
-is unavailable from this model's record-only connection.
+**Result polling.** The host sends STX, waits for ACK, then sends `R` and
+EOT. The analyzer replies with a report ending in EOT, or a single NAK for
+an empty queue. Analyte stores the reply before it reads it. There is no
+receipt ACK from the host. Before each `R` Analyte stores a poll guard. A
+restart with an unresolved guard needs an operator to reconcile it before
+polling resumes.
+
+With `recovery = "ask-last"`, a corrupt or incomplete reply makes Analyte
+ask for the last report (`L`) at the next poll. `R` and `A` stay blocked
+until a valid `L` reply arrives, and an empty `L` reply does not clear the
+block. With `recovery = "stop"`, polling stops until staff reconcile.
+Analyte never asks for the archive (`A`), and the program has no manual
+`L` or `A` operation (Rev18 §23.2).
 
 **Internal report layout (Rev18 §§23.2–23.3, pp.177–179).** Widths are
 in ASCII bytes. The basic header is patient code (15), list (1, `T`
@@ -59,9 +82,7 @@ decimal result count (3). With controls enabled, insert the following
 before the result count: control indicator (1, `Y` or `N`), known/unknown
 (1, `K` or `U`), level (3) and lot (20). An ordinary sample in that
 layout carries `N`, `K`, `001` and twenty spaces. Each result is an
-exact four-byte analysis code and a seven-byte value. Keep case, leading
-zeros and padding. The future definition's code namespace is
-`dialab-autolyser` (ADR 0029). The lab app owns the test catalogue.
+exact four-byte analysis code and a seven-byte value.
 
 The implementation uses one three-digit decimal checksum after the last
 pair and before EOT. It sums the payload's ASCII byte values modulo 256,
@@ -69,92 +90,93 @@ excluding the handshake, checksum and EOT. This span follows the consistent
 examples and needs field verification. A report with `n` observations is
 `24 + 11n` bytes, or `49 + 11n` with controls. The three-digit count
 implies an envelope ceiling of 11,038 bytes, with controls, checksum and
-EOT included. The manual does not establish how many tests the installed
-tray can run or which textual forms and padding appear for NC. Keep the
-seven bytes as text, including comparators, and keep the original wire
-response. The internal format omits units, flags, ranges, timestamps,
-dilution evidence and immutable run/revision identifiers.
+EOT included, which is the definition's frame limit.
 
-**Work lists (Rev18 §23.1, pp.175–176).** The protocol driver can send one
-patient per handshake, with the 15-byte code, list, sample medium, clone
-(`Y`/`N`), two decimal cup digits, two decimal test-count digits, exact
-four-byte analysis codes, checksum and EOT. The reply is `Y` and one
-position byte, or `N` and one error byte (documented range 0x01–0x18).
-Analyte requires an explicit app patient namespace, specimen code,
-priority, clone policy and cup in 01–99. The driver accepts 1–99 tests
-within its configured bound. Only the routine and STAT lists are supported.
-A separate urgent request is refused. A lost insertion reply leaves the outcome
-uncertain for reconciliation. This model ships with record-only polling.
+**Mapping.**
 
-## Implementation gaps
+- The 15-byte patient code becomes the sample ID exactly as sent: case,
+  leading zeros and trailing padding are kept. A blank code, the analyzer's
+  `{0}` empty-code marker, or a control report leaves the sample absent.
+- Analysis codes are the machine's own four bytes, padding included, in the
+  code system `dialab-autolyser` (ADR 0029). The lab app owns the test
+  names; the definition ships no test list.
+- Values stay as written, including comparators and NC text. The report
+  carries no units, so no unit is mapped or supplied.
+- Each result keeps the list (`T`/`R`) and the sample medium (`S`/`U`). A
+  control report also keeps known/unknown, the exact level and the lot. In
+  ordinary reports the control placeholders stay only in the raw receipt.
+- The original response is kept with the driver and definition version
+  that read it.
 
-Normal definitions can now ask for controls layout, last-response recovery,
-work-list permission and the lab's poll interval without a default. The
-expected layout and installed settings still need to be confirmed.
+**Work lists (Rev18 §23.1, pp.175–176).** Off. The definition sets
+`download = false` and has no `[orders]`. The protocol and mapping code
+still refuse a missing or `00` cup, accept 1–99 tests and refuse urgent
+lists; a lost insertion reply stays uncertain. Turning work lists on needs
+the lab app's patient namespace and a clone policy (see Departures).
 
 ## Departures
 
-### Gap report
+No typed departures are declared (`deviations = []`).
+
+### Gaps closed by this definition
+
+| Rev18 source | Was | Now |
+| --- | --- | --- |
+| p.119, §§23.1–23.2 | Setup could not ask the poll interval or the controls layout for a normal connection, so the model was record-only. | The definition asks the poll interval (1–300 s, no default), the controls setting and the recovery policy in Setup. |
+| §23 introduction p.175, §23.2 | Reports were stored but never read. | The patient code, analysis codes, values, list, medium and QC details are mapped and delivered, held for staff. |
+| §§23.2–23.3 | The normal dialog's `L` recovery could not be enabled from a shipped model. | `recovery = "ask-last"` enables same-session `L`; `stop` keeps operator reconciliation. |
+
+### Gaps still open
 
 | Rev18 source | Gap and consequence | Layer |
 | --- | --- | --- |
-| p.119 and sections 23.1 to 23.2 | ADR 0032 choices can set the controls layout, last-report recovery and download permission. Normal definitions can require the lab's poll interval without a default. Confirm installed options and communication deadlines. | Configuration / Setup |
-| p.119, Figure 15-7 and §23.4 | TCP/IP exists on the analyzer, but the role, port and equivalence to RS-232 are unknown. A generic TCP transport is insufficient evidence. | Transport |
+| §§22.6, 23.2 pp.177–178 and §23.5 p.183 | The analyzer can recalculate or rerun results, but the internal report and the documented variable fields have no stable run or revision ID. No identity recipe is declared, so every result stays unresolved and held for staff (ADR 0035). | Mapping / result custody |
+| §23.1 pp.175–176 | Work lists need the lab app's patient namespace and an explicit clone policy. Setup cannot ask either for an Autolyser, and the definition cannot know them, so download is off with no choice. A follow-up adds a site namespace (as ADR 0032 decision 9 did for VIDAS) and a clone choice. | Configuration / Setup |
+| p.119, Figure 15-7 and §23.4 | TCP/IP exists on the analyzer, but its role, port and equivalence to RS-232 are unknown. A generic TCP transport is insufficient evidence. | Transport |
 | p.119, §23.2 | Release and NC sending are analyzer settings. The bridge cannot inspect or set them on the wire or tell an unreleased queue from an empty one. Suppressed NC never reaches the bridge. | Analyzer / operations |
-| §23 introduction p.175 | The reported patient code is the sample association, including case and fixed-width padding. A blank or fallback code leaves the association absent. Fixed reports lack a unique run field, so results remain held. Recordings are still needed to confirm which code staff enter or scan. | Syntax / identity |
-| Section 23.1 pp.175 to 176 | Without a reader, placement needs an explicit cup and `00` is refused. The reply's position byte is retained as received. Routine and STAT have typed codes. An urgent order is refused because the internal format has no separate urgent code. | Order mapping / dialog |
-| §§22.6, 23.2 and §23.5 p.183 | The analyzer can recalculate or rerun results. Mapping preserves a usable patient code as a sample ID. The internal report and documented variable fields lack a stable run or revision ID. Results stay parked with unresolved run identity after wire recovery. | Mapping / result custody |
-| §23.2 pp.177–178 | Mapping exposes list and medium and, for QC, known-control status, exact level and lot. Parsing follows the stated field definitions because the printed controls example disagrees with the widths and checksum. The original report is retained. Both report modes still need qualification on the installed analyzer. | Syntax / mapping |
-| §§23.2–23.3 pp.177–179 | The manual gives `L` as a recovery command but does not specify retry policy, exact timing or cursor persistence. The normal driver supports same-session automatic `L` when enabled and the dialog can accept an explicit `L`, but the program exposes no manual `L` or archive `A` operation. A restart with an unresolved poll requires operator reconciliation; record-only mode also requires that after a corrupt reply. | Dialog / operator controls |
-| §23.5 pp.180–187 | The variable protocol is unavailable. It can change field order and widths, use constants and delimited strings, select repeated analysis fields, exclude string terminators from the checksum or omit checksum checking, and uses different list codes. It can carry patient details and notes, QC metadata, analysis names and kinds, paired concentrations/units/flags, conversion factor, ranges and 24-hour urine context. Its receiving script can also carry demographics, notes and control fields absent from internal work lists. Internal records cannot recover those fields, and unit tables cannot supply units that were never transmitted. | Framing / syntax / mapping |
-| §23.6 p.188 | Vendor utilities illustrate communication, but do not establish the installed application's serial settings or timing. Analyte has no integration with those utilities. | Qualification |
+| §23 introduction p.175 | The patient code is the sample association. Recordings are still needed to confirm which code staff enter and how it is padded. | Syntax / identity |
+| §23.2 pp.177–178 | Parsing follows the stated field widths because the printed controls example disagrees with the widths and checksum. Both report modes still need qualification on the installed analyzer. | Syntax / mapping |
+| §§23.2–23.3 pp.177–179 | The manual gives no retry policy, timing or cursor persistence for `L`. The program has no manual `L` or archive `A` operation. | Dialog / operator controls |
+| §23.5 pp.180–187 | The variable protocol is refused. It can change field order and widths, use constants and delimited strings, select repeated analysis fields, change or omit the checksum and use different list codes. It can carry patient details, notes, QC metadata, analysis names, units, flags, ranges and 24-hour urine context that the internal layout lacks. Unit tables cannot supply units that were never sent. | Framing / syntax / mapping |
+| §23.6 p.188 | Vendor utilities illustrate communication but do not establish the installed application's serial settings or timing. Analyte has no integration with those utilities. | Qualification |
 
 The [protocol decisions](../../../docs/protocols/autolyser/decisions.md)
-explain the selected checksum boundaries and the evidence needed to
-revisit the controls layout. A normal connection also needs a replay
-site for required choices. The current machine replay inventory
-discovers only folders with `machine.toml` and supplies no Autolyser
-choice answers. The record-only inventory requires `record.toml` and
-forbids keeping both definitions side by side.
+explain the checksum boundaries, the controls layout and the recovery rules.
 
 ## Evidence
 
 Level: documented
 
-The [synthetic recordings](recordings/) cover a split next-report
-response, an empty poll, a control report with synthetic NC padding,
-and last-report recovery after checksum and length failures. The last
-recording exercises the normal dialog's recovery, which is outside
-record-only operation. There has been no analyzer or official simulator
-run.
+The [synthetic recordings](recordings/) replay through this definition with
+the answers in [replay.toml](replay.toml): a split next-report response, an
+empty poll, a control report with synthetic NC padding, and a corrupt reply
+followed by last-report recovery. The work-list recording replays against
+the order-enabled synthetic Autolyser example, because this definition keeps
+work lists off. There has been no analyzer or official simulator run.
+Shared recordings from an installed analyzer can raise the level to `proven`.
 
 ## Open questions
 
-- Confirm the exact software version and whether it has an M suffix.
+- Confirm the exact software version and whether it is the `M` build.
   Confirm the internal protocol, every serial setting, and which PC
   connector is the host port.
 - Confirm the controls setting, how staff release results, whether NC
   transmission is enabled, and the lab's polling interval.
 - Confirm patient-code entry, case/padding, and who checks the patient
   code against the tube and cup. For future work lists, confirm the
-  desired on/off setting, clone policy, cup placement and extra-list use.
+  lab app's patient namespace, clone policy, cup placement and extra-list use.
 - Capture de-identified internal exchanges for release, empty queue,
   ordinary reports, QC and NC. Ask Dialab for the correct controls
   example, safe timing bounds, `L` across restart and any available
   run/revision identity. Confirm approved TCP/IP settings separately
   if the lab wants network operation.
 
-## Result identity evidence
-
-Rev18 section 23.2, pp. 177-178 gives the returned patient code and analysis
-code but supplies no immutable measurement discriminator. Keep identity
-unresolved pending additional vendor evidence.
-
 ## Sources
 
 - Autolyser / Autolyser ISE Operator's Manual Rev18, software 21.18/21.18M.
-  Revision history lists no LIS change from 21.7 through 21.18. See Serial
-  setup p.119, §22.6 and chapter 23 pp.175–188.
+  Revision history lists no host-interface change from 21.7 through 21.18.
+  See the open/closed parameters notice in §7.3 p.38, Serial setup p.119, §22.6 and
+  chapter 23 pp.175–188.
 - Autolyser Service Manual Rev01, software 14. Older background for the
   PC and host interface. Rev18 supplies the internal wire details here.
 - [Machine research](../../../docs/research/machines/autolyser.md) and

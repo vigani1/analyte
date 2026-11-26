@@ -115,6 +115,7 @@ fn readme(path: &Path, level: EvidenceLevel) -> Result<(), Error> {
 #[serde(deny_unknown_fields)]
 struct ReplaySettings {
     choices: Option<toml::Table>,
+    autolyser_poll_seconds: Option<u32>,
     order_profile: Option<analyte_config::AstmOrderProfile>,
     vendor_worklist: Option<VendorWorklist>,
     recording: Option<toml::Table>,
@@ -218,17 +219,25 @@ async fn replay_model(folder: &Path, model: &Path, definition: &Path) -> Result<
                 );
                 replay_structured_orders(mode, &header, &events).await
             } else if let Some(vendor) = answers.vendor_worklist {
-                assert!(
-                    record_only,
-                    "the fixture exercises an order-enabled test peer"
-                );
-                let name = model
-                    .join("record.toml")
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                let site = recording_site("COM3", &answers, true)?;
-                let validated = analyte_config::recording::load((&name, &text), ("site", &site))?;
-                assert_eq!(header.stack, validated.effective().stack().layer_names());
+                // The fixture exercises an order-enabled test peer; the
+                // shipped definition only has to load with the same stack.
+                let layers = if record_only {
+                    let name = model
+                        .join("record.toml")
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    let site = recording_site("COM3", &answers, true)?;
+                    analyte_config::recording::load((&name, &text), ("site", &site))?
+                        .effective()
+                        .stack()
+                        .layer_names()
+                } else {
+                    ready_definition(folder, &text, &answers)?
+                        .effective()
+                        .stack()
+                        .layer_names()
+                };
+                assert_eq!(header.stack, layers);
                 replay_vendor_worklist(vendor, &header, &events).await
             } else if let Some(cache) = answers.order_cache {
                 if !record_only || answers.choices.is_some() || answers.recording.is_some()
@@ -553,6 +562,18 @@ async fn replay_ready(
     events: &[Event],
     answers: &ReplaySettings,
 ) -> Result<(), Error> {
+    let checked = ready_definition(folder, text, answers)?;
+    let stack = checked.effective().stack();
+    assert_eq!(header.stack, stack.layer_names(), "recording stack");
+    replay_machine(model, text, events, header, stack, answers).await
+}
+
+/// Loads a ready definition with the replay's site answers and checks its README.
+fn ready_definition(
+    folder: &Path,
+    text: &str,
+    answers: &ReplaySettings,
+) -> Result<analyte_config::Validated, Error> {
     if answers.recording.is_some() {
         return Err("use choices to supply site answers for machine.toml".into());
     }
@@ -574,9 +595,7 @@ async fn replay_ready(
         &folder.join("README.md"),
         checked.effective().machine().evidence.level,
     )?;
-    let stack = checked.effective().stack();
-    assert_eq!(header.stack, stack.layer_names(), "recording stack");
-    replay_machine(model, text, events, header, stack, answers).await
+    Ok(checked)
 }
 
 fn transport_kind(table: &toml::Table) -> Result<&str, Error> {
@@ -861,6 +880,9 @@ fn site(endpoint: &str, answers: &ReplaySettings, serial: bool) -> Result<String
     if let Some(choices) = &answers.choices {
         site.insert("choices".into(), choices.clone().into());
     }
+    if let Some(seconds) = answers.autolyser_poll_seconds {
+        site.insert("autolyser_poll_seconds".into(), i64::from(seconds).into());
+    }
     if serial {
         site.insert(
             "serial".into(),
@@ -939,6 +961,9 @@ fn deleted_definition_is_rejected() {
 fn every_record_file_loads_as_a_recording() -> Result<(), Error> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../machines");
     let mut found = 0_usize;
+    // Models that moved on to a full machine.toml (ADR 0034 amendment).
+    let mut ready = 0_usize;
+    let example = root.join("example");
     let mut pending = vec![root];
     while let Some(directory) = pending.pop() {
         for entry in std::fs::read_dir(&directory)? {
@@ -947,6 +972,9 @@ fn every_record_file_loads_as_a_recording() -> Result<(), Error> {
             if entry.file_type()?.is_dir() {
                 pending.push(path);
                 continue;
+            }
+            if entry.file_name() == "machine.toml" && !directory.starts_with(&example) {
+                ready = ready.saturating_add(1);
             }
             if entry.file_name() != analyte_config::RECORD_FILE {
                 continue;
@@ -1019,6 +1047,9 @@ fn every_record_file_loads_as_a_recording() -> Result<(), Error> {
             }
         }
     }
-    assert!(found >= 6, "the six first-lab models record: found {found}");
+    assert!(
+        found.saturating_add(ready) >= 6,
+        "the six first-lab models record or are defined: found {found} record-only and {ready} defined"
+    );
     Ok(())
 }
