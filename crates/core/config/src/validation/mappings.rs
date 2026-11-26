@@ -113,15 +113,16 @@ pub(super) fn validate_mappings(m: &ParsedMachine<'_>, path: &str) -> Result<(),
     for selected in &identity.run {
         field(selected, m.choice(), path, "mappings.identity.run")?;
     }
-    validate_identity_policy(identity, m.choice(), path)?;
+    validate_identity_policy(mapping, m.choice(), path)?;
     validate_tables(&mapping.value_kinds, &mapping.units, path)
 }
 
 fn validate_identity_policy(
-    identity: &crate::IdentityEvidence,
+    mapping: &Mappings,
     choice: StackChoice,
     path: &str,
 ) -> Result<(), Error> {
+    let identity = &mapping.identity;
     let rerun_key = "mappings.identity.rerun_status_codes";
     if choice == StackChoice::LawManager
         && (identity.evidence.is_some() || !identity.rerun_status_codes.is_empty())
@@ -139,7 +140,17 @@ fn validate_identity_policy(
             "requires a manual citation under mappings.identity.evidence",
         ));
     }
-    if identity.evidence.is_some() && identity.run.is_empty() {
+    // These layouts cite R.9 for the rerun marker even when they have
+    // no field that identifies the measurement.
+    let status_only = !identity.rerun_status_codes.is_empty()
+        && mapping.astm_results.as_ref().is_some_and(|profile| {
+            matches!(
+                profile.layout,
+                crate::AstmResultLayout::SlashDilutionAndAlarmCode
+                    | crate::AstmResultLayout::SlashDilutionAndAlarmCodeWithQcLot
+            )
+        });
+    if identity.evidence.is_some() && identity.run.is_empty() && !status_only {
         return Err(invalid(
             path,
             "mappings.identity.run",

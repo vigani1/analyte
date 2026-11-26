@@ -1,0 +1,154 @@
+# bioMérieux VIDAS (original five sections) uploading from the VIDAS PC over
+# BCI Link Literal. Written from the interface manuals (ADR 0034 amendment,
+# 2026-11-26); results only, work-list downloads stay off.
+schema_version = 2
+protocol = "vidas"
+name = "biomerieux-vidas"
+# ADR 0015: no protocol departure is declared.
+deviations = []
+
+[transport]
+# BCI Link 161150-486 rev C p. 2-2: RS-232 from the VIDAS PC.
+kind = "serial"
+# Analyte's bound on one transport read or write (AGENTS rule 7).
+operation_timeout_ms = 10000
+
+[transport.serial]
+# Rev C p. 3-8: BCI Link starting settings. The guide names no flow control,
+# so the lab supplies it in Setup (ADR 0031).
+baud = 9600
+data_bits = 8
+parity = "none"
+stop_bits = 1
+
+[framing]
+# Rev C p. 3-2: at most 1920 bytes across the RS chunks of one packet.
+limit = 1920
+
+[dialog]
+# Analyte bounds, the same as the shipped capture profile. Rev C pp. 3-1 to
+# 3-4 describe the exchange but give no numeric serial deadlines.
+receive_timeout_ms = 60000
+send_timeout_ms = 60000
+
+[syntax]
+# Rev C ch. 4: printable ASCII, ordered two-character tags ended by a pipe.
+# The PC sends one result per session (p. 3-3), so the bounds cover one packet.
+encoding = "ascii"
+bytes = 1920
+records = 1
+record_bytes = 1920
+fields = 128
+repetitions = 1
+components = 1
+
+[vidas]
+# Rev C p. 3-2: each RS chunk carries at most 80 bytes.
+chunk = 80
+# Rev C p. 3-6: the CR/LF option after control characters is off by default.
+suffix = []
+include_suffix = false
+# Rev C p. 3-7: the sum runs from the first RS through GS, without STX. The
+# PC sends lowercase hex and accepts either case.
+include_stx = false
+uppercase = false
+accept_either_case = true
+# Rev C appendix B and Manual F p. 10-8: only the PC's reserved Cx and QCx
+# identifiers mark a control; flags alone never make a sample a control.
+result_control_labels = "pc_slots"
+# Analyte deadlines, as in the capture profile; the guide gives no numbers.
+acknowledgment_ms = 5000
+interbyte_ms = 5000
+session_ms = 60000
+commit_ms = 5000
+# Work-list downloads stay off: the installed PC's enabled request fields,
+# dilution assays and acceptance check are not confirmed (README, gap report).
+download = false
+
+[codes]
+# Rev C pp. 4-5 to 4-7: the VIDAS mapper reads ci (sample ID), rt (assay),
+# ql and qn (values as written), y3 (unit as sent), qd (dilution, applied
+# state unknown), nc (flag mnemonic), tt and td (completion). The upload has
+# no result status or comment tag. Assay codes are the machine's own; the lab
+# app owns names, and units pass through unconverted (ADR 0029).
+test_system = "biomerieux-vidas"
+units = []
+
+[codes.vidas_identity]
+# ADR 0035: sample ID, short assay code and completion date and time. The
+# time has minute precision (rev C p. 4-6), so the same key with a different
+# value is held for an operator, never treated as a correction.
+sample_namespace = "biomerieux-vidas-sample"
+evidence = { manual = "BCI Link 161150-486 rev C", section = "p. 4-6" }
+
+[[choices]]
+# Rev C pp. 3-2 to 3-4: Literal acknowledges a packet after its checksum,
+# Alternate after ETX. The guide names no factory default, so none is suggested.
+name = "acknowledgment"
+kind = "mode"
+label = "Protocol in the BCI Link RS232 link settings: Literal or Literal Alternate"
+
+[[choices.values]]
+value = "literal"
+label = "Literal (acknowledge after the checksum)"
+vidas = { alternate = false }
+
+[[choices.values]]
+value = "alternate"
+label = "Literal Alternate (acknowledge after ETX)"
+vidas = { alternate = true }
+
+[[choices]]
+# The VIDAS PC does not report its version on the wire, so staff read it.
+name = "software_version"
+kind = "software_version"
+label = "VIDAS PC software version on its About screen"
+
+[[choices.values]]
+# Manual F introduction and pp. 4-14, 8-54: software 4.0.0, 12-character
+# sample ID.
+value = "manual-f"
+label = "4.0.0 (Manual F profile, sample ID up to 12 characters)"
+vidas = { sample_limit = 12 }
+
+[[choices.values]]
+# Rev C pp. 4-1 and 4-5: VU_06, sample ID up to 17 characters on the wire.
+value = "vu-06"
+label = "VU_06 (BCI guide C profile, sample ID up to 17 characters)"
+vidas = { sample_limit = 17 }
+
+[evidence]
+level = "documented"
+
+[[evidence.capabilities]]
+# Manual F describes this band; no recording carries its version.
+model = "biomerieux/vidas"
+firmware = "4.0.0"
+driver = "0.1.0"
+config_digest = "untested"
+transport = "serial"
+dialogs = []
+failure_cases = []
+platform = "untested"
+evidence_files = []
+
+[[evidence.capabilities]]
+# Synthetic uploads written from guide C; replayed over TCP loopback.
+model = "biomerieux/vidas"
+firmware = "VU_06"
+driver = "0.1.0"
+config_digest = "untested"
+transport = "serial"
+dialogs = ["literal-upload", "alternate-upload"]
+failure_cases = ["invalid-result", "bad-checksum"]
+platform = "untested"
+evidence_files = [
+    "recordings/alternate-bad-checksum.rec.jsonl",
+    "recordings/alternate-invalid.rec.jsonl",
+    "recordings/alternate-qualitative.rec.jsonl",
+    "recordings/alternate-quantitative.rec.jsonl",
+    "recordings/literal-bad-checksum.rec.jsonl",
+    "recordings/literal-invalid.rec.jsonl",
+    "recordings/literal-qualitative.rec.jsonl",
+    "recordings/literal-quantitative.rec.jsonl",
+]
