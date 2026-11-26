@@ -6,6 +6,7 @@
 //! from a closed list ([`Reason`]), which the public `GET /status` names
 //! without any name or count (ADR 0023).
 use crate::admin::view::{Tab, Tone, format};
+use crate::machine::software_version::UNCHECKED_WARNING;
 use analyte_model::Identifier;
 use analyte_store::{AlertKey, AlertState, Undeliverable};
 
@@ -27,7 +28,10 @@ pub(super) struct Facts {
     /// Listening machines without `allowed_peers`: any device that reaches
     /// their port is accepted as them (ADR 0026).
     pub(super) open: Vec<Identifier>,
+    /// Machines that reported unexpected or unknown software.
     pub(super) software: Vec<(Identifier, String)>,
+    /// Machines configured with a software version outside manual coverage.
+    pub(super) software_unchecked: Vec<Identifier>,
     /// A software version warning failed to save during this run.
     pub(super) software_warning_write_failed: bool,
     /// Lab apps whose sending is paused, with how many items wait for each.
@@ -138,6 +142,7 @@ enum Subject {
     Unlinked(Identifier),
     Silent(Identifier),
     Software(Identifier),
+    SoftwareUnchecked(Identifier),
     SoftwareWarningWriteFailed,
     Refused(Identifier),
     Open(Identifier),
@@ -166,6 +171,7 @@ impl Subject {
             Self::Paused(_)
             | Self::Silent(_)
             | Self::Software(_)
+            | Self::SoftwareUnchecked(_)
             | Self::SoftwareWarningWriteFailed
             | Self::Refused(_)
             | Self::Open(_)
@@ -190,6 +196,7 @@ impl Subject {
             Self::Paused(_) => Reason::SendingPaused,
             Self::Silent(_) => Reason::MachineSilent,
             Self::Software(_) => Reason::MachineSoftwareVersionChanged,
+            Self::SoftwareUnchecked(_) => Reason::MachineSoftwareVersionUnchecked,
             Self::SoftwareWarningWriteFailed => Reason::SoftwareWarningWriteFailed,
             Self::Refused(_) => Reason::MachineRefusedConnection,
             Self::Open(_) => Reason::MachineOpenToAnyDevice,
@@ -212,6 +219,7 @@ impl Subject {
             | Self::Unlinked(name)
             | Self::Silent(name)
             | Self::Software(name)
+            | Self::SoftwareUnchecked(name)
             | Self::Refused(name)
             | Self::Open(name) => Some(name),
             Self::Disk
@@ -275,6 +283,8 @@ pub(in crate::admin) enum Reason {
     MachineOpenToAnyDevice,
     /// The machine reports unexpected or unknown software.
     MachineSoftwareVersionChanged,
+    /// The selected software version has no manual coverage.
+    MachineSoftwareVersionUnchecked,
     /// An unexpected or unknown software warning could not be saved.
     SoftwareWarningWriteFailed,
 }
@@ -300,6 +310,7 @@ impl Reason {
             Self::OrderListStale => "order_list_stale",
             Self::MachineOpenToAnyDevice => "machine_open_to_any_device",
             Self::MachineSoftwareVersionChanged => "machine_software_version_changed",
+            Self::MachineSoftwareVersionUnchecked => "machine_software_version_unchecked",
             Self::SoftwareWarningWriteFailed => "software_warning_write_failed",
         }
     }
@@ -526,6 +537,13 @@ fn software_attention(facts: &Facts) -> impl Iterator<Item = Thing> + '_ {
                 Fix::Page(Tab::Machines),
             )
         })
+        .chain(facts.software_unchecked.iter().map(|machine| {
+            Thing::new(
+                Subject::SoftwareUnchecked(machine.clone()),
+                format!("{UNCHECKED_WARNING} for {}", machine.as_str()),
+                Fix::Page(Tab::Machines),
+            )
+        }))
         .chain(facts.software_warning_write_failed.then(|| {
             Thing::new(
                 Subject::SoftwareWarningWriteFailed,
@@ -1211,6 +1229,10 @@ mod tests {
             (
                 Subject::Software(id("m")),
                 "machine_software_version_changed",
+            ),
+            (
+                Subject::SoftwareUnchecked(id("m")),
+                "machine_software_version_unchecked",
             ),
             (
                 Subject::SoftwareWarningWriteFailed,

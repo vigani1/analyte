@@ -58,13 +58,15 @@ pub enum Reason {
     MachineOpenToAnyDevice,
     /// A machine reports software outside its checked versions or an unknown version.
     MachineSoftwareVersionChanged,
+    /// A machine's selected software version has no manual coverage.
+    MachineSoftwareVersionUnchecked,
     /// A machine software version warning could not be saved.
     SoftwareWarningWriteFailed,
 }
 
 impl Reason {
     /// Every kind, most serious first.
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 19] = [
         Self::DiskFull,
         Self::DiskLow,
         Self::LabAppBlocked,
@@ -82,6 +84,7 @@ impl Reason {
         Self::OrderListStale,
         Self::MachineOpenToAnyDevice,
         Self::MachineSoftwareVersionChanged,
+        Self::MachineSoftwareVersionUnchecked,
         Self::SoftwareWarningWriteFailed,
     ];
 
@@ -98,6 +101,7 @@ impl Reason {
             Self::SendingPaused => "sending_paused",
             Self::MachineSilent => "machine_silent",
             Self::MachineSoftwareVersionChanged => "machine_software_version_changed",
+            Self::MachineSoftwareVersionUnchecked => "machine_software_version_unchecked",
             Self::SoftwareWarningWriteFailed => "software_warning_write_failed",
             Self::MachineRefusedConnection => "machine_refused_connection",
             Self::ResultWaiting => "result_waiting",
@@ -128,6 +132,9 @@ impl Reason {
             Self::MachineSilent => "A machine has gone quiet",
             Self::MachineSoftwareVersionChanged => "Check a machine’s software version",
             Self::SoftwareWarningWriteFailed => "Analyte could not save a software version warning",
+            Self::MachineSoftwareVersionUnchecked => {
+                "A machine is using an unchecked software version"
+            }
             Self::MachineRefusedConnection => "A machine refused a connection from another device",
             Self::ResultWaiting => "A result is waiting too long to be sent",
             Self::NeedsReview => "Something needs review",
@@ -147,7 +154,9 @@ impl Reason {
             Self::DiskLow => "Free up space soon, or Analyte will refuse new data.",
             Self::LabAppBlocked => "Open Analyte to see which lab app and what to fix.",
             Self::SendingFailing => "Open Analyte to see which lab app and what to check.",
-            Self::MachineStopped | Self::MachineSilent => "Open Analyte to see which machine.",
+            Self::MachineStopped | Self::MachineSilent | Self::MachineSoftwareVersionUnchecked => {
+                "Open Analyte to see which machine."
+            }
             Self::MachineSoftwareVersionChanged => {
                 "Open Analyte to see which machine and check its settings before relying on it."
             }

@@ -242,6 +242,7 @@ pub(super) async fn confirm_software(
         .iter()
         .find(|entry| *entry.id() == machine)
         .and_then(|entry| entry.snapshot().effective().machine().software_version())
+        .and_then(analyte_config::software_version::Check::expected)
         .ok_or(Error::NoSoftwareCheck)?;
     let revision = check.revision;
     with_store(program, async |store| {
