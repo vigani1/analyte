@@ -15,10 +15,10 @@
       "evidence_level": "documented",
       "model": "biomerieux/vidas",
       "name": "bioMérieux VIDAS",
-      "protocol": null,
-      "ready": false,
+      "protocol": "vidas",
+      "ready": true,
       "specimen_system": null,
-      "test_system": null,
+      "test_system": "biomerieux-vidas",
       "vendor": "biomerieux"
     },
     {

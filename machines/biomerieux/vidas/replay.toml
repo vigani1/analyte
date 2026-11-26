@@ -1,29 +1,43 @@
-["alternate-bad-checksum.rec.jsonl".recording]
+# Site answers for each recording. The uploads cite guide C, so they replay
+# with the VU_06 profile.
+["alternate-bad-checksum.rec.jsonl".choices]
 acknowledgment = "alternate"
+software_version = "vu-06"
 
-["alternate-invalid.rec.jsonl".recording]
+["alternate-invalid.rec.jsonl".choices]
 acknowledgment = "alternate"
+software_version = "vu-06"
 
-["alternate-qualitative.rec.jsonl".recording]
+["alternate-qualitative.rec.jsonl".choices]
 acknowledgment = "alternate"
+software_version = "vu-06"
 
-["alternate-quantitative.rec.jsonl".recording]
+["alternate-quantitative.rec.jsonl".choices]
 acknowledgment = "alternate"
+software_version = "vu-06"
 
-["literal-bad-checksum.rec.jsonl".recording]
+["literal-bad-checksum.rec.jsonl".choices]
 acknowledgment = "literal"
+software_version = "vu-06"
 
-["literal-invalid.rec.jsonl".recording]
+["literal-invalid.rec.jsonl".choices]
 acknowledgment = "literal"
+software_version = "vu-06"
 
-["literal-qualitative.rec.jsonl".recording]
+["literal-qualitative.rec.jsonl".choices]
 acknowledgment = "literal"
+software_version = "vu-06"
 
-["literal-quantitative.rec.jsonl".recording]
+["literal-quantitative.rec.jsonl".choices]
 acknowledgment = "literal"
+software_version = "vu-06"
 
+# Work-list downloads are off in the shipped definition. This protocol-level
+# fixture replays through the order-enabled VIDAS test peer instead, after
+# checking that the shipped definition speaks the same stack.
 ["worklist-download.rec.jsonl"]
 vendor_worklist = "vidas"
 
-["worklist-download.rec.jsonl".recording]
+["worklist-download.rec.jsonl".choices]
 acknowledgment = "literal"
+software_version = "vu-06"

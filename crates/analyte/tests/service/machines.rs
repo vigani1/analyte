@@ -218,17 +218,25 @@ async fn replay_model(folder: &Path, model: &Path, definition: &Path) -> Result<
                 );
                 replay_structured_orders(mode, &header, &events).await
             } else if let Some(vendor) = answers.vendor_worklist {
-                assert!(
-                    record_only,
-                    "the fixture exercises an order-enabled test peer"
-                );
-                let name = model
-                    .join("record.toml")
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                let site = recording_site("COM3", &answers, true)?;
-                let validated = analyte_config::recording::load((&name, &text), ("site", &site))?;
-                assert_eq!(header.stack, validated.effective().stack().layer_names());
+                // The fixture exercises an order-enabled test peer; the
+                // shipped definition only has to speak the same stack.
+                let layers = if record_only {
+                    let name = model
+                        .join("record.toml")
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    let site = recording_site("COM3", &answers, true)?;
+                    analyte_config::recording::load((&name, &text), ("site", &site))?
+                        .effective()
+                        .stack()
+                        .layer_names()
+                } else {
+                    ready_definition(&text, &answers)?
+                        .effective()
+                        .stack()
+                        .layer_names()
+                };
+                assert_eq!(header.stack, layers);
                 replay_vendor_worklist(vendor, &header, &events).await
             } else if let Some(cache) = answers.order_cache {
                 if !record_only || answers.choices.is_some() || answers.recording.is_some()
@@ -553,6 +561,21 @@ async fn replay_ready(
     events: &[Event],
     answers: &ReplaySettings,
 ) -> Result<(), Error> {
+    let checked = ready_definition(text, answers)?;
+    readme(
+        &folder.join("README.md"),
+        checked.effective().machine().evidence.level,
+    )?;
+    let stack = checked.effective().stack();
+    assert_eq!(header.stack, stack.layer_names(), "recording stack");
+    replay_machine(model, text, events, header, stack, answers).await
+}
+
+/// Loads a shipped `machine.toml` with the replay's site choices, as a lab PC would.
+fn ready_definition(
+    text: &str,
+    answers: &ReplaySettings,
+) -> Result<analyte_config::Validated, Error> {
     if answers.recording.is_some() {
         return Err("use choices to supply site answers for machine.toml".into());
     }
@@ -564,19 +587,12 @@ async fn replay_ready(
         _ => "127.0.0.1:5600".into(),
     };
     let site = site(&endpoint, answers, kind == "serial")?;
-    let checked = Draft::load(
+    Ok(Draft::load(
         ("machine", text),
         ("site", &site),
         ("overrides", "schema_version=1"),
     )?
-    .validate()?;
-    readme(
-        &folder.join("README.md"),
-        checked.effective().machine().evidence.level,
-    )?;
-    let stack = checked.effective().stack();
-    assert_eq!(header.stack, stack.layer_names(), "recording stack");
-    replay_machine(model, text, events, header, stack, answers).await
+    .validate()?)
 }
 
 fn transport_kind(table: &toml::Table) -> Result<&str, Error> {
@@ -1019,6 +1035,23 @@ fn every_record_file_loads_as_a_recording() -> Result<(), Error> {
             }
         }
     }
-    assert!(found >= 6, "the six first-lab models record: found {found}");
+    assert!(found >= 1, "no record.toml found");
+    // The six first-lab models each ship a definition or a record-only profile.
+    for model in [
+        "biocare/biolyte-2000",
+        "biomerieux/vidas",
+        "boule/swelab-lumi",
+        "dialab/autolyser",
+        "roche/cobas-e411",
+        "yhlo/iflash-1200",
+    ] {
+        let folder = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../machines")
+            .join(model);
+        assert!(
+            folder.join("machine.toml").is_file() || folder.join("record.toml").is_file(),
+            "{model}: neither machine.toml nor record.toml"
+        );
+    }
     Ok(())
 }
