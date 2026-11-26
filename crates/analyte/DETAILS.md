@@ -91,7 +91,9 @@ Every frame and its transfer provenance are durable before its ACK. Complete
 messages retain their frame bytes; syntax parsing uses the assembled record text.
 Aborted transfers retain their journal, config and a parked reason. Partial frames
 are parked when a session ends. HL7 retains exact MLLP blocks and commits the
-interpretation plus mapping findings before choosing AA or AE. Storage refusal
+interpretation plus mapping findings before answering. A held interpretation
+is still answered AA (ADR 0010, 2026-11-26); only an HL7 syntax error found
+while reading, or a message type the connection does not read, is answered AE. Storage refusal
 produces a negative protocol response or closes the session, with a nonclinical
 structured diagnostic. Failed parses and all mapping findings stay protected.
 

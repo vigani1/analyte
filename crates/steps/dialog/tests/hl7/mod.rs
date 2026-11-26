@@ -82,6 +82,68 @@ fn aa_only_after_store_and_interpret() -> TestResult {
     Ok(())
 }
 
+// HL7 2.5.1 §2.9.2; ADR 0010 (2026-11-26): AA means the receiver accepted
+// responsibility, and a held interpretation is already in custody.
+#[test]
+fn held_interpretation_is_accepted_after_store() -> TestResult {
+    let mut d = dialog()?;
+    let id = receipt(&feed(&mut d, &message(""))?)?;
+    // Not before durable storage.
+    assert!(
+        d.step(Duration::ZERO, Event::Held(id))?
+            .iter()
+            .any(|a| matches!(a, Action::Refused(Error::Stale)))
+    );
+    d.step(Duration::ZERO, Event::Stored(id))?;
+    assert!(
+        d.step(Duration::ZERO, Event::Held(id))?
+            .iter()
+            .any(|a| matches!(a, Action::ResponseNeeded(_, AckCode::Aa)))
+    );
+    let actions = respond(&mut d, id, b"held1")?;
+    assert!(has_code(&actions, b"MSA|AA|001\r"));
+    assert!(!has_code(&actions, b"ERR|"));
+    Ok(())
+}
+
+// HL7 2.5.1 §2.9.3; ADR 0010 (2026-11-26)
+#[test]
+fn held_interpretation_gets_ca_then_aa_in_enhanced_mode() -> TestResult {
+    let mut d = dialog()?;
+    let id = receipt(&feed(&mut d, &message("AL|AL"))?)?;
+    d.step(Duration::ZERO, Event::Stored(id))?;
+    assert!(has_code(&respond(&mut d, id, b"commit1")?, b"MSA|CA|001\r"));
+    d.step(Duration::ZERO, Event::Held(id))?;
+    assert!(has_code(&respond(&mut d, id, b"app1")?, b"MSA|AA|001\r"));
+    Ok(())
+}
+
+// HL7 2.5.1 §2.9.2, §2.9.3; ADR 0003 rule 1: a failed store never gets AA or CA.
+#[test]
+fn failed_store_is_refused_even_when_held_follows() -> TestResult {
+    for mode in ["", "AL|AL"] {
+        let mut d = dialog()?;
+        let id = receipt(&feed(&mut d, &message(mode))?)?;
+        d.step(Duration::ZERO, Event::StoreFailed(id))?;
+        let actions = respond(&mut d, id, b"negative1")?;
+        assert!(has_code(
+            &actions,
+            if mode.is_empty() {
+                b"MSA|AR|"
+            } else {
+                b"MSA|CE|"
+            }
+        ));
+        assert!(!has_code(&actions, b"MSA|AA|") && !has_code(&actions, b"MSA|CA|"));
+        assert!(
+            d.step(Duration::ZERO, Event::Held(id))?
+                .iter()
+                .any(|a| matches!(a, Action::Refused(Error::Stale)))
+        );
+    }
+    Ok(())
+}
+
 // HL7 2.5.1 §2.9.2
 #[test]
 fn failed_store_ar_and_bad_content_ae() -> TestResult {

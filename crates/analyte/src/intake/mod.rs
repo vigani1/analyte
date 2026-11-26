@@ -124,7 +124,7 @@ pub(crate) async fn interpret_with_location(
 ) -> Result<
     (
         InterpretationOutcome,
-        Option<crate::machine::hl7::location::Location>,
+        crate::machine::hl7::location::Diagnosis,
     ),
     Error,
 > {
@@ -133,8 +133,8 @@ pub(crate) async fn interpret_with_location(
             s.receipt(id)?.ok_or(Error::UnknownReceipt)
         })
         .await?;
-    let (outcome, _, location) = retained::process(store, machine, &receipt, None, None).await?;
-    Ok((outcome, location))
+    let (outcome, _, diagnosis) = retained::process(store, machine, &receipt, None, None).await?;
+    Ok((outcome, diagnosis))
 }
 
 fn reading_evidence(

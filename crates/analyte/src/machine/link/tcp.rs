@@ -409,9 +409,10 @@ mod tests {
         let (reply, stored, status) = send_from_loopback("127.0.0.1").await?;
         let reply = String::from_utf8(reply)?;
         // The synthetic message lacks patient fields, so it is stored and parked
-        // for review (AE); what matters is that it was answered and stored.
+        // for review, which is still AA (ADR 0010, 2026-11-26); what matters is
+        // that it was answered and stored.
         assert!(
-            reply.starts_with('') && reply.contains("MSA|AE|peer"),
+            reply.starts_with('') && reply.contains("MSA|AA|peer"),
             "{reply}"
         );
         assert_eq!(stored, 1);
