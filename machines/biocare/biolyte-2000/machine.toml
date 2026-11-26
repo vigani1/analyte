@@ -97,8 +97,12 @@ correction_status_codes = []
 selector = "astm_sender_third_component"
 source = "BioCARE Biolyte 2000 Service Manual V4.2A, Appendix VI, Header record H.5 (p. 82)"
 
+# The manual names its revision 4.2A, but its Appendix VI example shows two
+# different H.5.3 tokens (2.1.1.1 in the data list, 1.2.1.1 on the wire).
+# All three count as checked for this band, so a 4.2A analyzer that sends
+# either example token does not raise a false warning; anything else warns.
 [software_version.bands]
-"v4-2a" = ["4.2A"]
+"v4-2a" = ["4.2A", "2.1.1.1", "1.2.1.1"]
 
 # ADR 0032 and the ADR 0034 amendment: staff read the installed version under
 # Menu → 4 (Appendix I p. 73). Only the lab knows it, so there is no
@@ -189,6 +193,28 @@ level = "documented"
 [[evidence.capabilities]]
 model = "biocare/biolyte-2000"
 firmware = "4.2A"
+driver = "0.1.0"
+config_digest = "untested"
+transport = "serial"
+dialogs = []
+failure_cases = []
+platform = "untested"
+evidence_files = []
+
+[[evidence.capabilities]]
+model = "biocare/biolyte-2000"
+firmware = "2.1.1.1"
+driver = "0.1.0"
+config_digest = "untested"
+transport = "serial"
+dialogs = []
+failure_cases = []
+platform = "untested"
+evidence_files = []
+
+[[evidence.capabilities]]
+model = "biocare/biolyte-2000"
+firmware = "1.2.1.1"
 driver = "0.1.0"
 config_digest = "untested"
 transport = "serial"

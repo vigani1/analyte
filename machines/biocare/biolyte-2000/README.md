@@ -63,7 +63,7 @@ transfer of stored data is the documented workflow.
 
 | Wire field | Documented meaning and how the definition uses it |
 | --- | --- |
-| H.5.3 / H.5.4 | Software version and analyzer serial number. With 4.2A chosen, H.5.3 is checked against `4.2A` (ADR 0036) and any other token warns. H.14 is transmission time. H.3 and H.12 are unused. |
+| H.5.3 / H.5.4 | Software version and analyzer serial number. With 4.2A chosen, H.5.3 is checked against `4.2A` and the two tokens the manual's own example shows, `2.1.1.1` and `1.2.1.1` (ADR 0036); any other token warns. H.14 is transmission time. H.3 and H.12 are unused. |
 | P.4 | The laboratory-assigned ID, blank when none was entered. It is the sample ID, kept exactly as sent, including padding and leading zeros. |
 | O.3 / O.4 | O.3 is unused. O.4 is the analyzer's wrapping sample sequence; it is not used as identity. Appendix VI gives no accession field. P.6 is unused even though the keypad accepts a name. |
 | O.16 / O.26 | Specimen descriptor (Serum/Plasma, Whole Blood or Urine) and preliminary report code P, kept as result details. One P and one O record per message, each with record sequence 1. |
