@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add a documented Roche cobas e 411 definition for Elecsys and cobas ASTM
+  result uploads. Hold results with unresolved measurement identity for review.
 - Remove the unused VIDAS retry count and backoff settings. Configuration
   reports either old key as an unknown field.
 - `analyte doctor` reports missing or invalid lab app keys as failures and

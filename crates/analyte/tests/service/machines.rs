@@ -120,6 +120,15 @@ struct ReplaySettings {
     recording: Option<toml::Table>,
     expected_gap: Option<ExpectedGap>,
     order_cache: Option<record_display::Cache>,
+    interpretation: Option<ReplayInterpretation>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReplayInterpretation {
+    receipts: i64,
+    results: i64,
+    deliveries: i64,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -194,30 +203,7 @@ async fn replay_model(folder: &Path, model: &Path, definition: &Path) -> Result<
             let (header, events) =
                 recording::read(std::fs::File::open(&path)?, recording::Limits::default())?;
             validate_gap(&events, answers.expected_gap.as_ref())?;
-            if let Some(profile) = answers.order_profile {
-                assert!(
-                    record_only && answers.order_cache.is_none(),
-                    "the fixture exercises an order-enabled test peer"
-                );
-                let mode = match profile {
-                    analyte_config::AstmOrderProfile::Elecsys => "elecsys",
-                    analyte_config::AstmOrderProfile::Cobas => "cobas",
-                };
-                let site = recording_site("COM3", &answers, true)?;
-                let definition_path = model.join("record.toml");
-                let name = definition_path.to_string_lossy().replace('\\', "/");
-                let validated = analyte_config::recording::load((&name, &text), ("site", &site))?;
-                assert_eq!(header.stack, validated.effective().stack().layer_names());
-                assert_eq!(
-                    answers
-                        .recording
-                        .as_ref()
-                        .and_then(|a| a.get("analyzer_mode"))
-                        .and_then(toml::Value::as_str),
-                    Some(mode)
-                );
-                replay_structured_orders(mode, &header, &events).await
-            } else if let Some(vendor) = answers.vendor_worklist {
+            if let Some(vendor) = answers.vendor_worklist {
                 assert!(
                     record_only,
                     "the fixture exercises an order-enabled test peer"
@@ -238,6 +224,9 @@ async fn replay_model(folder: &Path, model: &Path, definition: &Path) -> Result<
                 }
                 record_display::replay(folder, &header, &events, cache).await
             } else if record_only {
+                if answers.order_profile.is_some() || answers.interpretation.is_some() {
+                    return Err("order and interpretation checks require a ready definition".into());
+                }
                 replay_record_only(model, &text, &header, &events, &answers).await
             } else {
                 replay_ready(folder, model, &text, &header, &events, &answers).await
@@ -259,6 +248,12 @@ fn structured_config(root: &Path, mode: &str, send_ahead: bool) -> Result<Fixtur
     let path = config(root, true)?;
     let definition = analyte_fixtures::definition_path(root, "astm");
     let text = std::fs::read_to_string(&definition)?;
+    let orders = structured_orders(mode, send_ahead, "synthetic")?;
+    std::fs::write(definition, format!("{text}\n{orders}"))?;
+    Ok(path)
+}
+
+fn structured_orders(mode: &str, send_ahead: bool, specimen_system: &str) -> Result<String, Error> {
     let mut order_settings: toml::Table =
         include_str!("../../../core/config/examples/orders.toml").parse()?;
     let orders = order_settings
@@ -272,7 +267,7 @@ fn structured_config(root: &Path, mode: &str, send_ahead: bool) -> Result<Fixtur
         .ok_or("query table")?
         .insert("deadline_ms".into(), 30_000.into());
     if mode == "cobas" {
-        orders.insert("specimen_system".into(), "synthetic".into());
+        orders.insert("specimen_system".into(), specimen_system.into());
     }
     let astm = orders
         .get_mut("astm")
@@ -292,24 +287,29 @@ fn structured_config(root: &Path, mode: &str, send_ahead: bool) -> Result<Fixtur
                 .into(),
         );
     }
-    std::fs::write(
-        definition,
-        format!("{text}\n{}", toml::to_string(&order_settings)?),
-    )?;
-
-    Ok(path)
+    Ok(toml::to_string(&order_settings)?)
 }
 
 fn structured_order(id: &str, assay: &str) -> serde_json::Value {
+    structured_order_for(id, assay, "synthetic", "synthetic", "astm")
+}
+
+fn structured_order_for(
+    id: &str,
+    assay: &str,
+    test_system: &str,
+    specimen_system: &str,
+    machine: &str,
+) -> serde_json::Value {
     serde_json::json!({
         "id": id, "version": 1, "state": "requested",
         "sample_id": "009184",
         "tests": [
-            { "namespace": "synthetic", "value": "271", "dilution_ratio": 50 },
-            { "namespace": "synthetic", "value": assay }
+            { "namespace": test_system, "value": "271", "dilution_ratio": 50 },
+            { "namespace": test_system, "value": assay }
         ],
-        "specimen_type": {"namespace": "synthetic", "value": "2"},
-        "priority": "routine", "target_analyzers": ["astm"],
+        "specimen_type": {"namespace": specimen_system, "value": "2"},
+        "priority": "routine", "target_analyzers": [machine],
         "expires_at": null, "tombstone": false
     })
 }
@@ -321,42 +321,58 @@ async fn structured_reference(root: &Path, docs: &[serde_json::Value]) -> Result
         false,
     )
     .await?;
+    seed_structured_orders(&reference, docs).await?;
+    Ok(reference)
+}
+
+async fn seed_structured_orders(
+    reference: &Reference,
+    docs: &[serde_json::Value],
+) -> Result<(), Error> {
     let orders = docs
         .iter()
         .map(|doc| -> Result<_, Error> { Ok(analyte_contract::decode(&serde_json::to_vec(doc)?)?) })
         .collect::<Result<Vec<_>, _>>()?;
     reference.receiver.seed(orders).await?;
-    Ok(reference)
+    Ok(())
 }
 
-// Roche cobas e 411 HIM v2.3 Tables 11-17 and section 17 (pp. 48-50).
-async fn replay_structured_orders(
-    mode: &str,
-    header: &Header,
-    events: &[Event],
-) -> Result<(), Error> {
-    let temp = tempfile::tempdir()?;
-    let path = structured_config(temp.path(), mode, false)?;
-    let reference =
-        structured_reference(temp.path(), &[structured_order("order-structured", "802")]).await?;
-    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
-    let result = async {
-        wait_feed(&path).await?;
-        let mut peer = connect(&path, "astm").await?;
-        analyte_sim::replay(&mut peer, events, &header.exceptions, HANG_GUARD).await?;
-        wait_database_count(
-            &path,
-            "SELECT count(*) FROM machine_orders WHERE state = 'Uncertain' AND source_code = 'ASTM-transfer-confirmed-replacement-unverified'",
-            [],
-            1,
-        )
-        .await?;
-        Ok::<_, Error>(())
+// Roche cobas e 411 HIM v2.3 Tables 11–17 and §7. Only the test peer has orders.
+struct ReplayOrders {
+    settings: String,
+    order: serde_json::Value,
+}
+
+impl ReplayOrders {
+    fn for_stack(
+        profile: analyte_config::AstmOrderProfile,
+        stack: &analyte_config::Stack,
+    ) -> Result<Self, Error> {
+        use analyte_config::{AstmOrderProfile, RecordTransport, Stack};
+        let Stack::Astm(RecordTransport::Stream(astm)) = stack else {
+            return Err("structured orders require an ASTM link".into());
+        };
+        assert!(
+            astm.orders().is_none(),
+            "documented definition keeps orders disabled"
+        );
+        let mode = match profile {
+            AstmOrderProfile::Elecsys => "elecsys",
+            AstmOrderProfile::Cobas => "cobas",
+        };
+        let test_system = astm.settings().codes().test_system.as_str();
+        let specimen_system = "roche.cobas-e411.specimen";
+        Ok(Self {
+            settings: structured_orders(mode, false, specimen_system)?,
+            order: structured_order_for(
+                "order-structured",
+                "802",
+                test_system,
+                specimen_system,
+                "fixture",
+            ),
+        })
     }
-    .await;
-    running.stop().await?;
-    reference.close().await?;
-    result
 }
 
 // Roche cobas e 411 HIM v2.3 Tables 11-17; AGENTS.md clinical rule 9.
@@ -794,15 +810,23 @@ async fn replay_machine(
         temp.path().join("site.toml"),
         site(&endpoint, answers, false)?,
     )?;
-    // Replace only physical I/O: the real framing, dialog, syntax, mapping and store run unchanged.
+    // Real framing, syntax, mapping and storage run over a loopback connection.
+    // Explicit structured-order fixtures opt in with a test-only override.
+    let orders = answers
+        .order_profile
+        .map(|profile| ReplayOrders::for_stack(profile, stack))
+        .transpose()?;
     std::fs::write(
         temp.path().join("overrides.toml"),
         if folder {
             "schema_version=1".into()
         } else {
             format!(
-                "schema_version=1\n[transport]\nkind='tcp_server'\noperation_timeout_ms={}\n",
-                stack.operation_timeout_ms()
+                "schema_version=1\n[transport]\nkind='tcp_server'\noperation_timeout_ms={}\n{}",
+                stack.operation_timeout_ms(),
+                orders
+                    .as_ref()
+                    .map_or("", |orders| orders.settings.as_str()),
             )
         },
     )?;
@@ -834,24 +858,94 @@ async fn replay_machine(
         false,
     )
     .await?;
+    if let Some(orders) = &orders {
+        seed_structured_orders(&reference, std::slice::from_ref(&orders.order)).await?;
+    }
     program.set_loopback_destination_for_test("demo", reference.url.clone())?;
     let running = Running::start_program(program, "synthetic-api").await?;
     let replayed = async {
-        if folder {
-            replay_file(&path, &incoming, events).await?;
-        } else {
-            let mut peer = connect(&path, "fixture").await?;
-            let replayed =
-                analyte_sim::replay(&mut peer, events, &header.exceptions, deadline).await;
-            check_replies(replayed, answers.expected_gap.as_ref())?;
+        if orders.is_some() {
+            wait_feed(&path).await?;
         }
-        Ok::<_, Error>(())
+        replay_ready_events(
+            &path,
+            folder.then_some(incoming.as_path()),
+            events,
+            header,
+            answers,
+            deadline,
+        )
+        .await
     }
     .await;
     let stopped = running.stop().await;
     reference.close().await?;
     replayed?;
     stopped
+}
+
+async fn replay_ready_events(
+    path: &Path,
+    incoming: Option<&Path>,
+    events: &[Event],
+    header: &Header,
+    answers: &ReplaySettings,
+    deadline: Duration,
+) -> Result<(), Error> {
+    if let Some(incoming) = incoming {
+        replay_file(path, incoming, events).await?;
+    } else {
+        let mut peer = connect(path, "fixture").await?;
+        let replayed = analyte_sim::replay(&mut peer, events, &header.exceptions, deadline).await;
+        check_replies(replayed, answers.expected_gap.as_ref())?;
+        if answers.interpretation.is_some() {
+            peer.shutdown().await?;
+            let mut extra = [0];
+            let read = tokio::time::timeout(HANG_GUARD, peer.read(&mut extra)).await??;
+            assert_eq!(read, 0, "unscripted host byte: {extra:02x?}");
+        }
+    }
+    if answers.order_profile.is_some() {
+        wait_database_count(
+            path,
+            "SELECT count(*) FROM machine_orders WHERE state = 'Uncertain' AND source_code = 'ASTM-transfer-confirmed-replacement-unverified'",
+            [],
+            1,
+        )
+        .await?;
+    }
+    if let Some(expected) = &answers.interpretation {
+        wait_database_count(
+            path,
+            "SELECT count(*) FROM interpretations",
+            [],
+            expected.receipts,
+        )
+        .await?;
+        let db = database(path)?;
+        let results: i64 = db.query_row(
+            "SELECT coalesce(sum(json_array_length(evidence, '$.outcome.Results')), 0) FROM interpretations",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(results, expected.results, "retained structured results");
+        let deliveries: i64 = db.query_row(
+            "SELECT count(*) FROM outbox WHERE kind = 'result'",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(deliveries, expected.deliveries);
+        if expected.deliveries > 0 {
+            wait_database_count(
+                path,
+                "SELECT count(*) FROM outbox WHERE kind = 'result' AND state = 'done'",
+                [],
+                expected.deliveries,
+            )
+            .await?;
+        }
+    }
+    Ok(())
 }
 
 fn site(endpoint: &str, answers: &ReplaySettings, serial: bool) -> Result<String, Error> {

@@ -165,7 +165,7 @@ pub struct IdentityEvidence {
     /// Exact source codes that mark reruns and override the standard status meaning.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rerun_status_codes: Vec<Identifier>,
-    /// Enables a documented recipe that includes the configured sample ID.
+    /// Qualifies a recipe with run selectors or documents rerun status alone.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence: Option<IdentityReference>,
 }

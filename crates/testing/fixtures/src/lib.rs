@@ -4,6 +4,9 @@
 pub mod orders;
 pub mod poct;
 
+/// A record-only definition with the documented cobas packing mode for tests.
+pub const ASTM_PACKED_RECORD_ONLY: &str = include_str!("../astm-packed-record-only.toml");
+
 /// Wall-clock allowance for scheduler and durable disk delays on loaded CI runners.
 /// This fixed factor applies only to harness budgets, never asserted protocol timers.
 pub const CI_SCALE: u64 = 3;

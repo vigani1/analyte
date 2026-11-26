@@ -10,6 +10,8 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Selector {
+    /// ASTM H.5, second sender component (cobas e 411 HIM v2.3, Table 11).
+    AstmSenderSecondComponent,
     /// ASTM H.5, third sender component (Biolyte service manual 4.2A, Appendix VI).
     AstmSenderThirdComponent,
     /// HL7 MSH-3, first component when a vendor places software there.
@@ -67,7 +69,9 @@ fn validate(document: &MachineDocument, path: &str) -> Result<(), Error> {
     };
     let refuse = |why| invalid(path, "software_version", why);
     let compatible = match declaration.selector {
-        Selector::AstmSenderThirdComponent => document.protocol == "astm",
+        Selector::AstmSenderSecondComponent | Selector::AstmSenderThirdComponent => {
+            document.protocol == "astm"
+        }
         Selector::Hl7SendingApplication | Selector::Hl7SendingFacility => {
             matches!(document.protocol.as_str(), "hl7" | "law")
         }
