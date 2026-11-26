@@ -101,6 +101,27 @@ the model and must not be the lab's to change.
    validate without one. The effective snapshot keeps the resolved namespace
    under `orders.patient_namespace`. Record-only Setup has no namespace field.
 
+## Amendment (2026-11-26)
+
+A `software_version` choice can offer one value with `checked = false`
+labelled "Other version (not checked)". Omit `checked` for versions covered
+by the manuals. One checked version plus the unchecked value satisfies the
+two-value minimum. Mode choices cannot offer unchecked values, and the
+definition cannot suggest the unchecked value.
+
+If a choice offers the unchecked value, every value of that choice identifies
+the software only. The loader refuses any building block selected by the
+version choice. Put settings that vary by version in separate mode choices
+with no suggestion, and tell staff how to confirm which value applies. For
+example, when VIDAS software determines a 12- or 17-character sample ID limit,
+the lab must confirm the limit and choose it separately. If staff cannot
+establish a required setting, they cannot complete that setup.
+
+Selecting the unchecked value allows normal operation with a persistent
+warning about the missing manual coverage. Setup and `analyte machines list`
+show the warning alongside the selected version. See
+[ADR 0036](0036-machine-software-version-warning.md) for wire checks and status.
+
 ## Consequences
 
 - One definition can serve an analyzer in each of its documented modes and

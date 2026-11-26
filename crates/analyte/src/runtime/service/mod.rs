@@ -716,7 +716,12 @@ fn start_alerts(
             .machines()
             .iter()
             .filter_map(|machine| {
-                let check = machine.snapshot.effective().machine().software_version()?;
+                let check = machine
+                    .snapshot
+                    .effective()
+                    .machine()
+                    .software_version()?
+                    .expected()?;
                 Some((machine.id().clone(), check.revision))
             })
             .collect();

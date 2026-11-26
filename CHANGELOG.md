@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Machine definitions can offer "Other version (not checked)" in Setup.
+  Overview, status and the machine list keep a warning visible while results
+  continue to flow.
 - Remove the unused VIDAS retry count and backoff settings. Configuration
   reports either old key as an unknown field.
 - `analyte doctor` reports missing or invalid lab app keys as failures and

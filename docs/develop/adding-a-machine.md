@@ -418,7 +418,7 @@ The rules the loader checks:
 | `suggested` is one of the choice's values, or absent when only the lab can know | Without a suggestion the lab must choose; nothing is assumed |
 | 2 to 16 values, at most 16 choices and 64 combinations | Every combination is validated as a whole stack when the definition loads |
 | A value selects only these blocks: `mappings` (a whole table: a host dialect's field positions), `orders = "on"` or `"off"` (keep or turn off the definition's `[orders]`), `vidas.alternate`, `vidas.sample_limit`, `encoding`, `departures`, and the three Autolyser mode settings | A choice selects behaviour the protocol code already has; no field path or expression |
-| Every value of a choice selects the same blocks, and a block belongs to one choice | Each value states its whole effect |
+| A choice that selects blocks lists the same ones in every value, and a block belongs to one choice | Each value states its whole effect |
 | A block a choice selects is written only in the choice; leave the selected table or key out of its usual section | One place decides it |
 | A choice cannot write `evidence`, `deviations` or `departure_scope` | Departures stay the evidenced list below (ADR 0015) |
 
@@ -426,6 +426,33 @@ The lab's values go in the site file's `[choices]`, which Setup writes (see
 [connect](../operations/connect.md#analyzer-settings)). A new kind of building
 block needs a change in the config crate with its tests, not a config
 feature; ask the maintainers.
+
+For a definition shipping with manual coverage, list the versions those
+manuals cover and offer an unchecked value for other versions. The following
+choice has one checked version and meets the two-value minimum.
+
+```toml
+[[choices]]
+name = "software_version"
+kind = "software_version"
+label = "Software version on the About screen"
+[[choices.values]]
+value = "v1"
+label = "Version 1"
+[[choices.values]]
+value = "other"
+label = "Other version (not checked)"
+checked = false
+```
+
+When offering this value, leave behavior settings out of all the software
+version values. For a setting that can vary by version, use a separate mode
+choice with no suggestion. For example, give staff a separate choice for the
+12- or 17-character VIDAS sample ID limit and explain how to confirm the limit
+on their installation. A version outside the manuals still needs that
+confirmation. If you declare a wire selector under
+[ADR 0036](../adr/0036-machine-software-version-warning.md), only the checked
+values have entries in `[software_version.bands]`.
 
 ### Declare departures, do not program around them
 
