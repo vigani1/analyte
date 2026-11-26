@@ -1,0 +1,373 @@
+# Roche cobas e 411 result reception, documented in HIM v2.2 and v2.3.
+schema_version = 2
+name = "cobas-e411"
+protocol = "astm"
+deviations = []
+
+# ADR 0015 and 0032. The selected protocol/QC profile supplies the mode.
+departure_scope = { model = "roche/cobas-e411", firmware = "unknown", mode = "elecsys", edition = { protocol = "astm" }, direction = "machine_to_host", message = "astm_results" }
+
+[transport]
+# HIM v2.3 §3, Tables 1–3 and cable drawing. The deadline is a host I/O bound.
+kind = "serial"
+operation_timeout_ms = 15000
+
+[transport.serial]
+# ADR 0031 suggestions from HIM v2.3 Table 1. Flow control is site-supplied.
+baud = 9600
+data_bits = 8
+parity = "none"
+stop_bits = 1
+
+[framing]
+# HIM v2.3 §5, Table 6: 240 text bytes plus 7 bytes of envelope.
+limit = 247
+checksum_hex = "strict"
+
+[dialog]
+# HIM v2.3 §5 pp. 18–20. These are link bounds, independent of orders.
+receive_timeout_ms = 15000
+send_timeout_ms = 15000
+contention_priority = "instrument"
+
+[syntax]
+# Use the shared ASCII reading policy until alarm text encoding is established.
+# Shared Analyte bounds, independent of the analyzer's frame limit.
+encoding = "ascii"
+bytes = 1048576
+records = 4096
+record_bytes = 65536
+fields = 128
+repetitions = 128
+components = 128
+
+[software_version]
+# HIM v2.3 §6 Table 11 and HIM v2.2 §E p. E-6: fixed communication-program
+# token in cobas H.5.2. The Elecsys upload omits it.
+selector = "astm_sender_second_component"
+source = "Roche e 411 HIM v2.3 §6 Table 11 and v2.2 §E p. E-6 (communication program)"
+
+[[choices]]
+name = "protocol_type"
+kind = "mode"
+label = "Protocol type and (for cobas) QC additional information in Utility > System > Host Communication Setting"
+# HIM v2.3 §3 Table 1 recommends Elecsys without stating a factory default.
+
+[[choices.values]]
+value = "elecsys"
+label = "Elecsys"
+departures = ["astm_frame_limit", "astm_receive_timeout"]
+
+[choices.values.mappings]
+# HIM v2.3 §6 Tables 16–19. The lab app owns assay names and installed codes.
+test_system = "roche.cobas-e411.elecsys-application"
+test_component = "manufacturer"
+units = []
+qc = []
+
+[choices.values.mappings.astm_results]
+layout = "caret_dilution_and_alarm"
+evidence = { manual = "Roche cobas e 411 Host Interface Manual v2.3", section = "§3 Table 3 and §6 Tables 16–19" }
+
+[choices.values.mappings.sample]
+field = { group = "order", record = "O", field = 3, component = 1, repetition = 1 }
+source = "unknown"
+
+[choices.values.mappings.identity]
+# HIM v2.3 §6 Table 18. R.13 qualifies this Elecsys recipe. Sample ID and assay are exact source strings.
+order_id = { group = "order", record = "O", field = 3, component = 1, repetition = 1 }
+order_namespace = { fixed = "roche.cobas-e411.sample-id" }
+sub_id = "none"
+run = [{ group = "observation", record = "R", field = 13, component = 1, repetition = 1 }]
+correction_status_codes = []
+evidence = { manual = "Roche cobas e 411 Host Interface Manual v2.3", section = "§6 Table 18" }
+
+[[choices.values]]
+value = "cobas"
+label = "cobas with QC Control name"
+departures = ["astm_frame_limit", "astm_receive_timeout", "astm_packed_records_in_frame"]
+
+[choices.values.mappings]
+# HIM v2.3 §6 Tables 16–19. The lab app owns assay names and installed codes.
+test_system = "roche.cobas-e411.host-test-code"
+test_component = "manufacturer"
+units = []
+qc = []
+
+[choices.values.mappings.astm_results]
+layout = "slash_dilution_and_alarm_code"
+evidence = { manual = "Roche cobas e 411 Host Interface Manual v2.3", section = "§3 Table 3 and §6 Tables 16–19" }
+
+[choices.values.mappings.sample]
+field = { group = "order", record = "O", field = 3, component = 1, repetition = 1 }
+source = "unknown"
+
+[choices.values.mappings.identity]
+# HIM v2.3 §6 Table 18. cobas omits R.13. Preserve C as a rerun marker and hold all unresolved runs.
+order_id = { group = "order", record = "O", field = 3, component = 1, repetition = 1 }
+order_namespace = { fixed = "roche.cobas-e411.sample-id" }
+sub_id = "none"
+run = []
+correction_status_codes = []
+rerun_status_codes = ["C"]
+evidence = { manual = "Roche cobas e 411 Host Interface Manual v2.3", section = "§6 Table 18" }
+
+[[choices.values]]
+value = "cobas_qc_lot"
+label = "cobas with QC Lot No."
+departures = ["astm_frame_limit", "astm_receive_timeout", "astm_packed_records_in_frame"]
+
+[choices.values.mappings]
+# HIM v2.3 §6 Tables 16–19. The lab app owns assay names and installed codes.
+test_system = "roche.cobas-e411.host-test-code"
+test_component = "manufacturer"
+units = []
+qc = []
+
+[choices.values.mappings.astm_results]
+layout = "slash_dilution_and_alarm_code_with_qc_lot"
+evidence = { manual = "Roche cobas e 411 Host Interface Manual v2.3", section = "§3 Table 3 and §6 Tables 16–19" }
+
+[choices.values.mappings.sample]
+field = { group = "order", record = "O", field = 3, component = 1, repetition = 1 }
+source = "unknown"
+
+[choices.values.mappings.identity]
+# HIM v2.3 §6 Table 18. cobas omits R.13. Preserve C as a rerun marker and hold all unresolved runs.
+order_id = { group = "order", record = "O", field = 3, component = 1, repetition = 1 }
+order_namespace = { fixed = "roche.cobas-e411.sample-id" }
+sub_id = "none"
+run = []
+correction_status_codes = []
+rerun_status_codes = ["C"]
+evidence = { manual = "Roche cobas e 411 Host Interface Manual v2.3", section = "§6 Table 18" }
+
+[[choice_departures]]
+rule = "astm_frame_limit"
+[choice_departures.declaration]
+scope = { model = "roche/cobas-e411", firmware = "unknown", mode = "elecsys", edition = { protocol = "astm" }, direction = "machine_to_host", message = "astm_results" }
+level = "documented"
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "roche-cobas-e411-him-v2.3"
+title = "Roche cobas e 411 Host Interface Manual"
+revision = "Version 2.3, March 2016"
+section = "§5 Table 6, Frame structure (p. 15)"
+guarantee = "compatibility"
+covers_unknown_firmware = true
+contradicts = false
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "roche-cobas-e411-him-v2.2"
+title = "Roche cobas e 411 Host Interface Manual"
+revision = "Version 2.2, November 2013"
+section = "§D 2 Frame structure (p. D-3)"
+guarantee = "compatibility"
+covers_unknown_firmware = true
+contradicts = false
+
+[[choice_departures]]
+rule = "astm_receive_timeout"
+[choice_departures.declaration]
+scope = { model = "roche/cobas-e411", firmware = "unknown", mode = "elecsys", edition = { protocol = "astm" }, direction = "machine_to_host", message = "astm_results" }
+level = "documented"
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "roche-cobas-e411-him-v2.3"
+title = "Roche cobas e 411 Host Interface Manual"
+revision = "Version 2.3, March 2016"
+section = "§5 Transfer Phase (p. 20)"
+guarantee = "compatibility"
+covers_unknown_firmware = true
+contradicts = false
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "roche-cobas-e411-him-v2.2"
+title = "Roche cobas e 411 Host Interface Manual"
+revision = "Version 2.2, November 2013"
+section = "§D Transfer Phase (p. D-8)"
+guarantee = "compatibility"
+covers_unknown_firmware = true
+contradicts = false
+
+[[choice_departures]]
+rule = "astm_frame_limit"
+[choice_departures.declaration]
+scope = { model = "roche/cobas-e411", firmware = "unknown", mode = "cobas", edition = { protocol = "astm" }, direction = "machine_to_host", message = "astm_results" }
+level = "documented"
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "roche-cobas-e411-him-v2.3"
+title = "Roche cobas e 411 Host Interface Manual"
+revision = "Version 2.3, March 2016"
+section = "§5 Table 6, Frame structure (p. 15)"
+guarantee = "compatibility"
+covers_unknown_firmware = true
+contradicts = false
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "roche-cobas-e411-him-v2.2"
+title = "Roche cobas e 411 Host Interface Manual"
+revision = "Version 2.2, November 2013"
+section = "§D 2 Frame structure (p. D-3)"
+guarantee = "compatibility"
+covers_unknown_firmware = true
+contradicts = false
+
+[[choice_departures]]
+rule = "astm_receive_timeout"
+[choice_departures.declaration]
+scope = { model = "roche/cobas-e411", firmware = "unknown", mode = "cobas", edition = { protocol = "astm" }, direction = "machine_to_host", message = "astm_results" }
+level = "documented"
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "roche-cobas-e411-him-v2.3"
+title = "Roche cobas e 411 Host Interface Manual"
+revision = "Version 2.3, March 2016"
+section = "§5 Transfer Phase (p. 20)"
+guarantee = "compatibility"
+covers_unknown_firmware = true
+contradicts = false
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "roche-cobas-e411-him-v2.2"
+title = "Roche cobas e 411 Host Interface Manual"
+revision = "Version 2.2, November 2013"
+section = "§D Transfer Phase (p. D-8)"
+guarantee = "compatibility"
+covers_unknown_firmware = true
+contradicts = false
+
+[[choice_departures]]
+rule = "astm_packed_records_in_frame"
+[choice_departures.declaration]
+scope = { model = "roche/cobas-e411", firmware = "unknown", mode = "cobas", edition = { protocol = "astm" }, direction = "machine_to_host", message = "astm_results" }
+level = "documented"
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "roche-cobas-e411-him-v2.3"
+title = "Roche cobas e 411 Host Interface Manual"
+revision = "Version 2.3, March 2016"
+section = "§5 Communication data structure (p. 14)"
+guarantee = "packed_records"
+covers_unknown_firmware = true
+contradicts = false
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "roche-cobas-e411-him-v2.2"
+title = "Roche cobas e 411 Host Interface Manual"
+revision = "Version 2.2, November 2013"
+section = "§D 1 Communication data structure (p. D-2)"
+guarantee = "packed_records"
+covers_unknown_firmware = true
+contradicts = false
+
+[[choice_departures]]
+rule = "astm_frame_limit"
+[choice_departures.declaration]
+scope = { model = "roche/cobas-e411", firmware = "unknown", mode = "cobas_qc_lot", edition = { protocol = "astm" }, direction = "machine_to_host", message = "astm_results" }
+level = "documented"
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "roche-cobas-e411-him-v2.3"
+title = "Roche cobas e 411 Host Interface Manual"
+revision = "Version 2.3, March 2016"
+section = "§5 Table 6, Frame structure (p. 15)"
+guarantee = "compatibility"
+covers_unknown_firmware = true
+contradicts = false
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "roche-cobas-e411-him-v2.2"
+title = "Roche cobas e 411 Host Interface Manual"
+revision = "Version 2.2, November 2013"
+section = "§D 2 Frame structure (p. D-3)"
+guarantee = "compatibility"
+covers_unknown_firmware = true
+contradicts = false
+
+[[choice_departures]]
+rule = "astm_receive_timeout"
+[choice_departures.declaration]
+scope = { model = "roche/cobas-e411", firmware = "unknown", mode = "cobas_qc_lot", edition = { protocol = "astm" }, direction = "machine_to_host", message = "astm_results" }
+level = "documented"
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "roche-cobas-e411-him-v2.3"
+title = "Roche cobas e 411 Host Interface Manual"
+revision = "Version 2.3, March 2016"
+section = "§5 Transfer Phase (p. 20)"
+guarantee = "compatibility"
+covers_unknown_firmware = true
+contradicts = false
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "roche-cobas-e411-him-v2.2"
+title = "Roche cobas e 411 Host Interface Manual"
+revision = "Version 2.2, November 2013"
+section = "§D Transfer Phase (p. D-8)"
+guarantee = "compatibility"
+covers_unknown_firmware = true
+contradicts = false
+
+[[choice_departures]]
+rule = "astm_packed_records_in_frame"
+[choice_departures.declaration]
+scope = { model = "roche/cobas-e411", firmware = "unknown", mode = "cobas_qc_lot", edition = { protocol = "astm" }, direction = "machine_to_host", message = "astm_results" }
+level = "documented"
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "roche-cobas-e411-him-v2.3"
+title = "Roche cobas e 411 Host Interface Manual"
+revision = "Version 2.3, March 2016"
+section = "§5 Communication data structure (p. 14)"
+guarantee = "packed_records"
+covers_unknown_firmware = true
+contradicts = false
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "roche-cobas-e411-him-v2.2"
+title = "Roche cobas e 411 Host Interface Manual"
+revision = "Version 2.2, November 2013"
+section = "§D 1 Communication data structure (p. D-2)"
+guarantee = "packed_records"
+covers_unknown_firmware = true
+contradicts = false
+
+# HIM v2.3 §4, Tables 4–5. Orders and query replies require site evidence,
+# including acceptance and installed deadlines. No outbound orders are configured.
+[evidence]
+level = "documented"
+
+[[evidence.capabilities]]
+model = "roche/cobas-e411"
+# Wire communication-program token, shared by the two HIM revisions.
+firmware = "1"
+driver = "0.1.0"
+config_digest = "untested"
+transport = "serial"
+dialogs = ["cobas-packed-result-upload", "cobas-qc-upload", "cobas-rerun", "cobas-query-with-orders-disabled", "cobas-synthetic-query-reply"]
+failure_cases = ["bad-checksum-retry", "unresolved-measurement-identity", "query-with-orders-disabled", "query-error-and-cancellation"]
+platform = "untested"
+evidence_files = [
+    "recordings/cobas-broken-checksum.rec.jsonl",
+    "recordings/cobas-qc.rec.jsonl",
+    "recordings/cobas-query-refusal.rec.jsonl",
+    "recordings/cobas-query-reply.rec.jsonl",
+    "recordings/cobas-rerun.rec.jsonl",
+    "recordings/cobas-upload.rec.jsonl",
+]
+
+[[evidence.capabilities]]
+model = "roche/cobas-e411"
+firmware = "unknown"
+driver = "0.1.0"
+config_digest = "untested"
+transport = "serial"
+dialogs = ["elecsys-result-upload", "elecsys-synthetic-query-reply"]
+failure_cases = ["query-error-and-cancellation"]
+platform = "untested"
+evidence_files = [
+    "recordings/elecsys-query-reply.rec.jsonl",
+    "recordings/elecsys-upload.rec.jsonl",
+]

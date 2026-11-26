@@ -153,6 +153,35 @@ fn quantitative_comparator_and_message_code_stay_separate() -> TestResult {
     Ok(())
 }
 
+// Roche e 411 HIM v2.3 section 6 Table 18 and section 7 upload layouts.
+#[test]
+fn unambiguous_values_need_no_installed_assay_table() -> TestResult {
+    for (layout, order, code, original) in [
+        (CARET, CARET_PATIENT, "SYN^1^0", "<0.12"),
+        (SLASH, SLASH_PATIENT, "SYN/2/not", "<0.12^"),
+    ] {
+        let output = upload(
+            layout,
+            order,
+            &format!("R|1|^^^{code}|{original}\r"),
+            "N",
+            None,
+        )?;
+        let value = first(&output)?.values.as_slice().first().ok_or("value")?;
+        assert_eq!(value.original.as_str(), original);
+        assert!(
+            matches!(value.parsed(), ValueInterpretation::Numeric(n) if n.comparator == Some(Comparator::Less))
+        );
+    }
+    let output = upload(CARET, CARET_PATIENT, "R|1|^^^SYN^1^0|1^0.92\r", "N", None)?;
+    let value = first(&output)?.values.as_slice().first().ok_or("value")?;
+    assert_eq!(
+        value.parsed(),
+        &ValueInterpretation::Qualitative(QualitativeReaction::Positive)
+    );
+    Ok(())
+}
+
 // Roche e 411 HIM v2.3 section 6 Table 18.
 #[test]
 fn seven_spaces_are_absent_instead_of_a_numeric_value() -> TestResult {

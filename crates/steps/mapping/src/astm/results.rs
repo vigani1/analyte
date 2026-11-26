@@ -124,9 +124,16 @@ fn interpret(
     position: Position,
     details: &mut ResultDetails,
 ) -> Result<Option<ValueInterpretation>, Error> {
+    // The slash layout transmits an empty message code when there is no code.
+    let second = second.filter(|value| !message_code_layout || !value.is_empty());
     if first == ABSENT && second.is_none() {
         return Ok(Some(ValueInterpretation::Absent));
     }
+    let expected = match (expected, second, message_code_layout) {
+        (ValueKind::Either, None, _) => ValueKind::Numeric,
+        (ValueKind::Either, Some(_), false) => ValueKind::Coded,
+        (explicit, _, _) => explicit,
+    };
     match expected {
         ValueKind::Numeric => {
             if let Some(second) = second {
@@ -279,6 +286,10 @@ pub(crate) fn enrich(
             }
             part.dilution = dilution(source, index, layout, details)?;
             details.alarms = alarms(source, index, uses_slash(layout), output)?;
+            details.specimen_descriptor = source
+                .present(source.component(order, 4, 1, 5)?)
+                .map(|raw| text(&raw, source.position(order, 4)))
+                .transpose()?;
         }
     }
     Ok(())
