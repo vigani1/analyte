@@ -2,7 +2,8 @@
 
 Status: accepted, 2026-11-23 (the owner asked for a "Record only" connection
 so the first lab visit produces real recordings of all six analyzers, and
-approved the recommended route without waiting). Extends
+approved the recommended route without waiting); amended 2026-11-26 (see
+the amendment at the end: definitions now ship from the manuals). Extends
 [ADR 0010](0010-acknowledgment-boundaries.md) with one row, uses the capture
 format of [ADR 0009](0009-recording-format.md), and follows
 [ADR 0031](0031-lab-chooses-serial-cable-settings.md) and
@@ -150,3 +151,30 @@ identity mapping, or a lab app.
 - A model whose analyzer frames differently by mode asks that mode in its
   `record.toml`; the lab's answer, not a shared default, decides whether a
   packed frame is accepted.
+
+## Amendment, 2026-11-26: definitions ship from the manuals
+
+The Context above assumed a full definition waits for real conversations.
+That rule cannot work for an open project: nobody can visit every lab that
+uses a model, so a model would stay blocked forever. The owner decided:
+
+- A model's `machine.toml` is written from its interface manuals and ships at
+  evidence level **documented** (AGENTS.md "Evidence levels"). Setup shows the
+  level, so a lab knows that no real analyzer has confirmed it.
+- Real recordings are no longer a precondition. A de-identified recording
+  that any lab shares, replayed as a fixture, is what raises a model to
+  **proven**. Record-only stays available for gathering that evidence and for
+  models whose manuals are missing (the Swelab Lumi until its LIS document
+  arrives).
+- What the manuals leave to the installation becomes a Setup choice (ADR
+  0032), with a suggestion only where the manual gives a default and a label
+  saying where staff read the answer. The installed software version is a
+  choice on every definition, cross-checked on the wire where the model
+  reports it (ADR 0036).
+- What the manuals do not say stays unguessed: values pass through as written,
+  unclear identity is held for an operator (ADR 0035) and the raw bytes are
+  kept for reprocessing (ADR 0003). These nets make a wrong documented field a
+  held item or a reprocessing job, never a lost or merged result.
+- When a model gains a `machine.toml`, its `record.toml` is removed in the
+  same change (a folder never holds both); record-only for a ready model
+  records with its definition's protocol, as Decision 1 already allows.
