@@ -283,6 +283,11 @@ mod tests {
             Some(State::Ready { name, level, .. })
                 if name.as_str() == "generic-synthetic" && *level == super::EvidenceLevel::Documented
         ));
+        // ADR 0034 amendment: a definition written from the manuals ships ready.
+        assert!(matches!(
+            state("biocare/biolyte-2000"),
+            Some(State::Ready { level, .. }) if *level == super::EvidenceLevel::Documented
+        ));
         assert!(matches!(
             state("roche/cobas-e411"),
             Some(State::Ready { name, level, .. })
@@ -301,7 +306,6 @@ mod tests {
         ));
         // First-lab models still awaiting definitions can record.
         for key in [
-            "biocare/biolyte-2000",
             "biomerieux/vidas",
             "boule/swelab-lumi",
             "dialab/autolyser",
