@@ -293,6 +293,12 @@ mod tests {
             Some(State::Ready { name, level, .. })
                 if name.as_str() == "cobas-e411" && *level == super::EvidenceLevel::Documented
         ));
+        // ADR 0034 amendment: written from its manual, so ready at documented.
+        assert!(matches!(
+            state("dialab/autolyser"),
+            Some(State::Ready { name, level, .. })
+                if name.as_str() == "dialab-autolyser" && *level == super::EvidenceLevel::Documented
+        ));
         assert!(matches!(
             state("biomerieux/vidas"),
             Some(State::Ready { name, level, .. })

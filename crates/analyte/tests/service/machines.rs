@@ -115,6 +115,7 @@ fn readme(path: &Path, level: EvidenceLevel) -> Result<(), Error> {
 #[serde(deny_unknown_fields)]
 struct ReplaySettings {
     choices: Option<toml::Table>,
+    autolyser_poll_seconds: Option<u32>,
     order_profile: Option<analyte_config::AstmOrderProfile>,
     vendor_worklist: Option<VendorWorklist>,
     recording: Option<toml::Table>,
@@ -970,6 +971,9 @@ fn site(endpoint: &str, answers: &ReplaySettings, serial: bool) -> Result<String
     site.insert("endpoint".into(), toml::Value::String(endpoint.into()));
     if let Some(choices) = &answers.choices {
         site.insert("choices".into(), choices.clone().into());
+    }
+    if let Some(seconds) = answers.autolyser_poll_seconds {
+        site.insert("autolyser_poll_seconds".into(), i64::from(seconds).into());
     }
     if serial {
         site.insert(

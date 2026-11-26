@@ -35,10 +35,10 @@
       "evidence_level": "documented",
       "model": "dialab/autolyser",
       "name": "Dialab Autolyser",
-      "protocol": null,
-      "ready": false,
+      "protocol": "autolyser",
+      "ready": true,
       "specimen_system": null,
-      "test_system": null,
+      "test_system": "dialab-autolyser",
       "vendor": "dialab"
     },
     {
