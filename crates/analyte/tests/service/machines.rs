@@ -1,6 +1,7 @@
 //! Tests shipped machine definitions and recorded conversations.
+use super::machine_identity::{has_measurement_recipe, replay_identity};
 use super::*;
-use analyte_config::{Draft, EvidenceLevel};
+use analyte_config::{ChoiceKind, DefinitionDetails, Draft, EvidenceLevel, VersionEvidence};
 use analyte_transport::recording::{self, Direction, Event, Header};
 use serde::Deserialize;
 use std::{collections::BTreeMap, path::PathBuf};
@@ -116,6 +117,7 @@ fn readme(path: &Path, level: EvidenceLevel) -> Result<(), Error> {
 struct ReplaySettings {
     choices: Option<toml::Table>,
     autolyser_poll_seconds: Option<u32>,
+    vidas_patient_namespace: Option<String>,
     order_profile: Option<analyte_config::AstmOrderProfile>,
     vendor_worklist: Option<VendorWorklist>,
     recording: Option<toml::Table>,
@@ -152,6 +154,284 @@ struct ExpectedGap {
 enum MissingReply {
     Deadline,
     Disconnect,
+}
+
+struct ShippedDefinition {
+    path: PathBuf,
+    model: PathBuf,
+    text: String,
+    details: DefinitionDetails,
+}
+
+fn shipped_definitions() -> Result<Vec<ShippedDefinition>, Error> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../machines");
+    let shipped = definitions(&root)?
+        .into_iter()
+        .filter(|path| path.ends_with("machine.toml"))
+        .map(|path| {
+            let model = path.parent().ok_or("machine directory missing")?;
+            let model = model.strip_prefix(&root)?.to_owned();
+            let text = std::fs::read_to_string(&path)?;
+            let details = DefinitionDetails::parse(&path.to_string_lossy(), &text)?;
+            Ok(ShippedDefinition {
+                path,
+                model,
+                text,
+                details,
+            })
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    assert!(!shipped.is_empty(), "no machine.toml definitions found");
+    Ok(shipped)
+}
+
+impl ShippedDefinition {
+    fn combinations(&self) -> Vec<ReplaySettings> {
+        let mut combinations = vec![toml::Table::new()];
+        for choice in &self.details.choices {
+            combinations = combinations
+                .into_iter()
+                .flat_map(|selected| {
+                    choice.values.iter().map(move |value| {
+                        let mut selected = selected.clone();
+                        selected.insert(choice.name.as_str().into(), value.value.as_str().into());
+                        selected
+                    })
+                })
+                .collect();
+        }
+        combinations
+            .into_iter()
+            .map(|choices| ReplaySettings {
+                choices: Some(choices),
+                autolyser_poll_seconds: self.details.asks_autolyser_poll.then_some(2),
+                vidas_patient_namespace: self
+                    .details
+                    .asks_vidas_patient_namespace
+                    .then(|| "synthetic-patients".into()),
+                ..ReplaySettings::default()
+            })
+            .collect()
+    }
+
+    fn validate(&self, answers: &ReplaySettings) -> Result<analyte_config::Validated, Error> {
+        ready_definition(&self.text, answers).map_err(|error| {
+            format!("{} {:?}: {error}", self.path.display(), answers.choices).into()
+        })
+    }
+}
+
+// ADR 0032 and ADR 0034: every shipped choice combination can be activated.
+// ADR 0005 and ADR 0012: the README states the definition's evidence level.
+#[test]
+fn shipped_definitions_validate_with_every_site_choice() -> Result<(), Error> {
+    for definition in shipped_definitions()? {
+        for answers in definition.combinations() {
+            let checked = definition.validate(&answers)?;
+            readme(
+                &definition.path.with_file_name("README.md"),
+                checked.effective().machine().evidence.level,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+// ADR 0032 and ADR 0036: the selected version controls the CLI warning.
+#[tokio::test]
+async fn shipped_software_choices_show_warning_only_when_unchecked() -> Result<(), Error> {
+    let mut unchecked_choices = 0;
+    for definition in shipped_definitions()? {
+        let Some(choice) = definition
+            .details
+            .choices
+            .iter()
+            .find(|choice| choice.kind == ChoiceKind::SoftwareVersion)
+        else {
+            continue;
+        };
+        let temp = tempfile::tempdir()?;
+        let model = definition.model.join("machine.toml");
+        std::fs::create_dir_all(temp.path().join(&definition.model))?;
+        std::fs::write(temp.path().join(&model), &definition.text)?;
+        let program = temp.path().join("program.toml");
+        let model = model.to_string_lossy().replace('\\', "/");
+        std::fs::write(
+            &program,
+            analyte_fixtures::program(&format!(
+                "[[machines]]\nid='fixture'\ndefinition='{model}'\nsite='site.toml'\n"
+            )),
+        )?;
+        let kind = definition.details.kind;
+        let serial = kind == analyte_config::TransportKind::Serial;
+        let endpoint = match kind {
+            analyte_config::TransportKind::Serial => "COM3".into(),
+            analyte_config::TransportKind::WatchedFolder => temp.path().display().to_string(),
+            analyte_config::TransportKind::TcpServer | analyte_config::TransportKind::TcpClient => {
+                "127.0.0.1:5600".into()
+            }
+        };
+        for answers in definition.combinations() {
+            let selected = answers
+                .choices
+                .as_ref()
+                .and_then(|values| values.get(choice.name.as_str()))
+                .and_then(toml::Value::as_str)
+                .ok_or("software version choice missing")?;
+            let value = choice
+                .values
+                .iter()
+                .find(|value| value.value.as_str() == selected)
+                .ok_or("selected software version value missing")?;
+            std::fs::write(
+                temp.path().join("site.toml"),
+                site(&endpoint, &answers, serial)?,
+            )?;
+            let listed = tokio::time::timeout(
+                HANG_GUARD,
+                tokio::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+                    .arg("--config")
+                    .arg(&program)
+                    .args(["machines", "list"])
+                    .kill_on_drop(true)
+                    .output(),
+            )
+            .await??;
+            assert!(
+                listed.status.success(),
+                "{}: {listed:?}",
+                definition.path.display()
+            );
+            let output = String::from_utf8(listed.stdout)?;
+            let unchecked = value.version_evidence == VersionEvidence::Unchecked;
+            unchecked_choices += usize::from(unchecked);
+            assert_eq!(
+                output.contains("Software version not checked against a manual"),
+                unchecked,
+                "{} {selected}: {output}",
+                definition.path.display()
+            );
+        }
+    }
+    assert!(
+        unchecked_choices > 0,
+        "no shipped unchecked versions exercised"
+    );
+    Ok(())
+}
+
+// ADR 0036: each declared wire band is backed by firmware evidence, and the
+// active comparison uses exactly the tokens belonging to the selected band.
+#[test]
+fn shipped_wire_version_bands_use_evidenced_tokens() -> Result<(), Error> {
+    use analyte_config::software_version::Check;
+    let mut compared = 0;
+    for definition in shipped_definitions()? {
+        let raw: toml::Table = definition.text.parse()?;
+        let Some(selector) = raw.get("software_version") else {
+            continue;
+        };
+        let bands = selector.get("bands").and_then(toml::Value::as_table);
+        for answers in definition.combinations() {
+            let checked = definition.validate(&answers)?;
+            let machine = checked.effective().machine();
+            let check = machine
+                .software_version()
+                .ok_or("wire declaration ignored")?;
+            let evidence = &machine.evidence.capabilities;
+            let version = checked
+                .effective()
+                .choices()
+                .iter()
+                .find(|choice| choice.kind == ChoiceKind::SoftwareVersion);
+            if version.is_some_and(|choice| choice.version_evidence == VersionEvidence::Unchecked) {
+                assert!(
+                    matches!(check, Check::Unchecked),
+                    "unchecked wire comparison"
+                );
+                continue;
+            }
+            let expected: std::collections::BTreeSet<_> = if let Some(version) = version {
+                bands
+                    .and_then(|bands| bands.get(version.value.as_str()))
+                    .and_then(toml::Value::as_array)
+                    .ok_or("checked wire band missing")?
+                    .iter()
+                    .map(|token| token.as_str().ok_or("wire token must be a string"))
+                    .collect::<Result<_, _>>()?
+            } else {
+                evidence
+                    .iter()
+                    .map(|capability| capability.firmware.as_str())
+                    .filter(|token| {
+                        analyte_config::software_version::reported(token.as_bytes()).is_some()
+                    })
+                    .collect()
+            };
+            assert!(
+                !expected.is_empty(),
+                "{}: empty expected versions",
+                definition.path.display()
+            );
+            for token in &expected {
+                assert!(
+                    evidence
+                        .iter()
+                        .any(|capability| capability.firmware.as_str() == *token),
+                    "{}: wire token {token} has no evidence",
+                    definition.path.display()
+                );
+            }
+            let actual = check.expected().ok_or("checked comparison is inactive")?;
+            assert_eq!(
+                actual
+                    .checked
+                    .iter()
+                    .map(analyte_model::Identifier::as_str)
+                    .collect::<std::collections::BTreeSet<_>>(),
+                expected,
+                "{}: active wire tokens",
+                definition.path.display()
+            );
+            compared += 1;
+        }
+    }
+    assert!(compared > 0, "no shipped wire comparisons exercised");
+    Ok(())
+}
+
+// ADR 0035: retain each upload, deliver an unchanged measurement once and
+// hold changed content under its key when the source declares no correction.
+#[tokio::test]
+async fn shipped_identity_recipes_reconcile_resends_and_conflicts() -> Result<(), Error> {
+    let mut exercised = 0;
+    for definition in shipped_definitions()? {
+        for answers in definition.combinations() {
+            let checked = definition.validate(&answers)?;
+            let stack = checked.effective().stack();
+            if !has_measurement_recipe(stack) {
+                continue;
+            }
+            replay_machine(
+                &definition.model,
+                &definition.text,
+                ReplaySource::Identity,
+                stack,
+                &answers,
+            )
+            .await
+            .map_err(|error| {
+                format!(
+                    "{} {:?}: {error}",
+                    definition.path.display(),
+                    answers.choices
+                )
+            })?;
+            exercised += 1;
+        }
+    }
+    assert!(exercised > 0, "no shipped measurement recipes exercised");
+    Ok(())
 }
 
 // ADR 0012; ADR 0009; ADR 0034 decisions 5 to 7.
@@ -585,7 +865,14 @@ async fn replay_ready(
     )?;
     let stack = checked.effective().stack();
     assert_eq!(header.stack, stack.layer_names(), "recording stack");
-    replay_machine(model, text, events, header, stack, answers).await
+    replay_machine(
+        model,
+        text,
+        ReplaySource::Recording { events, header },
+        stack,
+        answers,
+    )
+    .await
 }
 
 /// Loads a shipped `machine.toml` with the replay's site choices, as a lab PC would.
@@ -800,11 +1087,18 @@ fn assert_recorded(path: &Path, events: &[Event]) -> Result<(), Error> {
     Ok(())
 }
 
+enum ReplaySource<'a> {
+    Recording {
+        events: &'a [Event],
+        header: &'a Header,
+    },
+    Identity,
+}
+
 async fn replay_machine(
     model: &Path,
     definition: &str,
-    events: &[Event],
-    header: &Header,
+    source: ReplaySource<'_>,
     stack: &analyte_config::Stack,
     answers: &ReplaySettings,
 ) -> Result<(), Error> {
@@ -884,15 +1178,13 @@ async fn replay_machine(
         if orders.is_some() {
             wait_feed(&path).await?;
         }
-        replay_ready_events(
-            &path,
-            folder.then_some(incoming.as_path()),
-            events,
-            header,
-            answers,
-            deadline,
-        )
-        .await
+        let incoming = folder.then_some(incoming.as_path());
+        match source {
+            ReplaySource::Recording { events, header } => {
+                replay_ready_events(&path, incoming, events, header, answers, deadline).await
+            }
+            ReplaySource::Identity => replay_identity(&path, incoming, stack).await,
+        }
     }
     .await;
     let stopped = running.stop().await;
@@ -974,6 +1266,9 @@ fn site(endpoint: &str, answers: &ReplaySettings, serial: bool) -> Result<String
     }
     if let Some(seconds) = answers.autolyser_poll_seconds {
         site.insert("autolyser_poll_seconds".into(), i64::from(seconds).into());
+    }
+    if let Some(namespace) = &answers.vidas_patient_namespace {
+        site.insert("vidas_patient_namespace".into(), namespace.clone().into());
     }
     if serial {
         site.insert(

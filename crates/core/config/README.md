@@ -21,6 +21,10 @@ A software-version choice can pair a single documented band with
 `checked = false` for "Other version (not checked)". A choice that offers
 this value cannot select any settings. Use separate, explicitly selected
 modes for any settings that vary by version. A wire selector's bands list
-only the checked values.
+only the checked values. Each token in `[software_version.bands]` must
+match a `firmware` entry under `[[evidence.capabilities]]` exactly.
+
+See the [machine authoring guide](../../../docs/develop/adding-a-machine.md#automatic-handling-what-to-write-and-how-analyte-uses-it)
+for identity recipes, version selectors, departures and lab choices.
 
 [Technical details and safety guidance](DETAILS.md).

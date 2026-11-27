@@ -35,8 +35,9 @@ For an interface requiring new protocol code, follow
    check the catalog is current. No test code is needed.
 6. **Open a pull request** with the folder ([contribute the definition](#contribute-the-definition)).
 
-A machine without real recordings stays at `documented`, however complete its
-settings are ([state the evidence honestly](#state-the-evidence-honestly)).
+A definition can ship from the interface manuals at the `documented` level
+with original synthetic recordings. A real recording supports later
+qualification. [ADR 0034 amendment](../adr/0034-record-only-connections.md#amendment-2026-11-26-definitions-ship-from-the-manuals)
 
 ## Choose the stack
 
@@ -264,34 +265,6 @@ the declared `group` and `record`. Confirm them from source and recordings.
 `mappings.sample.source` describes how the machine got the ID; the field
 selector determines where Analyte reads it. Sample IDs remain strings.
 
-### Declare a result identity recipe
-
-Add `evidence = { manual = "title and revision", section = "section and table" }`
-under `[mappings.identity]` for the installed model, firmware and mode. When
-choices select the whole mapping, put the recipe in each applicable mapping.
-Choose `order_id`, its `order_namespace` and `sub_id` from their source fields.
-Use `sub_id = "none"` when the profile has no sub-ID. The recipe also uses the
-configured sample ID and the machine's namespaced test code.
-
-List the required `run` selectors in order. For example, when a manual
-establishes ASTM R.13 as stable completion evidence, its selector is
-`{ group = "observation", record = "R", field = 13, component = 1, repetition = 1 }`.
-Confirm that two measurements of the same sample and test have different keys,
-that resends repeat the key, and that corrections keep it. Use this recipe
-for sources with one measurement per observation record.
-
-Declare the manual's exact `correction_status_codes` and `rerun_status_codes`.
-A rerun code overrides the generic status meaning and needs source evidence
-that distinguishes the run from earlier runs. Select the raw marker in `run`
-only if its documented stability and distinctness make it part of the key.
-Check resends, multiple reruns and missing fields with synthetic tests and a
-de-identified recording before qualification.
-
-For VIDAS use `[codes.vidas_identity]` with `sample_namespace` and the same
-`evidence` citation. It selects the source sample, assay, completion date and
-completion time. Verify the date and time have sufficient precision for the
-installed profile. See [ADR 0035](../adr/0035-machine-result-identity-recipes.md).
-
 For ASTM only, an optional section can split one R.3 component into exact parts:
 
 ```toml
@@ -363,7 +336,69 @@ patient field and rejects `patient_namespace`. Follow the
 Sent, accepted, done and cancelled are different outcomes. A lost reply or
 restart never authorizes an automatic resend to a machine.
 
-### Declare the lab's choices
+## Automatic handling: what to write and how Analyte uses it
+
+### Result identity
+
+A result identity tells Analyte whether it has already seen this measurement.
+For ASTM and HL7, keep the required identity table with the active mapping.
+If a choice selects the mapping, use `[choices.values.mappings.identity]`
+inside each applicable value. This synthetic ASTM profile uses a sample
+identifier as order context and a completion time as the run identifier.
+
+```toml
+[mappings.identity]
+order_id = { group = "order", record = "O", field = 3, component = 1, repetition = 1 }
+order_namespace = { fixed = "example-sample-ids" }
+sub_id = "none"
+run = [{ group = "observation", record = "R", field = 13, component = 1, repetition = 1 }]
+correction_status_codes = ["C"]
+rerun_status_codes = []
+evidence = { manual = "Example interface guide rev A", section = "Result records" }
+```
+
+Use the manual's order identifier position and its assigning system
+(`order_namespace = { field = { ... } }` when the source carries it).
+Select the sub-ID field if the profile has one. Use `sub_id = "none"` when
+the profile has no sub-ID. An evidenced recipe includes the exact sample ID
+and test code. Each required field in `run` must be present, repeat on resends
+and corrections, and distinguish successive measurements of the same sample
+and assay when combined with the other key fields. A documented completion
+timestamp with enough precision or a unique instrument run identifier can
+qualify. A generic rerun flag can repeat across multiple runs. List only
+documented whole-code overrides. Use empty code lists when the manual gives
+no override and the standard's status meaning applies.
+
+VIDAS has a fixed recipe using the sample ID, assay and completion date and
+time. Confirm the timestamp's precision for the installed profile before
+enabling it.
+
+```toml
+[codes.vidas_identity]
+sample_namespace = "example-sample-ids"
+evidence = { manual = "Example link guide rev A", section = "Completion fields" }
+```
+
+Analyte keeps each receipt. The same key and content produce one delivery
+when the result is eligible for production. A different key starts a new
+result. Changed content under the same key is held for review unless a
+documented correction or protocol lifecycle rule
+authorizes a new revision. Missing required identity evidence also holds the
+reading. When the manual cannot establish a stable run, leave the recipe
+disabled. Keep the required ASTM or HL7 mapping fields and use `run = []`
+with no identity citation for a recipe. A citation for a status-only rerun
+override can still accompany an empty `run`. Confirm the fallback during
+replay, since legacy standard mappings can still resolve identity from
+order context. For VIDAS, omit `[codes.vidas_identity]`. LAW and POCT use
+their protocol's identity rules. [ADR 0035](../adr/0035-machine-result-identity-recipes.md)
+
+The cobas definition shows a completion-time recipe for Elecsys and a
+status-only rerun declaration for its cobas modes. VIDAS shows the fixed
+recipe and reconciles stored measurements. Its uploads lack the processing
+mode required for production delivery. Autolyser documents the absence of
+a stable run field and keeps the results for review. [cobas e 411](../../machines/roche/cobas-e411/machine.toml) · [VIDAS](../../machines/biomerieux/vidas/machine.toml) · [Autolyser](../../machines/dialab/autolyser/machine.toml)
+
+### Lab choices and suggestions
 
 Some settings are the lab's to choose because the analyzer offers them on its
 own screen (a host dialect, "send results only", VIDAS Literal or Alternate)
@@ -390,20 +425,6 @@ vidas = {alternate = false}
 value = "alternate"
 label = "Alternate (acknowledge after ETX)"
 vidas = {alternate = true}
-
-# The installed software version: only the lab knows it, so no suggestion.
-[[choices]]
-name = "software_version"
-kind = "software_version"
-label = "Software version on the About screen"
-[[choices.values]]
-value = "v1"
-label = "Version 1 (sample IDs up to 12 characters)"
-vidas = {sample_limit = 12}
-[[choices.values]]
-value = "v2"
-label = "Version 2 or later (sample IDs up to 17 characters)"
-vidas = {sample_limit = 17}
 ```
 
 The whole synthetic example is
@@ -426,6 +447,15 @@ The lab's values go in the site file's `[choices]`, which Setup writes (see
 [connect](../operations/connect.md#analyzer-settings)). A new kind of building
 block needs a change in the config crate with its tests, not a config
 feature; ask the maintainers.
+
+Use `suggested` only when the manual identifies a default for that
+setting. Setup shows the suggestion, and the loader uses it if the site
+has no explicit selection. A site answer takes precedence. With no
+suggestion, Setup requires a choice and the loader refuses a missing
+answer. The Autolyser definition shows explicit controls and recovery
+choices and a required site poll interval. [Autolyser](../../machines/dialab/autolyser/machine.toml)
+
+### Software version choices and wire checks
 
 For a definition shipping with manual coverage, list the versions those
 manuals cover and offer an unchecked value for other versions. The following
@@ -454,12 +484,93 @@ confirmation. If you declare a wire selector under
 [ADR 0036](../adr/0036-machine-software-version-warning.md), only the checked
 values have entries in `[software_version.bands]`.
 
+The unchecked choice shows “Software version not checked against a manual”
+in Setup, Overview and `analyte machines list`, even before the first upload.
+It leaves result processing enabled and skips any wire comparison. Checked
+choices are covered by the listed manual and do not raise that warning.
+
+Add a wire check only if the manual identifies a supported position as an
+analyzer software or communication-program token. Use its exact wire spelling
+in `[[evidence.capabilities]]` under `firmware`. Add this synthetic fragment
+alongside the version choice above.
+
+```toml
+[software_version]
+selector = "astm_sender_third_component"
+source = "Example interface guide rev A, sender software field"
+
+[software_version.bands]
+v1 = ["1.0A", "1.0B"]
+```
+
+Supported selectors are `astm_sender_second_component` (H.5.2),
+`astm_sender_third_component` (H.5.3), `hl7_sending_application` (MSH-3.1)
+and `hl7_sending_facility` (MSH-4.1, also available with LAW). HL7 MSH-12
+describes the protocol version. A wire token is at most 64 ASCII bytes,
+contains at least one digit and uses only letters, digits, dots, hyphens,
+underscores or plus signs. Match tokens exactly. List every checked choice in
+`bands`, with each token listed as a capability's `firmware` value. Without a
+version choice, omit `bands` and the check uses the valid tokens from the
+evidence capabilities. An unexpected, missing or unreadable token raises an
+operational warning while processing continues. When the manual is silent
+about a wire position, omit `[software_version]` and use a lab choice if the
+manual documents version bands. [ADR 0036](../adr/0036-machine-software-version-warning.md)
+
+Biolyte shows the unchecked choice, a wire selector and exact band tokens.
+VIDAS shows versions read by staff when the wire has no version field.
+[Biolyte 2000](../../machines/biocare/biolyte-2000/machine.toml) · [VIDAS](../../machines/biomerieux/vidas/machine.toml)
+
 ### Declare departures, do not program around them
 
 Keep `deviations = []` for the strict example. Under
 [ADR 0015](../adr/0015-named-machine-departures.md) each entry is one variant of a
 closed list, with its own scope, evidence references and evidence level. No
 field path, pattern, script or free status mapping can select behavior.
+
+When a documented analyzer mode needs an existing rule, list its tag in
+that mode's `[[choices.values]]`, then declare the rule for that exact mode.
+This synthetic fragment shows the mode-specific form.
+
+```toml
+departure_scope = { model = "example/analyzer", firmware = "1.0", mode = "packed", edition = { protocol = "astm" }, direction = "machine_to_host", message = "astm_results" }
+
+[[choices]]
+name = "host_mode"
+kind = "mode"
+label = "Record packing on the host interface screen"
+[[choices.values]]
+value = "strict"
+label = "One record per frame"
+departures = []
+[[choices.values]]
+value = "packed"
+label = "Packed records"
+departures = ["astm_packed_records_in_frame"]
+
+[[choice_departures]]
+rule = "astm_packed_records_in_frame"
+[choice_departures.declaration]
+scope = { model = "example/analyzer", firmware = "1.0", mode = "packed", edition = { protocol = "astm" }, direction = "machine_to_host", message = "astm_results" }
+level = "documented"
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "example-interface"
+title = "Example interface guide"
+revision = "A"
+section = "Packed uploads"
+guarantee = "compatibility"
+covers_unknown_firmware = false
+contradicts = false
+```
+
+Use `[[deviations]]` for a rule active across the definition, with its typed
+`rule`, `declaration.scope`, `declaration.level` and `declaration.evidence`
+(or the rule's specific settings where required). When the manual gives
+no guarantee for the installed mode and traffic, omit the rule and keep
+standard behavior. Analyte activates only the rules for the selected settings
+and records when they affect the reading. Unsupported wire behavior can
+be refused or held. The cobas definition shows mode-specific packing, frame
+limits and deadlines. [cobas e 411](../../machines/roche/cobas-e411/machine.toml)
 
 | Variant | What it allows | Evidence it needs |
 | --- | --- | --- |
@@ -494,6 +605,21 @@ and ask maintainers. A reviewed
 code change belongs in the owning layer; do not weaken a shared standard or
 invent a config key. A new subsystem, protocol family, format, dependency or
 unplanned ADR requires agreement before building it.
+
+### Checklist for a new definition
+
+- Fill the identity selectors and source citation when the manual establishes
+  a stable run. Leave unsupported run selectors and status overrides out.
+- List documented version bands, with an unchecked choice for other software.
+  Add a wire selector and capability tokens only for a documented wire field.
+- Declare actual lab choices. Leave suggestions out where staff must verify
+  the installed setting. Cite each departure and scope it to the mode and
+  traffic that need it. Keep the standard rule where evidence is missing.
+- Set the same evidence level in the definition and README. Run
+  `cargo test -p analyte --test service --all-features shipped_` for choice
+  combinations, evidence, version warnings and measurement reconciliation.
+  Run the recording replay below to cover on-wire behavior for the installed
+  modes, including departures and any documented correction or rerun.
 
 ## Validate before connecting
 
