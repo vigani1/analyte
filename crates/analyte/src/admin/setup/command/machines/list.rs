@@ -40,6 +40,10 @@ pub(in super::super) struct Listed {
     pub(in super::super) choices_words: Option<String>,
     /// Its site file asks for record only (ADR 0034): nothing is sent to a lab app.
     pub(in super::super) record_only: bool,
+    /// How repeated results are handled, `automatic` or `always_ask` (ADR
+    /// 0035); none while not loaded or where the choice does not apply.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(in super::super) repeated_results: Option<analyte_config::RepeatedResults>,
 }
 
 /// One of a model's own choices as `machines list` shows it.
@@ -145,24 +149,7 @@ pub(in super::super) fn settings_rows(installation: &Installation) -> Result<Vec
             })
         });
         let chosen = effective.map(analyte_config::Effective::choices);
-        let listed_choices = chosen
-            .unwrap_or_default()
-            .iter()
-            .map(|chosen| ListedChoice {
-                name: chosen.name.as_str().to_owned(),
-                kind: match chosen.kind {
-                    analyte_config::ChoiceKind::Mode => "mode",
-                    analyte_config::ChoiceKind::SoftwareVersion => "software_version",
-                },
-                value: chosen.value.as_str().to_owned(),
-                suggested: chosen
-                    .suggested
-                    .as_ref()
-                    .map(|(value, _)| value.as_str().to_owned()),
-                selected: chosen.selected,
-                differs_from_suggestion: chosen.differs(),
-            })
-            .collect();
+        let listed_choices = chosen.unwrap_or_default().iter().map(listed).collect();
         machines.push(Listed {
             open_to_any_device,
             allowed_peers: peers,
@@ -179,10 +166,29 @@ pub(in super::super) fn settings_rows(installation: &Installation) -> Result<Vec
                 .and_then(analyte_config::Effective::site_autolyser_poll_seconds),
             choices_words: chosen.and_then(choices::summary),
             record_only,
+            repeated_results: effective.and_then(analyte_config::Effective::repeated_results),
             id,
         });
     }
     Ok(machines)
+}
+
+/// One of the model's own choices as `machines list` shows it.
+fn listed(chosen: &analyte_config::Chosen) -> ListedChoice {
+    ListedChoice {
+        name: chosen.name.as_str().to_owned(),
+        kind: match chosen.kind {
+            analyte_config::ChoiceKind::Mode => "mode",
+            analyte_config::ChoiceKind::SoftwareVersion => "software_version",
+        },
+        value: chosen.value.as_str().to_owned(),
+        suggested: chosen
+            .suggested
+            .as_ref()
+            .map(|(value, _)| value.as_str().to_owned()),
+        selected: chosen.selected,
+        differs_from_suggestion: chosen.differs(),
+    }
 }
 
 pub(super) async fn list(installation: &Installation, json: bool) -> Result<Outcome, Failure> {
@@ -261,6 +267,9 @@ fn print_machine(machine: &Listed, engine: bool) -> std::io::Result<()> {
     }
     if let Some(line) = devices_line(machine) {
         say(&line)?;
+    }
+    if let Some(choice) = machine.repeated_results {
+        say(&format!("  Repeated results: {}", choice.label()))?;
     }
     say(&format!(
         "  Lab app: {}",

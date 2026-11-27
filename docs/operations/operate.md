@@ -210,7 +210,11 @@ nothing is written before **Save**.
    [Network machines](connect.md#network-machines). On the same screen, "Send
    results to" picks one lab app from the [Lab apps page](#lab-apps-page). With
    only one, it is chosen already. With none, the page links to the Lab app
-   page to add one first. Keys are not asked here.
+   page to add one first. Keys are not asked here. **Repeated results**
+   starts at **handle automatically (recommended)**; choose **always ask me**
+   to have every repeat of a measurement wait in Needs review
+   ([Repeated results](connect.md#repeated-results)). IHE LAW, POCT and
+   record-only connections do not ask it.
 3. **Test (listen only).** **Start the test** opens the chosen port or address
    and listens. The test page first says in one sentence what it saw, for
    example "Receiving data from the machine, looks like ASTM", or "Nothing

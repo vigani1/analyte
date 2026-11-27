@@ -1,11 +1,14 @@
-//! Lists and exports the recorded conversations kept under the data folder, each read audited first (ADR 0009, ADR 0034).
+//! Lists, exports and de-identifies the recorded conversations kept under the data folder, each audited first (ADR 0009, ADR 0034, ADR 0037).
 //!
 //! A recording holds every byte the analyzer sent, so it **contains patient
-//! data**. Listing and exporting are audited before anything is shown or
-//! copied, as `parked show` is. Export copies one file, byte for byte, to a
-//! folder the operator names and never overwrites a file there; it does not
-//! de-identify anything. Sharing needs a reviewed de-identified copy
+//! data**. Every command is audited before anything is shown or copied, as
+//! `parked show` is. Export copies one file, byte for byte, to a folder the
+//! operator names and never overwrites a file there. De-identify writes a new
+//! copy with synthetic patient fields and never changes the original; the
+//! copy still needs a review before it is shared
 //! (docs/develop/adding-a-machine.md, "Capture, de-identify and replay").
+pub mod deidentify;
+
 use crate::installation::config::{Program, plain_name};
 use crate::{deadline, operator::Error};
 use analyte_model::{Identifier, Reason};
@@ -20,7 +23,7 @@ const LIST_LIMIT: usize = 4096;
 const SUFFIX: &str = ".rec.jsonl";
 
 /// What every listing and export says first.
-pub const PATIENT_DATA: &str = "These recordings contain patient data. Keep them on this PC; before sharing one, make a de-identified copy and review it (docs/develop/adding-a-machine.md, \"Capture, de-identify and replay\"). Analyte does not de-identify them.";
+pub const PATIENT_DATA: &str = "These recordings contain patient data. Keep them on this PC; before sharing one, make a de-identified copy with captures de-identify and review it (docs/develop/adding-a-machine.md, \"Capture, de-identify and replay\").";
 
 /// The `captures` commands.
 #[derive(Subcommand)]
@@ -44,6 +47,26 @@ pub enum Command {
         /// Why it is exported; the audit keeps it.
         #[arg(long)]
         reason: String,
+    },
+    /// Writes a de-identified copy of one recording to a folder: patient
+    /// fields become synthetic values of the same shape and checksums are
+    /// recomputed. The original is not changed. Review the copy before sharing it.
+    #[command(name = "de-identify")]
+    DeIdentify {
+        /// The machine's name.
+        machine: String,
+        /// The recording's file name, as `captures list` shows it.
+        file: String,
+        /// The folder to write the copy into; it must exist.
+        #[arg(long)]
+        to: PathBuf,
+        /// Why it is de-identified; the audit keeps it.
+        #[arg(long)]
+        reason: String,
+        /// The checksum letter case the machine uses (VIDAS); needed only when
+        /// the recording cannot show it, and then the command says so.
+        #[arg(long, value_enum)]
+        checksum_case: Option<deidentify::LetterCase>,
     },
 }
 
@@ -75,6 +98,12 @@ pub enum CaptureError {
     /// Too many recordings to list safely.
     #[error("machine {0} has more than 4096 recordings; move older ones out first")]
     TooMany(String),
+    /// The recording is not a readable ADR 0009 file.
+    #[error("the recording cannot be read: {0}")]
+    Format(#[from] analyte_transport::recording::FormatError),
+    /// No de-identified copy could be made.
+    #[error(transparent)]
+    DeIdentify(#[from] deidentify::Error),
     /// Reading or copying failed.
     #[error("{operation} {path} failed: {source}")]
     Io {
@@ -174,6 +203,22 @@ pub fn export(
     file: &str,
     to: &Path,
 ) -> Result<PathBuf, CaptureError> {
+    let source = source(program, machine, file, to)?;
+    let target = to.join(file);
+    let mut output = create(&target)?;
+    let mut input = std::fs::File::open(&source).map_err(io("open", &source))?;
+    std::io::copy(&mut input, &mut output).map_err(io("copy to", &target))?;
+    output.sync_all().map_err(io("flush", &target))?;
+    Ok(target)
+}
+
+/// The stored recording `file` of `machine`, after checking both names and the target folder.
+fn source(
+    program: &Program,
+    machine: &str,
+    file: &str,
+    to: &Path,
+) -> Result<PathBuf, CaptureError> {
     machine_name(machine)?;
     let plain = Path::new(file)
         .file_name()
@@ -191,22 +236,120 @@ pub fn export(
     if !to.is_dir() {
         return Err(CaptureError::NoFolder(to.to_owned()));
     }
-    let target = to.join(file);
-    let mut output = match std::fs::OpenOptions::new()
+    Ok(source)
+}
+
+/// A new file; an existing one is never replaced.
+fn create(target: &Path) -> Result<std::fs::File, CaptureError> {
+    match std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(&target)
+        .open(target)
     {
-        Ok(output) => output,
+        Ok(output) => Ok(output),
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            return Err(CaptureError::Exists(target));
+            Err(CaptureError::Exists(target.to_owned()))
         }
-        Err(error) => return Err(io("create", &target)(error)),
+        Err(error) => Err(io("create", target)(error)),
+    }
+}
+
+/// What a de-identification wrote.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeIdentified {
+    /// The new file.
+    pub path: PathBuf,
+    /// Values replaced, every occurrence counted.
+    pub replaced: usize,
+    /// Distinct real values replaced.
+    pub distinct: usize,
+}
+
+/// Writes a de-identified copy of one recording into `to` as
+/// `<name>.deidentified.rec.jsonl`, refusing to overwrite. The original is
+/// only read, through the bounded ADR 0009 reader, and the whole copy is made
+/// in memory first, so a refusal writes nothing.
+/// # Errors
+/// A bad name, a missing recording or folder, an unreadable recording, a
+/// message whose patient fields cannot be placed, an existing target or a write failure.
+pub fn de_identify(
+    program: &Program,
+    machine: &str,
+    file: &str,
+    to: &Path,
+    case: Option<deidentify::LetterCase>,
+) -> Result<DeIdentified, CaptureError> {
+    use analyte_transport::recording::{self, Limits};
+    let source = source(program, machine, file, to)?;
+    let input = std::fs::File::open(&source).map_err(io("open", &source))?;
+    let (header, events) = recording::read(std::io::BufReader::new(input), Limits::default())?;
+    let copy = deidentify::de_identify(&header, &events, case)?;
+    let mut encoded = Vec::new();
+    recording::write_header(&mut encoded, &copy.header, Limits::default())
+        .map_err(io("encode", &source))?;
+    for event in &copy.events {
+        recording::write_event(&mut encoded, event, Limits::default())
+            .map_err(io("encode", &source))?;
+    }
+    if encoded.len() > Limits::default().file_bytes {
+        return Err(io("encode", &source)(std::io::Error::other(
+            "the copy exceeds the recording file bound",
+        )));
+    }
+    let stem = file.strip_suffix(SUFFIX).unwrap_or(file);
+    let target = to.join(format!("{stem}.deidentified{SUFFIX}"));
+    let mut output = create(&target)?;
+    let written = std::io::Write::write_all(&mut output, &encoded)
+        .and_then(|()| output.sync_all())
+        .map_err(io("write", &target));
+    if let Err(error) = written {
+        drop(output);
+        // A partial copy must not look like a finished one; the write error is what is reported.
+        if let Err(cleanup) = std::fs::remove_file(&target) {
+            tracing::warn!(error_kind = ?cleanup.kind(), "partial de-identified copy could not be removed");
+        }
+        return Err(error);
+    }
+    Ok(DeIdentified {
+        path: target,
+        replaced: copy.replaced,
+        distinct: copy.distinct,
+    })
+}
+
+/// Prints each machine's recordings, or that it has none.
+fn show(program: &Program, machine: Option<String>) -> Result<(), Error> {
+    let machines: Vec<String> = match machine {
+        Some(machine) => vec![machine],
+        None => program
+            .machines()
+            .iter()
+            .map(|machine| machine.id().as_str().to_owned())
+            .collect(),
     };
-    let mut input = std::fs::File::open(&source).map_err(io("open", &source))?;
-    std::io::copy(&mut input, &mut output).map_err(io("copy to", &target))?;
-    output.sync_all().map_err(io("flush", &target))?;
-    Ok(target)
+    for machine in machines {
+        let recordings = list(program, &machine)?;
+        if recordings.is_empty() {
+            super::display::line(&format!("{machine}: no recordings"))?;
+        }
+        for recording in recordings {
+            super::display::line(&format!(
+                "{} {} {} bytes, last changed {}{}",
+                recording.machine,
+                recording.file,
+                recording.bytes,
+                recording
+                    .modified
+                    .map_or_else(|| "unknown".to_owned(), |at| at.to_string()),
+                if recording.failed {
+                    " (capture stopped early: incomplete)"
+                } else {
+                    ""
+                }
+            ))?;
+        }
+    }
+    Ok(())
 }
 
 /// Runs one `captures` command; the audit is written before anything is shown or copied.
@@ -232,6 +375,16 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
             vec![Identifier::new(machine)?, Identifier::new(file)?],
             reason.clone(),
         ),
+        Command::DeIdentify {
+            machine,
+            file,
+            reason,
+            ..
+        } => (
+            "captures-de-identify",
+            vec![Identifier::new(machine)?, Identifier::new(file)?],
+            reason.clone(),
+        ),
     };
     let audit = Audit {
         actor,
@@ -248,38 +401,7 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
     audited?;
     super::display::line(PATIENT_DATA)?;
     match command {
-        Command::List { machine } => {
-            let machines: Vec<String> = match machine {
-                Some(machine) => vec![machine],
-                None => program
-                    .machines()
-                    .iter()
-                    .map(|machine| machine.id().as_str().to_owned())
-                    .collect(),
-            };
-            for machine in machines {
-                let recordings = list(program, &machine)?;
-                if recordings.is_empty() {
-                    super::display::line(&format!("{machine}: no recordings"))?;
-                }
-                for recording in recordings {
-                    super::display::line(&format!(
-                        "{} {} {} bytes, last changed {}{}",
-                        recording.machine,
-                        recording.file,
-                        recording.bytes,
-                        recording
-                            .modified
-                            .map_or_else(|| "unknown".to_owned(), |at| at.to_string()),
-                        if recording.failed {
-                            " (capture stopped early: incomplete)"
-                        } else {
-                            ""
-                        }
-                    ))?;
-                }
-            }
-        }
+        Command::List { machine } => show(program, machine)?,
         Command::Export {
             machine, file, to, ..
         } => {
@@ -288,6 +410,22 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
                 "Copied to {}. It contains patient data: de-identify a copy before sharing it.",
                 target.display()
             ))?;
+        }
+        Command::DeIdentify {
+            machine,
+            file,
+            to,
+            checksum_case,
+            ..
+        } => {
+            let copy = de_identify(program, &machine, &file, &to, checksum_case)?;
+            super::display::line(&format!(
+                "Wrote {}: {} values replaced ({} distinct). The original is unchanged.",
+                copy.path.display(),
+                copy.replaced,
+                copy.distinct
+            ))?;
+            super::display::line(deidentify::CHECKLIST)?;
         }
     }
     Ok(())

@@ -262,6 +262,7 @@ fn ask_connection(
         controls: draft.controls.take(),
         acknowledgment: draft.acknowledgment.take(),
         analyzer_mode: draft.analyzer_mode.take(),
+        repeated_results: draft.repeated_results.take(),
         baud: draft.baud.take(),
         data_bits: draft.data_bits.take(),
         parity: draft.parity.take(),

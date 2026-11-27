@@ -77,7 +77,7 @@ mod tests {
     // ADR 0013 item 1
     #[test]
     fn required_period_has_no_default_and_bounds() -> Result<(), crate::Error> {
-        let site = include_str!("../examples/site.toml");
+        let site = include_str!("../../examples/site.toml");
         for period in ["1", "90", "3650", "\"keep\""] {
             load_site("site", &site.rewrite("\"keep\"", period), &none())?;
         }

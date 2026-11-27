@@ -279,3 +279,77 @@ async fn step_two_requires_and_saves_the_labs_poll_interval() -> Result<(), Erro
     assert!(page.contains("value=\"42\""), "{page}");
     Ok(())
 }
+
+// ADR 0035 (2026-11-26), ADR 0027 (one code path): step 2 asks how repeated
+// results are handled, starting at "handle automatically (recommended)";
+// Save writes `repeated_results = "always_ask"` as `machines set
+// --repeated-results always_ask` does, the page shows it saved, a value off
+// the list is refused and changes no file, and a POCT model is not asked.
+#[tokio::test(flavor = "multi_thread")]
+async fn step_two_saves_the_repeated_results_choice() -> Result<(), Error> {
+    let fixture = start().await?;
+    let path = "/setup/synthetic/connection?definition=example/network-hl7";
+    let page = fixture.get(path).await?;
+    for expected in [
+        "<label class=\"field__label\" for=\"s2-repeated-results\">Repeated results</label>",
+        "<select id=\"s2-repeated-results\" class=\"select\" name=\"repeated_results\" required>",
+        "<option value=\"automatic\" selected>handle automatically (recommended)</option>",
+        "<option value=\"always_ask\">always ask me</option>",
+    ] {
+        assert!(page.contains(expected), "missing {expected}: {page}");
+    }
+    let fields = [
+        ("definition", "example/network-hl7"),
+        ("host", "127.0.0.1"),
+        ("tcp_port", "5601"),
+        ("allowed_peers", ""),
+    ];
+    let before = std::fs::read_to_string(&fixture.site)?;
+    let mut refused = fields.to_vec();
+    refused.push(("repeated_results", "ask"));
+    let body = fixture.form(&refused).await?;
+    let answer = fixture.post("/setup/synthetic", &body).await?;
+    assert!(answer.starts_with("HTTP/1.1 409"), "{answer}");
+    assert!(
+        answer.contains("Choose how repeated results are handled: automatic or always_ask."),
+        "{answer}"
+    );
+    assert_eq!(std::fs::read_to_string(&fixture.site)?, before);
+
+    let mut ask = fields.to_vec();
+    ask.push(("repeated_results", "always_ask"));
+    let body = fixture.form(&ask).await?;
+    let saved = fixture.post("/setup/synthetic", &body).await?;
+    assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
+    let site: toml::Table = std::fs::read_to_string(&fixture.site)?.parse()?;
+    assert_eq!(
+        site.get("repeated_results"),
+        Some(&toml::Value::String("always_ask".into())),
+        "the same key `machines set --repeated-results always_ask` writes"
+    );
+    let audits = fixture.audited("setup-save").await?;
+    assert!(
+        audits
+            .iter()
+            .any(|reason| reason.contains("repeated results: always ask me")),
+        "{audits:?}"
+    );
+    let page = fixture.get(path).await?;
+    assert!(
+        page.contains("<option value=\"always_ask\" selected>always ask me</option>"),
+        "{page}"
+    );
+
+    let folder = fixture.root().join("machines/example/poct");
+    std::fs::create_dir_all(&folder)?;
+    std::fs::write(
+        folder.join("machine.toml"),
+        include_str!("../../../../../../core/config/examples/poct.toml"),
+    )?;
+    let poct = fixture
+        .get("/setup/synthetic/connection?definition=example/poct")
+        .await?;
+    assert!(poct.starts_with("HTTP/1.1 200"), "{poct}");
+    assert!(!poct.contains("name=\"repeated_results\""), "{poct}");
+    Ok(())
+}

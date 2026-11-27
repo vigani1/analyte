@@ -19,6 +19,7 @@ use tokio::{
 };
 
 mod conversations;
+mod deidentified;
 mod packing;
 
 /// The model file of a synthetic record-only machine on a loopback listener.

@@ -141,7 +141,8 @@ pub(super) struct Candidate {
 /// 0026), the serial cable settings (`[serial]`, every chosen value, removed
 /// for other links, ADR 0031), the model's own choices (`[choices]`, every
 /// declared choice's value, removed for a model without choices, ADR 0032),
-/// and `lab_app = "<name>"` in place of any `[destination]` table. Every other key (retention, time zone, limits) is
+/// the repeated-results choice (`repeated_results`, written only when not
+/// automatic, ADR 0035), and `lab_app = "<name>"` in place of any `[destination]` table. Every other key (retention, time zone, limits) is
 /// kept as it was.
 ///
 /// A complete `[destination]` moves into `lab-apps.toml` unless it is already
@@ -158,7 +159,11 @@ pub(super) fn candidate(
         Option<&analyte_config::SerialValues>,
         &analyte_config::ChoiceSelections,
     ),
-    (autolyser_poll_seconds, vidas_patient_namespace): (Option<u32>, Option<&str>),
+    (autolyser_poll_seconds, vidas_patient_namespace, repeated_results): (
+        Option<u32>,
+        Option<&str>,
+        analyte_config::RepeatedResults,
+    ),
     lab_app: &Identifier,
     lab_apps: &LabApps,
     elsewhere: &[Destination],
@@ -166,6 +171,14 @@ pub(super) fn candidate(
     apply_link(&mut table, (connection, peers, serial, chosen))?;
     table.remove("autolyser_poll_seconds");
     table.remove("vidas_patient_namespace");
+    // Automatic is the default and stays unwritten (ADR 0035, 2026-11-26).
+    table.remove("repeated_results");
+    if !repeated_results.is_automatic() {
+        table.insert(
+            "repeated_results".into(),
+            toml::Value::String(repeated_results.as_str().into()),
+        );
+    }
     if let Some(seconds) = autolyser_poll_seconds {
         table.insert(
             "autolyser_poll_seconds".into(),
@@ -273,6 +286,8 @@ pub(super) fn recording_candidate(
     let none = analyte_config::ChoiceSelections::default();
     table.remove("autolyser_poll_seconds");
     table.remove("vidas_patient_namespace");
+    // Record only reads no results, so nothing repeats (ADR 0034).
+    table.remove("repeated_results");
     let after = keep_own_destination(&mut table, lab_apps)?;
     table.remove("lab_app");
     apply_link(&mut table, (connection, peers, serial, &none))?;

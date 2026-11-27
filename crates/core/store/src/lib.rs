@@ -47,8 +47,8 @@ pub use machine_orders::{
 };
 
 pub use revisions::{
-    InterpretationCommit, NO_RESULTS_REASON, ReconcileAction, ReconcileInput, ReconcileMode,
-    RevisionOutcome, StatusLifecycle, reconciled_outcome,
+    ASK_REPEAT_REASON, InterpretationCommit, NO_RESULTS_REASON, ReconcileAction, ReconcileInput,
+    ReconcileMode, RepeatPolicy, RevisionOutcome, StatusLifecycle, reconciled_outcome,
 };
 /// LAW execution custody and retained message dispositions.
 pub use revisions::{

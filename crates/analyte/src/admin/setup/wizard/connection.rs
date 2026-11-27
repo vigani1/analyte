@@ -84,8 +84,47 @@ pub(super) fn render_connection(
         } else {
             None
         },
+        repeated_results: (!records_only && model.details.asks_repeated_results)
+            .then(|| repeated_results_field(current_site, draft)),
     }
     .render())
+}
+
+/// Step 2: how repeated results are handled (ADR 0035, 2026-11-26), the
+/// draft's or the saved choice, else automatic, the recommended default.
+fn repeated_results_field(current_site: &toml::Table, draft: &Draft) -> Setting {
+    use analyte_config::RepeatedResults;
+    let current = draft
+        .repeated_results
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| super::plan::saved_repeated_results(current_site))
+        .unwrap_or_else(|| RepeatedResults::Automatic.as_str().to_owned());
+    let options: Vec<CableOption> = RepeatedResults::ALL
+        .into_iter()
+        .map(|value| CableOption {
+            selected: current == value.as_str(),
+            value: value.as_str().to_owned(),
+            label: match value {
+                RepeatedResults::Automatic => format!("{} (recommended)", value.label()),
+                RepeatedResults::AlwaysAsk => value.label().to_owned(),
+            },
+        })
+        .collect();
+    Setting {
+        name: "repeated_results".to_owned(),
+        id: "s2-repeated-results".to_owned(),
+        label: "Repeated results".to_owned(),
+        chosen: options.iter().any(|option| option.selected),
+        hint: concat!(
+            "When the machine sends a result it sent before. Automatically: a resend is ",
+            "kept once and not sent again, and a correction goes to the lab app as a new ",
+            "revision. Always ask me: every repeat waits in Needs review for a person."
+        )
+        .to_owned(),
+        differs: false,
+        options,
+    }
 }
 
 /// Record only, step 2: the capture profile's questions for the model's

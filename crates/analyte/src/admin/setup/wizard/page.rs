@@ -83,6 +83,9 @@ pub(super) struct ConnectionStep {
     pub(super) recording: Option<Recording>,
     /// Record only: the analyzer mode the model's record file asks, if any.
     pub(super) analyzer_mode: Option<Setting>,
+    /// A normal connection whose model reconciles through identity recipes:
+    /// how repeated results are handled (ADR 0035, 2026-11-26).
+    pub(super) repeated_results: Option<Setting>,
 }
 
 /// Record only, step 2: what the protocol's capture profile asks the lab.

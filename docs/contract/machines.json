@@ -65,10 +65,10 @@
       "evidence_level": "documented",
       "model": "yhlo/iflash-1200",
       "name": "YHLO iFlash 1200",
-      "protocol": null,
-      "ready": false,
+      "protocol": "hl7",
+      "ready": true,
       "specimen_system": null,
-      "test_system": null,
+      "test_system": "yhlo/iflash-1200",
       "vendor": "yhlo"
     }
   ]

@@ -9,6 +9,19 @@
   accepted. Setup asks the cobas protocol type for record only. A frame that
   fails its checksum is still refused and kept (ADR 0034).
 
+- `analyte captures de-identify` writes a de-identified copy of a recording on
+  the lab PC: patient fields become synthetic values of the same shape and
+  checksums are recomputed, so the copy still replays. ASTM, HL7, IHE LAW,
+  VIDAS and Autolyser are supported; POCT is refused. The original is never
+  changed (ADR 0037).
+
+- New per-machine **Repeated results** setting in Setup and
+  `analyte machines set --repeated-results`. **Handle automatically**
+  (default) keeps today's resend, correction and rerun handling. **Always ask
+  me** holds every repeat of a measurement in Needs review for a person, while
+  new measurements still flow. The machine's page and `machines list` show the
+  setting (ADR 0035, amended 2026-11-26).
+
 - The Dialab Autolyser has a full machine definition written from its
   Operator's Manual Rev18 (evidence level documented) and replaces its
   record-only settings. It reads results and holds them for staff, since
@@ -43,6 +56,12 @@
   seconds if the folder cannot be checked in time, even on a stalled share.
 - Setup and `analyte machines set --dry-run` now report the same machine
   configuration errors as startup, before Save writes any settings.
+- **YHLO iFlash 1200:** ship a machine definition written from the YHLO
+  LIS Protocol Manual V1.1 and the iFlash 1200 service manual, at evidence
+  level documented. Setup asks for the PC build and communication type.
+  Two-way mode answers barcode queries from a trusted order cache.
+  Parsed uploads with missing identity fields (OBR-2, OBR-3, OBR-8) or
+  uncertain report status are stored, held for review and acknowledged with AA.
 - The BioCARE Biolyte 2000 has a machine definition written from its Service
   Manual V4.2A (evidence level documented) and is no longer record-only.
   Results keep their value text and unit spelling and are held for staff,

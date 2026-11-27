@@ -225,6 +225,16 @@ fn record_only_refuses_what_it_cannot_honour() -> TestResult {
             format!("{}[choices]\nmode = \"a\"\n", site(listen, "")),
             "choices",
         ),
+        // ADR 0035 (2026-11-26): record only reads no results, so nothing repeats.
+        (
+            record("astm", "tcp_server"),
+            site(listen, "").replace(
+                "[recording]",
+                "repeated_results = \"always_ask\"
+[recording]",
+            ),
+            "repeated_results",
+        ),
         (
             record("astm", "tcp_server").replace(
                 "recording_schema_version = 1",
