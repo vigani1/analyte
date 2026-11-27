@@ -1704,8 +1704,8 @@ admin-count-bytes =
 
 admin-count-items-need =
     { $count ->
-        [one] { $number } item needs
-       *[other] { $number } items need
+        [one] { $number } item needs review
+       *[other] { $number } items need review
     }
 
 admin-count-orders =
@@ -1716,8 +1716,8 @@ admin-count-orders =
 
 admin-count-things-need =
     { $count ->
-        [one] { $number } thing needs
-       *[other] { $number } things need
+        [one] { $number } thing needs you
+       *[other] { $number } things need you
     }
 
 admin-count-waiting-results =
@@ -2062,7 +2062,7 @@ admin-error-unknown-receipt = receipt does not exist
 
 admin-alert-unknown-number-waits = an unknown number of results or order messages wait
 
-admin-alert-count-waits = 
+admin-alert-count-waits =
     { $count ->
         [one] { $number } result or order message waits
        *[other] { $number } results or order messages wait
