@@ -280,7 +280,7 @@ pub(super) fn settings_lede() -> &'static str {
 #[template(path = "pages/more/settings.html")]
 pub(super) struct Settings {
     pub(super) frame: Frame,
-    pub(super) languages: Vec<(&'static str, bool)>,
+    pub(super) languages: Vec<(analyte_i18n::Language, bool)>,
     pub(super) engine: Vec<Fact>,
     pub(super) store: Vec<Fact>,
     pub(super) times: Vec<Fact>,

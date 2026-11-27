@@ -17,9 +17,17 @@ const ENGLISH: &[&str] = &[
     include_str!("../../../../locales/en/desktop.ftl"),
     include_str!("../../../../locales/en/doctor-overview.ftl"),
 ];
+const ALBANIAN: &[&str] = &[
+    include_str!("../../../../locales/sq/admin.ftl"),
+    include_str!("../../../../locales/sq/setup.ftl"),
+    include_str!("../../../../locales/sq/cli.ftl"),
+    include_str!("../../../../locales/sq/desktop.ftl"),
+    include_str!("../../../../locales/sq/doctor-overview.ftl"),
+];
 
 struct Catalog {
     tag: &'static str,
+    name: &'static str,
     bundle: FluentBundle<FluentResource>,
     labels: BTreeMap<String, String>,
 }
@@ -29,7 +37,7 @@ impl Catalog {
         clippy::expect_used,
         reason = "the embedded catalog and tags are verified by tests"
     )]
-    fn new(tag: &'static str, sources: &[&str]) -> Self {
+    fn new(tag: &'static str, name: &'static str, sources: &[&str]) -> Self {
         let language = tag.parse().expect("registered language tags must be valid");
         let mut bundle = FluentBundle::new_concurrent(vec![language]);
         // English output already has established byte-for-byte representations.
@@ -61,6 +69,7 @@ impl Catalog {
             .collect();
         Self {
             tag,
+            name,
             bundle,
             labels,
         }
@@ -72,14 +81,27 @@ impl Catalog {
         let value = self.bundle.format_pattern(pattern, Some(args), &mut errors);
         errors.is_empty().then(|| value.into_owned())
     }
+
+    fn label(&self, id: &'static str) -> &str {
+        self.labels
+            .get(id)
+            .or_else(|| SOURCE.labels.get(id))
+            .map_or(id, String::as_str)
+    }
+
+    fn message(&self, id: &str, args: &FluentArgs<'_>) -> String {
+        self.format(id, args)
+            .or_else(|| SOURCE.format(id, args))
+            .unwrap_or_else(|| id.to_owned())
+    }
 }
 
-static SOURCE: LazyLock<Catalog> = LazyLock::new(|| Catalog::new("en", ENGLISH));
+static SOURCE: LazyLock<Catalog> = LazyLock::new(|| Catalog::new("en", "English", ENGLISH));
 static TRANSLATIONS: LazyLock<Vec<Catalog>> = LazyLock::new(|| {
-    let embedded: &[(&str, &[&str])] = &[];
+    let embedded: &[(&str, &str, &[&str])] = &[("sq", "Shqip", ALBANIAN)];
     embedded
         .iter()
-        .map(|(tag, sources)| Catalog::new(tag, sources))
+        .map(|(tag, name, sources)| Catalog::new(tag, name, sources))
         .collect()
 });
 
@@ -144,6 +166,12 @@ impl Language {
         self.catalog().tag
     }
 
+    /// Returns the language's name as written by its speakers.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        self.catalog().name
+    }
+
     fn catalog(self) -> &'static Catalog {
         self.0
             .and_then(|index| TRANSLATIONS.get(index))
@@ -170,12 +198,7 @@ impl Language {
 /// Returns an embedded label, or the message ID if its English source is broken.
 #[must_use]
 pub fn text(id: &'static str) -> &'static str {
-    Language::current()
-        .catalog()
-        .labels
-        .get(id)
-        .or_else(|| SOURCE.labels.get(id))
-        .map_or(id, String::as_str)
+    Language::current().catalog().label(id)
 }
 
 /// Formats an embedded message with named arguments, showing the message ID if
@@ -185,11 +208,7 @@ pub fn message<'a>(
     values: impl IntoIterator<Item = (&'a str, FluentValue<'a>)>,
 ) -> String {
     let args = values.into_iter().collect();
-    Language::current()
-        .catalog()
-        .format(id, &args)
-        .or_else(|| SOURCE.format(id, &args))
-        .unwrap_or_else(|| id.to_owned())
+    Language::current().catalog().message(id, &args)
 }
 
 /// Formats a plural message with a numeric selector and the exact count.
@@ -214,8 +233,30 @@ mod tests {
     fn catalogs_parse_and_english_is_the_default() {
         assert_eq!(Language::select(["fr-CA", "en-GB"]).tag(), "en");
         assert_eq!(Language::select(["und"]).tag(), "en");
-        assert!(Language::negotiate(["sq"]).is_none());
         assert_eq!(text("admin-language"), "Language");
+    }
+
+    #[test]
+    fn albanian_matches_regional_tags_and_formats_one_and_other() {
+        for tag in ["sq", "sq-AL", "sq-XK"] {
+            let language = Language::select([tag, "en"]);
+            assert_eq!(language.tag(), "sq");
+            language.sync_scope(|| {
+                assert_eq!(text("admin-language"), "Gjuha");
+                assert_eq!(count("admin-count-results", 1_u64), "1 rezultat");
+                assert_eq!(count("admin-count-results", 2_u64), "2 rezultate");
+            });
+        }
+    }
+
+    #[test]
+    fn an_incomplete_albanian_catalog_uses_english_for_missing_messages() {
+        let catalog = Catalog::new("sq", "Shqip", &["admin-language = Gjuha"]);
+        assert_eq!(catalog.label("admin-language"), "Gjuha");
+        assert_eq!(catalog.label("admin-settings"), "Settings");
+        let mut args = FluentArgs::new();
+        args.set("time", "08:30");
+        assert_eq!(catalog.message("admin-live-at", &args), "Live · 08:30");
     }
 
     #[test]
