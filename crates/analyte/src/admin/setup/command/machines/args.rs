@@ -128,6 +128,12 @@ pub struct Choice {
     /// the mode the analyzer's own settings show; `machines models` lists it.
     #[arg(long, value_name = "VALUE")]
     analyzer_mode: Option<String>,
+    /// Repeated results, for a normal connection: `automatic` (recommended;
+    /// a resend is kept once, a correction becomes a new revision) or
+    /// `always_ask` (every repeat waits in Needs review). Not given keeps the
+    /// saved choice, else automatic (ADR 0035).
+    #[arg(long, value_name = "CHOICE")]
+    repeated_results: Option<String>,
 }
 
 /// Reads `--choice NAME=VALUE`; the model's own checks follow.
@@ -153,6 +159,7 @@ impl Choice {
                 controls: draft.controls.take(),
                 acknowledgment: draft.acknowledgment.take(),
                 analyzer_mode: draft.analyzer_mode.take(),
+                repeated_results: draft.repeated_results.take(),
                 ..Draft::default()
             };
             draft = if serial {
@@ -206,6 +213,7 @@ impl Choice {
         draft.controls = self.reports_carry_controls.or(draft.controls);
         draft.acknowledgment = self.vidas_acknowledgment.or(draft.acknowledgment);
         draft.analyzer_mode = self.analyzer_mode.or(draft.analyzer_mode);
+        draft.repeated_results = self.repeated_results.or(draft.repeated_results);
         draft
     }
 }

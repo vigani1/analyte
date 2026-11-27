@@ -39,8 +39,8 @@ fn running(
         (reporter.observer())(analyte_transport::Activity::Opened);
     }
     // ADR 0032: a serial machine whose model declares a choice.
-    let choices = matches!(connection, Connection::Serial(_))
-        .then(|| "Protocol on the host link screen: Literal".to_owned());
+    let serial = matches!(connection, Connection::Serial(_));
+    let choices = serial.then(|| "Protocol on the host link screen: Literal".to_owned());
     Ok(Machine {
         software: None,
         rules: Vec::new(),
@@ -53,6 +53,12 @@ fn running(
         allowed_peers: None,
         cable: None,
         choices,
+        // ADR 0035 (2026-11-26): the serial machine always asks about repeats.
+        repeated_results: Some(if serial {
+            analyte_config::RepeatedResults::AlwaysAsk
+        } else {
+            analyte_config::RepeatedResults::Automatic
+        }),
         lab_app: Some(Identifier::new("main-lab")?),
     })
 }
@@ -822,6 +828,12 @@ async fn each_machine_page_reads_in_its_own_words() -> Result<(), Error> {
         serial.contains("Analyzer settings</dt><dd>Protocol on the host link screen: Literal"),
         "{serial}"
     );
+    // ADR 0035 (2026-11-26): the page names the machine's repeated-results choice.
+    assert!(
+        serial
+            .contains("Repeated results</dt><dd>Always ask me: every repeat waits in Needs review"),
+        "{serial}"
+    );
     assert!(
         serial
             .contains("<p class=\"page-head__lede\">Model of serial-2 · nothing received yet</p>")
@@ -1352,6 +1364,7 @@ async fn record_only_machine_says_nothing_goes_to_a_lab_app() -> Result<(), Erro
         allowed_peers: None,
         cable: None,
         choices: None,
+        repeated_results: None,
         lab_app: None,
     };
     let (store, (state, stopper, owner, host), auth) =

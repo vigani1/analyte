@@ -1049,6 +1049,7 @@ fn machine(
             .then(|| analyte_config::AllowedPeers::parse(&["192.168.1.50"]))
             .transpose()?,
         choices: None,
+        repeated_results: None,
         cable: matches!(connection, Connection::Serial(_)).then(|| {
             "9600 baud, 8 data bits, no parity, 1 stop bit, no flow control; as the manual suggests"
                 .to_owned()

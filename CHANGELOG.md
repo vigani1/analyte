@@ -8,6 +8,12 @@
   VIDAS and Autolyser are supported; POCT is refused. The original is never
   changed (ADR 0037).
 
+- New per-machine **Repeated results** setting in Setup and
+  `analyte machines set --repeated-results`. **Handle automatically**
+  (default) keeps today's resend, correction and rerun handling. **Always ask
+  me** holds every repeat of a measurement in Needs review for a person, while
+  new measurements still flow. The machine's page and `machines list` show the
+  setting (ADR 0035, amended 2026-11-26).
 - The Dialab Autolyser has a full machine definition written from its
   Operator's Manual Rev18 (evidence level documented) and replaces its
   record-only settings. It reads results and holds them for staff, since

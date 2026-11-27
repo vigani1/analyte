@@ -51,10 +51,27 @@ pub struct InterpretationCommit {
     pub outcomes: Vec<RevisionOutcome>,
 }
 
+/// How ordinary reconciliation treats a measurement key that an earlier
+/// upload from the same machine already retained (ADR 0035, 2026-11-26).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepeatPolicy {
+    /// Resends, new keys, corrections and same-key changes are told apart by
+    /// the identity recipe, as ADR 0035 decides.
+    Automatic,
+    /// Every result whose key an earlier upload retained is held for an
+    /// operator; a first-seen key still flows normally. It never relaxes a hold.
+    AlwaysAsk,
+}
+
+/// The reason carried by a result held only because its machine always asks
+/// about repeated results.
+pub const ASK_REPEAT_REASON: &str =
+    "repeated measurement held for review: this machine always asks about repeated results";
+
 /// Reconciliation policy selected by the host.
 pub enum ReconcileMode<'a> {
-    /// Ordinary revision reconciliation.
-    Standard,
+    /// Ordinary revision reconciliation, with the machine's repeat choice.
+    Standard(RepeatPolicy),
     /// Apply the protocol's explicit status progression.
     Lifecycle(StatusLifecycle<'a>),
     /// Park otherwise indistinguishable edits with this protected reason.
@@ -92,7 +109,7 @@ impl<'a> ReconcileInput<'a> {
             corrections,
             findings,
             held_back: None,
-            mode: ReconcileMode::Standard,
+            mode: ReconcileMode::Standard(RepeatPolicy::Automatic),
         }
     }
 }
@@ -140,12 +157,15 @@ impl Store {
             held_back,
             mode,
         } = input;
-        let ordinary = matches!(mode, ReconcileMode::Standard);
-        let (lifecycle, edit_guard, law) = match mode {
-            ReconcileMode::Standard => (None, None, None),
-            ReconcileMode::Lifecycle(policy) => (Some(policy), None, None),
-            ReconcileMode::EditGuard(reason) => (None, Some(reason), None),
-            ReconcileMode::Law { lifecycle, custody } => (Some(lifecycle), None, Some(custody)),
+        let ordinary = matches!(mode, ReconcileMode::Standard(_));
+        let automatic = RepeatPolicy::Automatic;
+        let (lifecycle, edit_guard, law, repeats) = match mode {
+            ReconcileMode::Standard(repeats) => (None, None, None, repeats),
+            ReconcileMode::Lifecycle(policy) => (Some(policy), None, None, automatic),
+            ReconcileMode::EditGuard(reason) => (None, Some(reason), None, automatic),
+            ReconcileMode::Law { lifecycle, custody } => {
+                (Some(lifecycle), None, Some(custody), automatic)
+            }
         };
         if let Some(custody) = law {
             self.encode(custody)?;
@@ -205,6 +225,7 @@ impl Store {
             rows: self.limits.page_rows,
             lifecycle,
             edit_guard,
+            repeats,
         };
         let claimed = if ordinary {
             match &evidence.outcome {

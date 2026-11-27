@@ -66,6 +66,9 @@ pub(super) struct Machine {
     /// Its model's own choices in words, with what differs from the model's
     /// suggestion; none when the model declares none (ADR 0032).
     pub(super) choices: Option<String>,
+    /// How repeated results are handled (ADR 0035, 2026-11-26); none where
+    /// the choice does not apply (record only, IHE LAW, POCT).
+    pub(super) repeated_results: Option<analyte_config::RepeatedResults>,
     /// The lab app it sends to; none for a record-only machine, which sends
     /// nothing (ADR 0034).
     pub(super) lab_app: Option<Identifier>,
@@ -414,6 +417,7 @@ fn running_machines(program: &Program, seams: &super::setup::Seams) -> Result<Ve
                     super::setup::cable::summary(serial, effective.serial_suggestion())
                 }),
                 choices: super::setup::choices::summary(effective.choices()),
+                repeated_results: effective.repeated_results(),
                 lab_app: effective.site().lab_app_name().cloned(),
             })
         })
