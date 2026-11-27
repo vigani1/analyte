@@ -1010,7 +1010,11 @@ async fn choices_help_renders_beside_the_decisions_in_english_and_german() -> Re
     for path in ["/parked".to_owned(), format!("/parked/{item}")] {
         let page = request(&host, &path, &auth, None).await?;
         assert!(page.starts_with("HTTP/1.1 200"), "{path}: {page}");
-        assert_eq!(page.matches("What each choice means</summary>").count(), 1, "{path}");
+        assert_eq!(
+            page.matches("What each choice means</summary>").count(),
+            1,
+            "{path}"
+        );
         for shown in [
             "<dt>Rerun</dt><dd>The same sample and test were measured again.</dd>",
             "<dt>This is a rerun</dt><dd>Sends the held result to the lab app once, as a new result. The earlier result stays; the lab app decides which value to report.</dd>",
@@ -1022,7 +1026,11 @@ async fn choices_help_renders_beside_the_decisions_in_english_and_german() -> Re
         let page = request(&host, &path, &german, None).await?;
         assert!(page.starts_with("HTTP/1.1 200"), "{path}: {page}");
         assert!(page.contains("<html lang=\"de\""), "{path}");
-        assert_eq!(page.matches("Was jede Wahl bedeutet</summary>").count(), 1, "{path}");
+        assert_eq!(
+            page.matches("Was jede Wahl bedeutet</summary>").count(),
+            1,
+            "{path}"
+        );
         for shown in [
             "<dt>Wiederholungsmessung</dt><dd>Dieselbe Probe und derselbe Test wurden noch einmal gemessen.</dd>",
             "<dt>Dies ist eine Wiederholungsmessung</dt><dd>Sendet das zurückgehaltene Ergebnis einmal als neues Ergebnis an die Labor-App.",
