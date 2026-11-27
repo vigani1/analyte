@@ -25,6 +25,9 @@ const STEPS: &[(i64, i64, &str)] = &[
     // before it stay unknown (ADR 0033).
     (18, 19, include_str!("order_models.sql")),
     (19, 20, include_str!("software_version.sql")),
+    // Needs review notices to the lab app: the outbox takes a notice kind and a
+    // declined state, and each notice is linked to its item (ADR 0037).
+    (20, 21, include_str!("review_notices.sql")),
 ];
 
 /// Refuses a stored version this build cannot open; 0 is an empty file.

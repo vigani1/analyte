@@ -207,6 +207,7 @@ fn delivery_row(row: &ListedDelivery, now: Timestamp) -> DeliveryRow {
         kind: match row.kind {
             DeliveryKind::Result => None,
             DeliveryKind::OrderEvent => Some("Order message"),
+            DeliveryKind::ReviewNotice => Some("Needs review notice"),
         },
         from: (!row.machines.is_empty()).then(|| {
             row.machines
@@ -243,7 +244,10 @@ fn outcome(delivery: &StoredDelivery) -> Look {
 /// checks again when it runs.
 const fn resendable(state: DeliveryState) -> bool {
     match state {
-        DeliveryState::Done | DeliveryState::Parked | DeliveryState::Paused => true,
+        DeliveryState::Done
+        | DeliveryState::Parked
+        | DeliveryState::Paused
+        | DeliveryState::Declined => true,
         DeliveryState::Pending | DeliveryState::InFlight | DeliveryState::Conflict => false,
     }
 }

@@ -8,7 +8,7 @@
 //! docs/contract/v1.md: byte limits (`maxLength` counts characters, so it is
 //! an upper bound), each result's receipt equal to the envelope's, and a unit
 //! mapping's source equal to the original unit.
-use crate::{Delivery, ErrorBody, OrderEvent, OrdersPage, StatusBody};
+use crate::{Delivery, ErrorBody, OrderEvent, OrdersPage, ReviewNotice, StatusBody};
 use schemars::{JsonSchema, Schema, SchemaGenerator, generate::SchemaSettings, json_schema};
 use std::borrow::Cow;
 
@@ -20,9 +20,10 @@ const NO_NUL: &str = "^[^\\u0000]*$";
 
 /// The definition names of the bodies a lab app sends or receives, in the
 /// order the calls use them.
-pub const BODIES: [&str; 5] = [
+pub const BODIES: [&str; 6] = [
     "Delivery",
     "OrderEvent",
+    "ReviewNotice",
     "StatusBody",
     "ErrorBody",
     "OrdersPage",
@@ -36,6 +37,7 @@ pub fn bundle() -> serde_json::Value {
     let mut generator = SchemaSettings::draft2020_12().into_generator();
     generator.subschema_for::<Delivery>();
     generator.subschema_for::<OrderEvent>();
+    generator.subschema_for::<ReviewNotice>();
     generator.subschema_for::<StatusBody>();
     generator.subschema_for::<ErrorBody>();
     generator.subschema_for::<OrdersPage>();
@@ -188,6 +190,14 @@ pub(crate) fn order_event(schema: &mut Schema) {
     describe(
         schema,
         "The body of POST /order-events: one change of an order's state on a machine.",
+    );
+}
+
+/// `POST /review-notices` (ADR 0037).
+pub(crate) fn review_notice(schema: &mut Schema) {
+    describe(
+        schema,
+        "The body of POST /review-notices: an item from a machine waits for review in Analyte (opened), or staff settled it there (closed). Optional for a lab app; the decision stays in Analyte. It never carries a raw message or a value.",
     );
 }
 

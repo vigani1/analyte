@@ -339,7 +339,7 @@ pub(in crate::admin) fn deliveries(
 /// How much a delivery state needs someone: delivered least, a conflict most.
 const fn delivery_rank(state: DeliveryState) -> u8 {
     match state {
-        DeliveryState::Done => 0,
+        DeliveryState::Done | DeliveryState::Declined => 0,
         DeliveryState::InFlight => 1,
         DeliveryState::Pending => 2,
         DeliveryState::Paused => 3,

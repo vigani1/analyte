@@ -141,6 +141,7 @@ impl Step {
             | SetupError::LabAppTaken(_)
             | SetupError::KeysRequired
             | SetupError::InvalidNumber(_)
+            | SetupError::ReviewNoticesChoice
             | SetupError::LabAppInSiteFile(..)
             | SetupError::LabAppInUse(..)
             | SetupError::InvalidKey(_)

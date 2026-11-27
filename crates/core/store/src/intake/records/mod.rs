@@ -133,6 +133,10 @@ pub enum Attempt {
     Paused(Reason),
     /// Same delivery identity had conflicting contents.
     Conflict(Reason),
+    /// The app does not take this kind of delivery (a Needs review notice
+    /// answered 404 or 501): nothing more of it is sent and nothing is parked
+    /// (ADR 0037).
+    Declined(Reason),
 }
 
 /// Operator evidence linked to named identities.
@@ -289,6 +293,8 @@ pub enum DeliveryKind {
     Result,
     /// Order lifecycle evidence tied to an app order.
     OrderEvent,
+    /// A Needs review notice tied to one parked item (ADR 0037).
+    ReviewNotice,
 }
 
 /// Immutable order lifecycle delivery, independent of result evidence.

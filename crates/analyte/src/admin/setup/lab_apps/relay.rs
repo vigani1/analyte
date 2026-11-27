@@ -34,6 +34,8 @@ pub(in crate::admin) struct Sent {
     base_url: String,
     freshness_seconds: String,
     request_timeout_seconds: String,
+    #[serde(default)]
+    review_notices: String,
     api_key: String,
     signing_key: String,
 }
@@ -48,6 +50,7 @@ impl Sent {
             base_url: entered.base_url,
             freshness_seconds: entered.freshness_seconds,
             request_timeout_seconds: entered.request_timeout_seconds,
+            review_notices: entered.review_notices,
             api_key: entered.api_key,
             signing_key: entered.signing_key,
         }
@@ -59,6 +62,7 @@ impl Sent {
             base_url: self.base_url,
             freshness_seconds: self.freshness_seconds,
             request_timeout_seconds: self.request_timeout_seconds,
+            review_notices: self.review_notices,
             api_key: self.api_key,
             signing_key: self.signing_key,
         }

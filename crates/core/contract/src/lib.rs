@@ -5,7 +5,10 @@ mod response;
 pub mod schema;
 pub use document::ResultDocument;
 mod signing;
-pub use response::{DeliveryStatus, ReplyProblem, ResponseAction, StatusBody, classify_response};
+pub use response::{
+    DeliveryStatus, NOTICES_NOT_FOUND, NOTICES_NOT_IMPLEMENTED, ReplyProblem, ResponseAction,
+    StatusBody, classify_notice_response, classify_response,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 pub use signing::{SignatureError, SigningSecret, api_key_valid};
@@ -134,6 +137,69 @@ wire!(EventFields {
     source_status: document::SourceText,
     reason: Option<Text>
 });
+// ADR 0037: why an item waits for review in Analyte. The list is closed; a
+// lab app shows the reason and never decides anything from it.
+choices!(ReviewReason {
+    UnresolvedIdentity,
+    RepeatedResult,
+    ResultConflict,
+    ResultReview,
+    ParseFailed,
+    MappingFinding,
+    IncompleteTransfer,
+    DeliveryRefused,
+    DeliveryConflict,
+    CancelConflict,
+    OrderQueryUncertain,
+    OrderEventModelUnknown
+});
+// ADR 0037: how staff settled an item in Analyte.
+choices!(ReviewOutcome {
+    Resend,
+    Rerun,
+    Supersede,
+    Reprocess,
+    Dismissed,
+    Resolved
+});
+wire!(ReviewOpened {
+    reason: ReviewReason,
+    /// The sample exactly as received, when the item concerns exactly one.
+    sample_id: Option<document::SampleId>,
+    /// The machine's own test codes the item concerns, each once.
+    #[schemars(length(max = 256))]
+    tests: Vec<document::NamespacedId>,
+    /// When the item was parked; null when Analyte did not record it.
+    #[schemars(with = "Option<schema::Timestamp>")]
+    parked_at: Option<Text>
+});
+wire!(ReviewClosed {
+    outcome: ReviewOutcome,
+    #[schemars(with = "schema::Timestamp")]
+    resolved_at: Text
+});
+/// What a notice says about its item: it now waits for review, or staff settled it.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewChange {
+    /// The item waits for review in Analyte.
+    Opened(ReviewOpened),
+    /// Staff settled the item in Analyte.
+    Closed(ReviewClosed),
+}
+wire!(ReviewNoticeFields {
+    #[schemars(with = "schema::VersionOne")]
+    contract_version: u8,
+    #[schemars(with = "schema::Uuid7")]
+    delivery_id: Text,
+    #[schemars(with = "schema::Timestamp")]
+    created_at: Text,
+    source: Source,
+    /// The Needs review item's stable reference in Analyte; the same in its
+    /// opening and closing notice.
+    item: document::Identifier,
+    notice: ReviewChange
+});
 wire!(Patient {
     id: document::NamespacedId,
     /// The name to send to the analyzer, if supplied.
@@ -226,6 +292,41 @@ impl Delivery {
     /// Borrows validated fields without allowing mutation.
     #[must_use]
     pub fn fields(&self) -> &DeliveryFields {
+        &self.0
+    }
+}
+
+/// A Needs review notice with validated version, version-7 UUID, times and
+/// test list (ADR 0037). It never carries a raw message or a value.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "ReviewNoticeFields")]
+pub struct ReviewNotice(ReviewNoticeFields);
+schema::wrapper!(ReviewNotice, ReviewNoticeFields, schema::review_notice);
+impl TryFrom<ReviewNoticeFields> for ReviewNotice {
+    type Error = DocumentError;
+    fn try_from(fields: ReviewNoticeFields) -> Result<Self, Self::Error> {
+        envelope(
+            fields.contract_version,
+            &fields.delivery_id,
+            &fields.created_at,
+        )?;
+        match &fields.notice {
+            ReviewChange::Opened(opened) => {
+                list(&opened.tests, 256, true)?;
+                if let Some(time) = &opened.parked_at {
+                    timestamp(time)?;
+                }
+            }
+            ReviewChange::Closed(closed) => timestamp(&closed.resolved_at)?,
+        }
+        Ok(Self(fields))
+    }
+}
+
+impl ReviewNotice {
+    /// Borrows validated notice fields.
+    #[must_use]
+    pub fn fields(&self) -> &ReviewNoticeFields {
         &self.0
     }
 }

@@ -73,6 +73,12 @@ pub(in crate::admin) const fn delivery_look(state: DeliveryState) -> StateLook {
         DeliveryState::Conflict => {
             StateLook::of(Tone::Problem, Icon::Problem, "Lab app reports a conflict")
         }
+        // ADR 0037: a lab app may take no Needs review notices; nothing waits.
+        DeliveryState::Declined => StateLook::of(
+            Tone::Neutral,
+            Icon::Ok,
+            "Not sent: the lab app takes no notices",
+        ),
     }
 }
 

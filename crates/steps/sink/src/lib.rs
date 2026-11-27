@@ -11,7 +11,7 @@ pub use webhook::{WebhookSender, WebhookSetupError, WebhookUrl};
 
 pub use delivery::{
     CONFLICT_REASON, DeliveryOutcome, UNSUPPORTED_CONTRACT_REASON, Worker, encode_delivery,
-    encode_order_event,
+    encode_order_event, encode_review_notice,
 };
 pub use destination::{Credentials, Destination, Limits, SecretsSource};
 pub use polling::Poller;

@@ -586,6 +586,8 @@ pub(in crate::admin) struct Posted {
     #[serde(default)]
     request_timeout_seconds: String,
     #[serde(default)]
+    review_notices: String,
+    #[serde(default)]
     api_key: String,
     #[serde(default)]
     signing_key: String,
@@ -599,6 +601,7 @@ impl Posted {
             base_url: self.base_url,
             freshness_seconds: self.freshness_seconds,
             request_timeout_seconds: self.request_timeout_seconds,
+            review_notices: self.review_notices,
             api_key: self.api_key,
             signing_key: self.signing_key,
         }

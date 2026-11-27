@@ -226,8 +226,8 @@ impl Store {
             AlertKey::OldestUndelivered => self
                 .db
                 .query_row(
-                    "SELECT min(enqueued_at) FROM outbox WHERE state!=?1",
-                    [crate::DeliveryState::Done],
+                    "SELECT min(enqueued_at) FROM outbox WHERE state NOT IN (?1,?2)",
+                    [crate::DeliveryState::Done, crate::DeliveryState::Declined],
                     |r| r.get::<_, Option<i64>>(0),
                 )?
                 .map(|time| now.checked_sub(time).filter(|age| *age >= 0))

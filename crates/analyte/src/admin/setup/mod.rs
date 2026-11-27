@@ -272,6 +272,8 @@ pub(crate) enum SetupError {
     KeysRequired,
     #[error("enter {0} as a whole number of seconds")]
     InvalidNumber(&'static str),
+    #[error("choose yes or no for sending Needs review notices")]
+    ReviewNoticesChoice,
     #[error(
         "lab app {0} is still kept in the settings of {1}; save that machine on its setup page first, which moves the lab app to the Lab apps page, then change it there"
     )]
