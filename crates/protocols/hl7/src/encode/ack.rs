@@ -10,6 +10,9 @@ pub enum Responsibility {
     Stored,
     /// Stored and successfully interpreted under the agreed profile.
     StoredAndInterpreted,
+    /// Stored, and its interpretation durably held for an operator; the receiver
+    /// has still accepted responsibility for the message (ADR 0010, 2026-11-26).
+    StoredAndHeld,
 }
 /// Caller-supplied response identity; validated before use on the wire.
 #[derive(Debug, Clone, Copy)]
@@ -227,13 +230,19 @@ fn ack_requested(
     responsibility: Responsibility,
 ) -> Result<bool, Error> {
     match (code, responsibility) {
-        (AckCode::Aa, Responsibility::StoredAndInterpreted)
-        | (AckCode::Ca, Responsibility::Stored | Responsibility::StoredAndInterpreted)
+        (AckCode::Aa, Responsibility::StoredAndInterpreted | Responsibility::StoredAndHeld)
+        | (
+            AckCode::Ca,
+            Responsibility::Stored
+            | Responsibility::StoredAndInterpreted
+            | Responsibility::StoredAndHeld,
+        )
         | (
             AckCode::Ae | AckCode::Ar | AckCode::Ce | AckCode::Cr,
             Responsibility::NotStored
             | Responsibility::Stored
-            | Responsibility::StoredAndInterpreted,
+            | Responsibility::StoredAndInterpreted
+            | Responsibility::StoredAndHeld,
         ) => {}
         (AckCode::Aa, Responsibility::NotStored | Responsibility::Stored)
         | (AckCode::Ca, Responsibility::NotStored) => return Err(Error::NotStored),
