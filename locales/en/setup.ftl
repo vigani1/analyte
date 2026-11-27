@@ -298,6 +298,8 @@ setup-later = Later
 
 setup-done = Done
 
+setup-done-in-line = done
+
 setup-set-up-a-machine = Set up a machine
 
 setup-setup-steps = Setup steps
@@ -330,9 +332,9 @@ setup-data-bits = { $data-bits } data bits
 
 setup-stop-bits = { $stop-bits } stop bits
 
-setup-the-manual-suggests = { $to-lowercase } { $now } (the manual suggests { $suggested })
+setup-the-manual-suggests = { $setting } { $now } (the manual suggests { $suggested })
 
-setup-the-machine-definition-suggests-none = { $to-lowercase } { $now } (the machine definition suggests none)
+setup-the-machine-definition-suggests-none = { $setting } { $now } (the machine definition suggests none)
 
 setup-as-the-manual-suggests = { $serial }; as the manual suggests
 
@@ -358,13 +360,23 @@ setup-software-flow-control-xon-xoff = software flow control (XON/XOFF)
 
 setup-baud-rate = Baud rate
 
+setup-baud-rate-in-line = baud rate
+
 setup-data-bits-2 = Data bits
+
+setup-data-bits-2-in-line = data bits
 
 setup-parity = Parity
 
+setup-parity-in-line = parity
+
 setup-stop-bits-2 = Stop bits
 
+setup-stop-bits-2-in-line = stop bits
+
 setup-flow-control = Flow control
+
+setup-flow-control-in-line = flow control
 
 setup-1-stop-bit = 1 stop bit
 
@@ -384,7 +396,11 @@ setup-the-machine-definition-suggests-none-2 = { $label }: { $value } (the machi
 
 setup-match-the-setting-on-the-analyzer-s-own-screen = Match the setting on the analyzer’s own screen.
 
+setup-match-the-setting-on-the-analyzer-s-own-screen-in-line = match the setting on the analyzer’s own screen.
+
 setup-read-the-version-on-the-analyzer-s-about-screen = Read the version on the analyzer’s About screen.
+
+setup-read-the-version-on-the-analyzer-s-about-screen-in-line = read the version on the analyzer’s about screen.
 
 setup-its-settings-file = Its settings file: { $path }
 
@@ -752,7 +768,7 @@ setup-recorded = { "  " }Recorded: { $recording }
 
 setup-latest-refusal = { "  " }Latest refusal: { $refused }
 
-setup-devices-warning-accept-only-the-analyzer-with-analyte-machines = { "  " }Devices: warning - { $to-lowercase }. Accept only the analyzer with: analyte machines set { $id } --allowed-peer <IP>
+setup-devices-warning-accept-only-the-analyzer-with-analyte-machines = { "  " }Devices: warning - { $access }. Accept only the analyzer with: analyte machines set { $id } --allowed-peer <IP>
 
 setup-not-running = not running
 
@@ -818,11 +834,11 @@ setup-remove-it = Remove it?
 
 setup-any-device-that-reaches-this-port-could-send-results = Any device that reaches this port could send results as this machine. Run analyte machines test to see the analyzer's address.
 
-setup-step-2-cable-the-model-suggests-none-match-the = Step 2, Cable: { $to-lowercase }? The model suggests none; match the analyzer's LIS/host settings screen
+setup-step-2-cable-the-model-suggests-none-match-the = Step 2, Cable: { $setting }? The model suggests none; match the analyzer's LIS/host settings screen
 
 setup-step-2-analyzer-settings-seconds-between-report-polls-to = Step 2, Analyzer settings: seconds between report polls ({ $start } to { $end })
 
-setup-step-2-analyzer-settings-the-model-suggests-none = Step 2, Analyzer settings: { $label }? The model suggests none; { $to-lowercase }
+setup-step-2-analyzer-settings-the-model-suggests-none = Step 2, Analyzer settings: { $label }? The model suggests none; { $hint }
 
 setup-step-2-recording-seconds-between-asks-for-the-next = Step 2, Recording: seconds between asks for the next report ({ $start } to { $end })
 

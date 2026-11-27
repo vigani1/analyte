@@ -71,6 +71,8 @@ admin-recording-only = Solo grabar: no se envía nada a una aplicación del labo
 
 admin-open-to-any = Acepta conexiones de cualquier dispositivo
 
+admin-open-to-any-in-line = acepta conexiones de cualquier dispositivo
+
 admin-open-to-any-advice = Cualquier dispositivo de la red del laboratorio que llegue a este puerto puede enviar resultados haciéndose pasar por este equipo. Edite su configuración y elija «Aceptar solo este dispositivo» después de la prueba de conexión.
 
 admin-refused-advice = Solo el equipo debe conectarse a este puerto. Si es el propio equipo, su dirección ha cambiado: añada la nueva dirección en su configuración. Si no, localice ese dispositivo.
@@ -121,6 +123,8 @@ admin-no-machine-set-up = No hay ningún equipo configurado.
 
 admin-poll-title = Solicitud de resultados sin resolver
 
+admin-poll-title-in-line = solicitud de resultados sin resolver
+
 admin-how-read = Cómo se leyó este mensaje
 
 admin-compare-measurements = Comparar mediciones
@@ -131,7 +135,11 @@ admin-process-again = Procesar de nuevo
 
 admin-marked-resolved = Marcado como resuelto
 
+admin-marked-resolved-in-line = marcado como resuelto
+
 admin-processed-again = Procesado de nuevo
+
+admin-processed-again-in-line = procesado de nuevo
 
 admin-open-item = Abrir el elemento
 
@@ -757,6 +765,8 @@ admin-unknown = Desconocido
 
 admin-cancelled = Cancelada
 
+admin-cancelled-in-line = cancelada
+
 admin-no-more-orders = No hay más órdenes
 
 admin-this-page-is-past-the-last-order = Esta página está más allá de la última orden.
@@ -923,21 +933,39 @@ admin-analyte-did-not-send-the-lab-app-this-order = Analyte no envió a la aplic
 
 admin-test-or-unit-not-mapped = Prueba o unidad sin asignar
 
+admin-test-or-unit-not-mapped-in-line = prueba o unidad sin asignar
+
 admin-could-not-read-message = No se pudo leer el mensaje
+
+admin-could-not-read-message-in-line = no se pudo leer el mensaje
 
 admin-result-could-not-be-matched-to-earlier-results = No se pudo asociar el resultado con resultados anteriores
 
+admin-result-could-not-be-matched-to-earlier-results-in-line = no se pudo asociar el resultado con resultados anteriores
+
 admin-message-from-the-machine-was-incomplete = El mensaje del equipo estaba incompleto
+
+admin-message-from-the-machine-was-incomplete-in-line = el mensaje del equipo estaba incompleto
 
 admin-lab-app-rejected-a-delivery = La aplicación del laboratorio rechazó una entrega
 
+admin-lab-app-rejected-a-delivery-in-line = la aplicación del laboratorio rechazó una entrega
+
 admin-lab-app-reported-a-conflicting-delivery = La aplicación del laboratorio informó de una entrega en conflicto
+
+admin-lab-app-reported-a-conflicting-delivery-in-line = la aplicación del laboratorio informó de una entrega en conflicto
 
 admin-order-from-the-lab-app-was-refused = Se rechazó una orden de la aplicación del laboratorio
 
+admin-order-from-the-lab-app-was-refused-in-line = se rechazó una orden de la aplicación del laboratorio
+
 admin-cancel-conflicts-with-what-the-machine-reported = La cancelación entra en conflicto con lo que informó el equipo
 
+admin-cancel-conflicts-with-what-the-machine-reported-in-line = la cancelación entra en conflicto con lo que informó el equipo
+
 admin-order-event-could-not-name-its-machine-model = El evento de la orden no pudo indicar su modelo de equipo
+
+admin-order-event-could-not-name-its-machine-model-in-line = el evento de la orden no pudo indicar su modelo de equipo
 
 admin-settle-the-problem-described-above-with-the-lab-app = Resuelva el problema descrito arriba con el equipo de la aplicación del laboratorio y luego use Volver a enviar.
 
@@ -990,6 +1018,8 @@ admin-resolved-today = Resuelto hoy
 admin-open = Abiertos
 
 admin-resolved = Resueltos
+
+admin-resolved-in-line = resueltos
 
 admin-no-more-items = No hay más elementos
 
@@ -1391,9 +1421,15 @@ admin-it-still-needs-review = ; todavía requiere revisión
 
 admin-recorded-as-a-resend = Registrado como reenvío
 
+admin-recorded-as-a-resend-in-line = registrado como reenvío
+
 admin-rerun-queued = Repetición en cola
 
+admin-rerun-queued-in-line = repetición en cola
+
 admin-superseded-by-the-receipt-with-a-tube-id = Sustituido por la recepción con ID del tubo
+
+admin-superseded-by-the-receipt-with-a-tube-id-in-line = sustituido por la recepción con ID del tubo
 
 admin-no-results-in-it = no contiene resultados
 
@@ -1439,15 +1475,27 @@ admin-cancelled-by-the-machine = Cancelada por el equipo
 
 admin-not-sent-yet = Todavía sin enviar
 
+admin-not-sent-yet-in-line = todavía sin enviar
+
 admin-sent-not-yet-accepted = Enviada, todavía sin aceptar
+
+admin-sent-not-yet-accepted-in-line = enviada, todavía sin aceptar
 
 admin-accepted-by-the-machine = Aceptada por el equipo
 
+admin-accepted-by-the-machine-in-line = aceptada por el equipo
+
 admin-rejected-by-the-machine = Rechazada por el equipo
+
+admin-rejected-by-the-machine-in-line = rechazada por el equipo
 
 admin-cancel-requested = Cancelación solicitada
 
+admin-cancel-requested-in-line = cancelación solicitada
+
 admin-outcome-unknown-check-the-machine = Desenlace desconocido: compruebe el equipo
+
+admin-outcome-unknown-check-the-machine-in-line = desenlace desconocido: compruebe el equipo
 
 admin-delivered = Entregada
 
@@ -1603,47 +1651,79 @@ admin-analyte-asked-this-machine-for-its-next-results-and = Analyte pidió a est
 
 admin-test-code-missing = Falta el código de prueba
 
+admin-test-code-missing-in-line = falta el código de prueba
+
 admin-sample-id-missing = Falta el ID de muestra
+
+admin-sample-id-missing-in-line = falta el ID de muestra
 
 admin-value-is-not-the-expected-kind = El valor no es del tipo esperado
 
+admin-value-is-not-the-expected-kind-in-line = el valor no es del tipo esperado
+
 admin-text-with-formatting-codes = Texto con códigos de formato
+
+admin-text-with-formatting-codes-in-line = texto con códigos de formato
 
 admin-result-classified-more-than-one-way = Resultado clasificado de más de una forma
 
+admin-result-classified-more-than-one-way-in-line = resultado clasificado de más de una forma
+
 admin-status-only-update = Actualización solo de estado
+
+admin-status-only-update-in-line = actualización solo de estado
 
 admin-result-report-incomplete = Informe de resultados incompleto
 
+admin-result-report-incomplete-in-line = informe de resultados incompleto
+
 admin-result-status-not-final = Estado del resultado no final
+
+admin-result-status-not-final-in-line = estado del resultado no final
 
 admin-processing-the-message-again-with-the-current-settings-produced = Procesar de nuevo el mensaje con la configuración actual no produjo resultados.
 
 admin-piece-resent-with-other-content = Parte reenviada con otro contenido
 
+admin-piece-resent-with-other-content-in-line = parte reenviada con otro contenido
+
 admin-the-machine-sent-the-same-numbered-piece-of-a = El equipo envió dos veces la misma parte numerada de un mensaje, con contenido distinto.
 
 admin-piece-arrived-out-of-turn = Parte recibida fuera de turno
+
+admin-piece-arrived-out-of-turn-in-line = parte recibida fuera de turno
 
 admin-a-piece-of-a-message-arrived-when-no-transfer = Llegó una parte de un mensaje cuando no había ninguna transferencia abierta desde el equipo.
 
 admin-message-not-expected = Mensaje no esperado
 
+admin-message-not-expected-in-line = mensaje no esperado
+
 admin-a-message-arrived-that-analyte-did-not-expect-or = Llegó un mensaje que Analyte no esperaba, o mientras demasiados mensajes estaban en espera.
 
 admin-processing-interrupted = Procesamiento interrumpido
+
+admin-processing-interrupted-in-line = procesamiento interrumpido
 
 admin-processing-of-this-message-stopped-before-it-was-confirmed = El procesamiento de este mensaje se detuvo antes de confirmarse como completo.
 
 admin-returned-work-differs-from-the-order-sent = El trabajo devuelto difiere de la orden enviada
 
+admin-returned-work-differs-from-the-order-sent-in-line = el trabajo devuelto difiere de la orden enviada
+
 admin-the-work-the-machine-returned-differs-from-the-order = El trabajo que devolvió el equipo difiere de la orden que Analyte le envió.
 
 admin-results-held-back-for-review = Resultados retenidos para revisión
 
+admin-results-held-back-for-review-in-line = resultados retenidos para revisión
+
 admin-results-conflict-with-earlier-ones = Los resultados entran en conflicto con otros anteriores
 
+admin-results-conflict-with-earlier-ones-in-line = los resultados entran en conflicto con otros anteriores
+
 admin-message-too-large = Mensaje demasiado grande
+
+admin-message-too-large-in-line = mensaje demasiado grande
 
 admin-the-message-was-larger-than-the-size-limit-for = El mensaje superaba el límite de tamaño de este equipo.
 
@@ -1651,43 +1731,69 @@ admin-the-connection-was-stopped-while-the-message-was-arriving = La conexión s
 
 admin-message-not-finished-in-time = Mensaje no terminado a tiempo
 
+admin-message-not-finished-in-time-in-line = mensaje no terminado a tiempo
+
 admin-the-machine-did-not-finish-sending-the-message-in = El equipo no terminó de enviar el mensaje a tiempo; la parte que llegó se conserva.
 
 admin-message-arrived-while-busy = Mensaje recibido con el sistema ocupado
 
+admin-message-arrived-while-busy-in-line = mensaje recibido con el sistema ocupado
+
 admin-check-characters-do-not-match = Los caracteres de control no coinciden
+
+admin-check-characters-do-not-match-in-line = los caracteres de control no coinciden
 
 admin-the-check-characters-at-the-end-of-the-message = Los caracteres de control del final del mensaje no coinciden con su contenido.
 
 admin-transfer-cut-off-or-refused = Transferencia interrumpida o rechazada
 
+admin-transfer-cut-off-or-refused-in-line = transferencia interrumpida o rechazada
+
 admin-the-transfer-from-the-machine-did-not-finish-or = La transferencia desde el equipo no terminó o se rechazó; lo que llegó se conserva.
 
 admin-edited-result-kept-for-review = Resultado editado retenido para revisión
 
+admin-edited-result-kept-for-review-in-line = resultado editado retenido para revisión
+
 admin-transfer-cut-off = Transferencia interrumpida
+
+admin-transfer-cut-off-in-line = transferencia interrumpida
 
 admin-the-machine-stopped-sending-before-the-message-was-complete = El equipo dejó de enviar antes de que el mensaje estuviera completo; las partes que llegaron se conservan.
 
 admin-transfer-cut-off-by-a-stop = Transferencia interrumpida por una detención
 
+admin-transfer-cut-off-by-a-stop-in-line = transferencia interrumpida por una detención
+
 admin-analyte-stopped-while-the-machine-was-sending-the-pieces = Analyte se detuvo mientras el equipo enviaba; las partes que había confirmado se conservan.
 
 admin-lab-app-already-has-different-content = La aplicación del laboratorio ya tiene un contenido distinto
+
+admin-lab-app-already-has-different-content-in-line = la aplicación del laboratorio ya tiene un contenido distinto
 
 admin-the-lab-app-already-holds-different-content-under-this = La aplicación del laboratorio ya tiene un contenido distinto con el ID de esta entrega.
 
 admin-machine-s-cancel-answers-disagree = Las respuestas de cancelación del equipo no coinciden
 
+admin-machine-s-cancel-answers-disagree-in-line = las respuestas de cancelación del equipo no coinciden
+
 admin-order-event-not-sent = Evento de la orden no enviado
 
+admin-order-event-not-sent-in-line = evento de la orden no enviado
+
 admin-result-kept-for-review = Resultado retenido para revisión
+
+admin-result-kept-for-review-in-line = resultado retenido para revisión
 
 admin-already-received = ya recibido
 
 admin-delivery-stored-for-another-contract = Entrega guardada para otro contrato
 
+admin-delivery-stored-for-another-contract-in-line = entrega guardada para otro contrato
+
 admin-unexpected-answer-from-the-lab-app = Respuesta inesperada de la aplicación del laboratorio
+
+admin-unexpected-answer-from-the-lab-app-in-line = respuesta inesperada de la aplicación del laboratorio
 
 admin-this-pc-s-time-zone = Zona horaria de este ordenador ({ $name })
 
@@ -1869,25 +1975,43 @@ admin-kept-never-deleted = Conservado, nunca eliminado
 
 admin-test-code-parts-do-not-match = Las partes del código de prueba no coinciden
 
+admin-test-code-parts-do-not-match-in-line = las partes del código de prueba no coinciden
+
 admin-value-cannot-be-read = No se puede leer el valor
+
+admin-value-cannot-be-read-in-line = no se puede leer el valor
 
 admin-escape-code-not-agreed = Código de escape no acordado
 
+admin-escape-code-not-agreed-in-line = código de escape no acordado
+
 admin-processing-mode-unknown = Modo de procesamiento desconocido
+
+admin-processing-mode-unknown-in-line = modo de procesamiento desconocido
 
 admin-no-results-in-the-message = No hay resultados en el mensaje
 
+admin-no-results-in-the-message-in-line = no hay resultados en el mensaje
+
 admin-time-cannot-be-read = No se puede leer la hora
 
+admin-time-cannot-be-read-in-line = no se puede leer la hora
+
 admin-incomplete-astm-report = Informe ASTM incompleto
+
+admin-incomplete-astm-report-in-line = informe ASTM incompleto
 
 admin-the-analyzer-did-not-report-normal-completion = El analizador no informó de una finalización normal.
 
 admin-final-status-cannot-be-sent = No se puede enviar el estado final
 
+admin-final-status-cannot-be-sent-in-line = no se puede enviar el estado final
+
 admin-this-machine-sends-no-run-number-that-stays-the = Este equipo no envía ningún número de ejecución que se mantenga, y su código de paciente no es un ID de muestra fiable, así que Analyte no puede distinguir este resultado de otros.
 
 admin-result-identity-repeated = Identidad del resultado repetida
+
+admin-result-identity-repeated-in-line = identidad del resultado repetida
 
 admin-two-results-in-this-message-would-have-the-same = Dos resultados de este mensaje tendrían la misma identidad, y ningún subidentificador los distingue.
 
@@ -1895,13 +2019,19 @@ admin-the-device-time-or-sequence-number-that-this-machine = Falta el dispositiv
 
 admin-result-identity-not-trusted = Identidad del resultado no fiable
 
+admin-result-identity-not-trusted-in-line = identidad del resultado no fiable
+
 admin-this-machine-s-sequence-numbers-can-start-over-so = Los números de secuencia de este equipo pueden volver a empezar, así que no permiten distinguir los resultados sin una ejecución y una revisión fiables.
 
 admin-this-machine-s-messages-carry-no-trusted-result-or = Los mensajes de este equipo no contienen ninguna identidad fiable de resultado o de ejecución, y no indican si un resultado es de paciente o de control de calidad.
 
 admin-processing-again-produced-no-results = Procesar de nuevo no produjo resultados
 
+admin-processing-again-produced-no-results-in-line = procesar de nuevo no produjo resultados
+
 admin-result-differs-from-an-earlier-one = El resultado difiere de uno anterior
+
+admin-result-differs-from-an-earlier-one-in-line = el resultado difiere de uno anterior
 
 admin-a-result-came-with-other-content-under-the-same = Llegó un resultado con otro contenido bajo la misma identidad que un resultado anterior, y nada lo marca como corrección.
 
@@ -1917,7 +2047,11 @@ admin-the-lab-app-gave-an-answer-that-the-lab = La aplicación del laboratorio d
 
 admin-older-order-version-refused = Versión anterior de la orden rechazada
 
+admin-older-order-version-refused-in-line = versión anterior de la orden rechazada
+
 admin-changed-order-refused = Orden modificada rechazada
+
+admin-changed-order-refused-in-line = orden modificada rechazada
 
 admin-error-awos-item-not-retained = elemento AWOS no conservado
 
@@ -2051,7 +2185,11 @@ admin-message-holds-no-results = El mensaje no contiene resultados.
 
 admin-identity-missing = Falta la identidad del resultado
 
+admin-identity-missing-in-line = falta la identidad del resultado
+
 admin-message-cut-off = Mensaje interrumpido
+
+admin-message-cut-off-in-line = mensaje interrumpido
 
 admin-report-reload = Recargue la página; si sigue ocurriendo, facilite a soporte los detalles de abajo.
 
@@ -2112,6 +2250,8 @@ admin-recorded-as-new = nuevo
 admin-recorded-as-correction = una corrección
 
 admin-lab-app-answer-unreadable = No se pudo leer la respuesta de la aplicación del laboratorio
+
+admin-lab-app-answer-unreadable-in-line = no se pudo leer la respuesta de la aplicación del laboratorio
 
 admin-page-could-not-be-shown = No se pudo mostrar esta página
 

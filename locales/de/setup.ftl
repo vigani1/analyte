@@ -308,6 +308,8 @@ setup-later = Später
 
 setup-done = Fertig
 
+setup-done-in-line = fertig
+
 setup-set-up-a-machine = Ein Gerät einrichten
 
 setup-setup-steps = Einrichtungsschritte
@@ -340,9 +342,9 @@ setup-data-bits = { $data-bits } Datenbits
 
 setup-stop-bits = { $stop-bits } Stoppbits
 
-setup-the-manual-suggests = { $to-lowercase } { $now } (das Handbuch schlägt { $suggested } vor)
+setup-the-manual-suggests = { $setting } { $now } (das Handbuch schlägt { $suggested } vor)
 
-setup-the-machine-definition-suggests-none = { $to-lowercase } { $now } (die Gerätedefinition schlägt nichts vor)
+setup-the-machine-definition-suggests-none = { $setting } { $now } (die Gerätedefinition schlägt nichts vor)
 
 setup-as-the-manual-suggests = { $serial }; wie im Handbuch vorgeschlagen
 
@@ -368,13 +370,23 @@ setup-software-flow-control-xon-xoff = Software-Flusssteuerung (XON/XOFF)
 
 setup-baud-rate = Baudrate
 
+setup-baud-rate-in-line = Baudrate
+
 setup-data-bits-2 = Datenbits
+
+setup-data-bits-2-in-line = Datenbits
 
 setup-parity = Parität
 
+setup-parity-in-line = Parität
+
 setup-stop-bits-2 = Stoppbits
 
+setup-stop-bits-2-in-line = Stoppbits
+
 setup-flow-control = Flusssteuerung
+
+setup-flow-control-in-line = Flusssteuerung
 
 setup-1-stop-bit = 1 Stoppbit
 
@@ -394,7 +406,11 @@ setup-the-machine-definition-suggests-none-2 = { $label }: { $value } (die Gerä
 
 setup-match-the-setting-on-the-analyzer-s-own-screen = Stimmen Sie dies mit der Einstellung auf der Anzeige des Analysegeräts ab.
 
+setup-match-the-setting-on-the-analyzer-s-own-screen-in-line = stimmen Sie dies mit der Einstellung auf der Anzeige des Analysegeräts ab.
+
 setup-read-the-version-on-the-analyzer-s-about-screen = Lesen Sie die Version auf der Info-Seite des Analysegeräts ab.
+
+setup-read-the-version-on-the-analyzer-s-about-screen-in-line = lesen Sie die Version auf der Info-Seite des Analysegeräts ab.
 
 setup-its-settings-file = Seine Einstellungsdatei: { $path }
 
@@ -767,7 +783,7 @@ setup-recorded = { "  " }Aufgezeichnet: { $recording }
 
 setup-latest-refusal = { "  " }Letzte Ablehnung: { $refused }
 
-setup-devices-warning-accept-only-the-analyzer-with-analyte-machines = { "  " }Geräte: Warnung - { $to-lowercase }. Lassen Sie nur das Analysegerät zu mit: analyte machines set { $id } --allowed-peer <IP>
+setup-devices-warning-accept-only-the-analyzer-with-analyte-machines = { "  " }Geräte: Warnung - { $access }. Lassen Sie nur das Analysegerät zu mit: analyte machines set { $id } --allowed-peer <IP>
 
 setup-not-running = läuft nicht
 
@@ -833,11 +849,11 @@ setup-remove-it = Entfernen?
 
 setup-any-device-that-reaches-this-port-could-send-results = Jedes Gerät, das diesen Port erreicht, könnte Ergebnisse als dieses Gerät senden. Führen Sie analyte machines test aus, um die Adresse des Analysegeräts zu sehen.
 
-setup-step-2-cable-the-model-suggests-none-match-the = Schritt 2, Kabel: { $to-lowercase }? Das Modell schlägt nichts vor; stimmen Sie den Wert mit der LIS-/Host-Einstellungsseite des Analysegeräts ab
+setup-step-2-cable-the-model-suggests-none-match-the = Schritt 2, Kabel: { $setting }? Das Modell schlägt nichts vor; stimmen Sie den Wert mit der LIS-/Host-Einstellungsseite des Analysegeräts ab
 
 setup-step-2-analyzer-settings-seconds-between-report-polls-to = Schritt 2, Einstellungen am Analysegerät: Sekunden zwischen Berichtsabfragen ({ $start } bis { $end })
 
-setup-step-2-analyzer-settings-the-model-suggests-none = Schritt 2, Einstellungen am Analysegerät: { $label }? Das Modell schlägt nichts vor; { $to-lowercase }
+setup-step-2-analyzer-settings-the-model-suggests-none = Schritt 2, Einstellungen am Analysegerät: { $label }? Das Modell schlägt nichts vor; { $hint }
 
 setup-step-2-recording-seconds-between-asks-for-the-next = Schritt 2, Aufzeichnung: Sekunden zwischen Abfragen des nächsten Berichts ({ $start } bis { $end })
 

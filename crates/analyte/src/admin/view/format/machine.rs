@@ -62,6 +62,11 @@ pub(in crate::admin) fn open_to_any() -> &'static str {
     tr("admin-open-to-any")
 }
 
+/// [`open_to_any`] in the middle of a sentence, as each language writes it there.
+pub(in crate::admin) fn open_to_any_in_line() -> &'static str {
+    tr("admin-open-to-any-in-line")
+}
+
 /// What to do about [`OPEN_TO_ANY`].
 pub(in crate::admin) fn open_to_any_advice() -> &'static str {
     tr("admin-open-to-any-advice")

@@ -84,6 +84,8 @@ doctor-overview-orders-with-unknown-outcome = Aufträge mit unbekanntem Ausgang:
 
 doctor-overview-sending = Senden
 
+doctor-overview-sending-in-line = Senden
+
 doctor-overview-disk = Datenträger
 
 doctor-overview-analyte-review-list = analyte review list

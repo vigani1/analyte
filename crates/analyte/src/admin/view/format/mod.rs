@@ -19,7 +19,7 @@ use analyte_i18n::{count as tr_count, text as tr};
 
 pub(in crate::admin) use activity::{Named, Said, events, feed_day, feed_time, feed_undated, said};
 pub(in crate::admin) use history::{
-    actor, arrived, outcomes, recorded, settled, settled_action, settled_line,
+    actor, arrived, outcomes, recorded, settled, settled_action, settled_line, settled_words,
 };
 pub(in crate::admin) use href::{
     lab_app_href, machine_href, order_item_href, parked_href, path_segment, setup_href,
@@ -28,16 +28,18 @@ pub(in crate::admin) use lab_app::{
     failing, lab_app, last_delivered, missing_keys, nothing_waiting, send_again, senders,
     set_in_environment, set_on, waiting, waiting_to_send,
 };
-pub(in crate::admin) use look::{StateLook, attempt_look, delivery_look, execution, order_look};
+pub(in crate::admin) use look::{
+    StateLook, attempt_look, delivery_look, execution, order_in_line, order_look,
+};
 pub(in crate::admin) use machine::{
     MachineCounts, accepts, accepts_from, add_machine, analyzer_settings, any_device,
     cable_settings, connected_by, connection, connection_detail, connection_kind, connection_note,
     control_names, deliveries, departure, driver, in_analyte, last_data, link_advice,
     link_sentence, machine, machine_lede, machines_summary, model, no_machine_running,
     no_machine_set_up, not_chosen, not_running, not_set_up, nothing_received_yet, only_devices,
-    open_machine, open_to_any, open_to_any_advice, reading, recording_counts, recording_only,
-    refused, refused_advice, samples, sends_results_to, settings_unreadable, starts_after_restart,
-    stops_at_restart,
+    open_machine, open_to_any, open_to_any_advice, open_to_any_in_line, reading, recording_counts,
+    recording_only, refused, refused_advice, samples, sends_results_to, settings_unreadable,
+    starts_after_restart, stops_at_restart,
 };
 pub(in crate::admin) use parked::{
     as_arrived, compare_measurements, explain, how_read, linked_record, mark_resolved,
@@ -54,6 +56,25 @@ pub(in crate::admin) use wording::{
     restart_advice, restart_now, restore_advice, restore_paused, set_up_advice, slow_read, stopped,
     stopped_sentence, support,
 };
+
+/// A label and the same words inside a sentence, each its own message, so
+/// every language chooses its own capitals: English lowers "Test code
+/// missing" mid-sentence, German keeps its nouns capitalised. Code never
+/// changes the case of a translated label.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::admin) struct Words {
+    /// The label on its own, as a title or a status.
+    pub(in crate::admin) alone: &'static str,
+    /// The same words in the middle of a sentence.
+    pub(in crate::admin) in_line: &'static str,
+}
+
+impl Words {
+    /// A label `alone` and its words `in_line`.
+    pub(in crate::admin) const fn of(alone: &'static str, in_line: &'static str) -> Self {
+        Self { alone, in_line }
+    }
+}
 
 /// A size such as "477 GB" or "1.5 MB"; under 1 KB it counts bytes.
 pub(in crate::admin) fn bytes(count: u64) -> String {

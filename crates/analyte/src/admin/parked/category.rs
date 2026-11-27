@@ -6,7 +6,10 @@
 //! which stays in the protected original message.
 use super::page::Why;
 use crate::admin::view::parts::Hover;
-use crate::admin::view::{Tone, format};
+use crate::admin::view::{
+    Tone,
+    format::{self, Words},
+};
 use analyte_i18n::{message as tr_args, text as tr};
 use analyte_mapping::{Finding, Problem};
 use analyte_store::{Parked, ParkedKind};
@@ -27,6 +30,9 @@ pub(super) struct Category {
     /// What the problem is when the stored reason says, else the category in
     /// plain words, or the stored kind when this version does not know it.
     pub(super) shown: String,
+    /// The same words inside a sentence, such as an Activity line; an unknown
+    /// kind shows exactly as stored there too.
+    pub(super) in_line: String,
     /// The stored kind, on hover; empty when it already shows as stored.
     pub(super) stored: String,
     pub(super) tone: Tone,
@@ -54,6 +60,7 @@ impl Category {
         let Some(kind) = ParkedKind::from_stored(stored) else {
             return Self {
                 shown: stored.to_owned(),
+                in_line: stored.to_owned(),
                 stored: String::new(),
                 tone: Tone::Attention,
                 action: Action::ProcessAgain,
@@ -65,8 +72,10 @@ impl Category {
         let finding = Finding::from_stored(reason);
         let explained = format::explain(kind, reason);
         support.extend(explained.support);
+        let title = explained.title.unwrap_or_else(|| words(kind));
         Self {
-            shown: explained.title.unwrap_or(words(kind)).to_owned(),
+            shown: title.alone.to_owned(),
+            in_line: title.in_line.to_owned(),
             stored: stored.to_owned(),
             tone: tone(kind),
             action: main_action(kind),
@@ -105,22 +114,45 @@ fn as_stored(stored: &str) -> Why {
 }
 
 /// The category in plain words.
-fn words(kind: ParkedKind) -> &'static str {
+fn words(kind: ParkedKind) -> Words {
     match kind {
-        ParkedKind::MappingFinding => tr("admin-test-or-unit-not-mapped"),
-        ParkedKind::InterpretationFailure => tr("admin-could-not-read-message"),
-        ParkedKind::ResultReconciliation => {
-            tr("admin-result-could-not-be-matched-to-earlier-results")
-        }
-        ParkedKind::IncompleteTransfer => tr("admin-message-from-the-machine-was-incomplete"),
-        ParkedKind::DeliveryRejected => tr("admin-lab-app-rejected-a-delivery"),
-        ParkedKind::DeliveryConflict => tr("admin-lab-app-reported-a-conflicting-delivery"),
-        ParkedKind::OrderVersionRefused => tr("admin-order-from-the-lab-app-was-refused"),
-        ParkedKind::CancelConflict => tr("admin-cancel-conflicts-with-what-the-machine-reported"),
+        ParkedKind::MappingFinding => Words::of(
+            tr("admin-test-or-unit-not-mapped"),
+            tr("admin-test-or-unit-not-mapped-in-line"),
+        ),
+        ParkedKind::InterpretationFailure => Words::of(
+            tr("admin-could-not-read-message"),
+            tr("admin-could-not-read-message-in-line"),
+        ),
+        ParkedKind::ResultReconciliation => Words::of(
+            tr("admin-result-could-not-be-matched-to-earlier-results"),
+            tr("admin-result-could-not-be-matched-to-earlier-results-in-line"),
+        ),
+        ParkedKind::IncompleteTransfer => Words::of(
+            tr("admin-message-from-the-machine-was-incomplete"),
+            tr("admin-message-from-the-machine-was-incomplete-in-line"),
+        ),
+        ParkedKind::DeliveryRejected => Words::of(
+            tr("admin-lab-app-rejected-a-delivery"),
+            tr("admin-lab-app-rejected-a-delivery-in-line"),
+        ),
+        ParkedKind::DeliveryConflict => Words::of(
+            tr("admin-lab-app-reported-a-conflicting-delivery"),
+            tr("admin-lab-app-reported-a-conflicting-delivery-in-line"),
+        ),
+        ParkedKind::OrderVersionRefused => Words::of(
+            tr("admin-order-from-the-lab-app-was-refused"),
+            tr("admin-order-from-the-lab-app-was-refused-in-line"),
+        ),
+        ParkedKind::CancelConflict => Words::of(
+            tr("admin-cancel-conflicts-with-what-the-machine-reported"),
+            tr("admin-cancel-conflicts-with-what-the-machine-reported-in-line"),
+        ),
         ParkedKind::PollIntent => format::poll_title(),
-        ParkedKind::OrderEventModelUnknown => {
-            tr("admin-order-event-could-not-name-its-machine-model")
-        }
+        ParkedKind::OrderEventModelUnknown => Words::of(
+            tr("admin-order-event-could-not-name-its-machine-model"),
+            tr("admin-order-event-could-not-name-its-machine-model-in-line"),
+        ),
     }
 }
 

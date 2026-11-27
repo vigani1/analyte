@@ -83,6 +83,8 @@ doctor-overview-orders-with-unknown-outcome = Demandes à l’issue inconnue : 
 
 doctor-overview-sending = Envoi
 
+doctor-overview-sending-in-line = envoi
+
 doctor-overview-disk = Disque
 
 doctor-overview-analyte-review-list = analyte review list

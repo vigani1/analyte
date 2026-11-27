@@ -1,5 +1,5 @@
 //! Says who did what in a history line: the recorded actor, the settled action and what a new reading decided.
-use super::{Line, moment, moment_unix, nonzero_count};
+use super::{Line, Words, moment, moment_unix, nonzero_count};
 use crate::admin::server::{sessions::ADMIN_KEY_PREFIX, windows::ACTOR_PREFIX};
 use crate::operator::recovery;
 use analyte_i18n::{message as tr_args, text as tr};
@@ -65,15 +65,33 @@ pub(in crate::admin) fn settled(action: &str, targets: &[&str]) -> String {
 /// [`settled`] in short, without what the new reading decided: "Marked
 /// resolved", "Processed again", or "Resolved" for an action recorded elsewhere.
 pub(in crate::admin) fn settled_action(action: &str) -> &'static str {
+    settled_words(action).alone
+}
+
+/// [`settled_action`] with its words for the middle of a sentence, such as
+/// an Activity line: "– item 7 marked resolved".
+pub(in crate::admin) fn settled_words(action: &str) -> Words {
     match action {
-        recovery::RESOLVE_ACTION => crate::admin::view::format::marked_resolved(),
-        recovery::REPROCESS_ACTION => crate::admin::view::format::processed_again(),
-        analyte_store::RESEND_MEASUREMENT_ACTION => tr("admin-recorded-as-a-resend"),
-        analyte_store::RERUN_MEASUREMENT_ACTION => tr("admin-rerun-queued"),
-        analyte_store::SUPERSEDE_SAMPLE_ACTION => {
-            tr("admin-superseded-by-the-receipt-with-a-tube-id")
+        recovery::RESOLVE_ACTION => Words::of(
+            crate::admin::view::format::marked_resolved(),
+            tr("admin-marked-resolved-in-line"),
+        ),
+        recovery::REPROCESS_ACTION => Words::of(
+            crate::admin::view::format::processed_again(),
+            tr("admin-processed-again-in-line"),
+        ),
+        analyte_store::RESEND_MEASUREMENT_ACTION => Words::of(
+            tr("admin-recorded-as-a-resend"),
+            tr("admin-recorded-as-a-resend-in-line"),
+        ),
+        analyte_store::RERUN_MEASUREMENT_ACTION => {
+            Words::of(tr("admin-rerun-queued"), tr("admin-rerun-queued-in-line"))
         }
-        _ => tr("admin-resolved"),
+        analyte_store::SUPERSEDE_SAMPLE_ACTION => Words::of(
+            tr("admin-superseded-by-the-receipt-with-a-tube-id"),
+            tr("admin-superseded-by-the-receipt-with-a-tube-id-in-line"),
+        ),
+        _ => Words::of(tr("admin-resolved"), tr("admin-resolved-in-line")),
     }
 }
 

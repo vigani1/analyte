@@ -1,4 +1,5 @@
 //! Explains why a message needs review in plain words, keeping the stored reason for support.
+use super::Words;
 use crate::machine::{astm, autolyser, hl7, interpretation, law, poct, vidas};
 use analyte_config::ValueKind;
 use analyte_contract::ReplyProblem;
@@ -39,7 +40,7 @@ pub(in crate::admin) fn reason_words(stored: &str) -> Option<String> {
 /// stay in the protected original message.
 pub(in crate::admin) struct Explained {
     /// What the problem is, as the item's title; none when only its category is known.
-    pub(in crate::admin) title: Option<&'static str>,
+    pub(in crate::admin) title: Option<Words>,
     /// One plain sentence; none when the reason shows as stored.
     pub(in crate::admin) sentence: Option<String>,
     /// Facts for support beside the stored reason, such as the lab app's HTTP status.
@@ -47,7 +48,7 @@ pub(in crate::admin) struct Explained {
 }
 
 impl Explained {
-    fn said(title: &'static str, sentence: impl Into<String>) -> Self {
+    fn said(title: Words, sentence: impl Into<String>) -> Self {
         Self {
             title: Some(title),
             sentence: Some(sentence.into()),
@@ -73,7 +74,10 @@ impl Explained {
 pub(in crate::admin) fn explain(kind: ParkedKind, stored: &str) -> Explained {
     match kind {
         ParkedKind::MappingFinding => mapping_finding(stored),
-        ParkedKind::InterpretationFailure => fixed(stored, &reading_reasons()),
+        ParkedKind::InterpretationFailure => fixed(
+            stored,
+            &[reading_reasons().as_slice(), &device_reasons()].concat(),
+        ),
         ParkedKind::ResultReconciliation => reconciliation(stored),
         ParkedKind::IncompleteTransfer => fixed(stored, &transfer_reasons()),
         ParkedKind::DeliveryRejected => rejected_delivery(stored),
@@ -97,14 +101,14 @@ fn lab_app_answer(status: &str) -> String {
 }
 
 /// A fixed reason the code writes, its title and its sentence.
-type Fixed = (&'static str, &'static str, &'static str);
+type Fixed = (&'static str, Words, &'static str);
 
 fn fixed(stored: &str, known: &[Fixed]) -> Explained {
     known
         .iter()
         .find(|(reason, _, _)| *reason == stored)
         .map_or_else(Explained::as_stored, |(_, title, sentence)| {
-            Explained::said(title, *sentence)
+            Explained::said(*title, *sentence)
         })
 }
 
@@ -126,90 +130,122 @@ fn place(position: Position) -> String {
 }
 
 /// The title and sentence of a mapping problem found at `at`.
-fn problem_words(problem: &Problem, at: Position) -> (&'static str, String) {
+fn problem_words(problem: &Problem, at: Position) -> (Words, String) {
     let at = place(at);
     let location = || [("at", at.as_str().into())];
+    let sentence = match problem {
+        Problem::MissingTest => tr_args("admin-the-machine-sent-no-test-code-in", location()),
+        Problem::MissingSample => tr_args("admin-the-message-has-no-sample-id-in", location()),
+        Problem::MissingIdentity { .. } => tr_args(
+            "admin-the-value-this-machine-s-settings-use-to-tell",
+            location(),
+        ),
+        Problem::ValueKindMismatch { expected } => kind_mismatch(*expected, &at),
+        Problem::ComponentParts => {
+            tr_args("admin-the-test-code-in-does-not-split-into-the", location())
+        }
+        Problem::UnsupportedValue => {
+            tr_args("admin-the-value-in-is-of-a-kind-analyte-cannot", location())
+        }
+        Problem::UnsupportedFormatting => tr_args(
+            "admin-the-text-in-carries-formatting-codes-analyte-keeps-them",
+            location(),
+        ),
+        Problem::UnsupportedEscape => tr_args(
+            "admin-the-text-in-uses-an-escape-code-that-this",
+            location(),
+        ),
+        Problem::UnknownProcessing => tr_args(
+            "admin-the-processing-mode-in-is-missing-or-not-one",
+            location(),
+        ),
+        Problem::ConflictingClassification => tr_args(
+            "admin-this-machine-s-quality-control-rules-give-the-result",
+            location(),
+        ),
+        Problem::NoObservations => tr("admin-message-holds-no-results").to_owned(),
+        Problem::UnsupportedLawStatusOnly => tr_args(
+            "admin-the-message-in-only-changes-a-result-s-status",
+            location(),
+        ),
+        Problem::InvalidTime => tr_args("admin-the-time-in-could-not-be-read-the-text", location()),
+        Problem::UnqualifiedHl7Report => {
+            tr_args("admin-the-result-report-in-lacks-a-field-or-a", location())
+        }
+        Problem::DepartureConflict => departure_conflict(&at).1,
+        Problem::IncompleteAstmReport => {
+            tr("admin-the-analyzer-did-not-report-normal-completion").to_owned()
+        }
+        Problem::DerivedStatusContract => derived_status().1.to_owned(),
+    };
+    (problem_title(problem), sentence)
+}
+
+/// The title of a mapping problem.
+fn problem_title(problem: &Problem) -> Words {
     match problem {
-        Problem::MissingTest => (
+        Problem::MissingTest => Words::of(
             tr("admin-test-code-missing"),
-            tr_args("admin-the-machine-sent-no-test-code-in", location()),
+            tr("admin-test-code-missing-in-line"),
         ),
-        Problem::MissingSample => (
+        Problem::MissingSample => Words::of(
             tr("admin-sample-id-missing"),
-            tr_args("admin-the-message-has-no-sample-id-in", location()),
+            tr("admin-sample-id-missing-in-line"),
         ),
-        Problem::MissingIdentity { .. } => (
+        Problem::MissingIdentity { .. } => Words::of(
             tr("admin-identity-missing"),
-            tr_args(
-                "admin-the-value-this-machine-s-settings-use-to-tell",
-                location(),
-            ),
+            tr("admin-identity-missing-in-line"),
         ),
-        Problem::ValueKindMismatch { expected } => (
+        Problem::ValueKindMismatch { .. } => Words::of(
             tr("admin-value-is-not-the-expected-kind"),
-            kind_mismatch(*expected, &at),
+            tr("admin-value-is-not-the-expected-kind-in-line"),
         ),
-        Problem::ComponentParts => (
+        Problem::ComponentParts => Words::of(
             tr("admin-test-code-parts-do-not-match"),
-            tr_args("admin-the-test-code-in-does-not-split-into-the", location()),
+            tr("admin-test-code-parts-do-not-match-in-line"),
         ),
-        Problem::UnsupportedValue => (
+        Problem::UnsupportedValue => Words::of(
             tr("admin-value-cannot-be-read"),
-            tr_args("admin-the-value-in-is-of-a-kind-analyte-cannot", location()),
+            tr("admin-value-cannot-be-read-in-line"),
         ),
-        Problem::UnsupportedFormatting => (
+        Problem::UnsupportedFormatting => Words::of(
             tr("admin-text-with-formatting-codes"),
-            tr_args(
-                "admin-the-text-in-carries-formatting-codes-analyte-keeps-them",
-                location(),
-            ),
+            tr("admin-text-with-formatting-codes-in-line"),
         ),
-        Problem::UnsupportedEscape => (
+        Problem::UnsupportedEscape => Words::of(
             tr("admin-escape-code-not-agreed"),
-            tr_args(
-                "admin-the-text-in-uses-an-escape-code-that-this",
-                location(),
-            ),
+            tr("admin-escape-code-not-agreed-in-line"),
         ),
-        Problem::UnknownProcessing => (
+        Problem::UnknownProcessing => Words::of(
             tr("admin-processing-mode-unknown"),
-            tr_args(
-                "admin-the-processing-mode-in-is-missing-or-not-one",
-                location(),
-            ),
+            tr("admin-processing-mode-unknown-in-line"),
         ),
-        Problem::ConflictingClassification => (
+        Problem::ConflictingClassification => Words::of(
             tr("admin-result-classified-more-than-one-way"),
-            tr_args(
-                "admin-this-machine-s-quality-control-rules-give-the-result",
-                location(),
-            ),
+            tr("admin-result-classified-more-than-one-way-in-line"),
         ),
-        Problem::NoObservations => (
+        Problem::NoObservations => Words::of(
             tr("admin-no-results-in-the-message"),
-            tr("admin-message-holds-no-results").to_owned(),
+            tr("admin-no-results-in-the-message-in-line"),
         ),
-        Problem::UnsupportedLawStatusOnly => (
+        Problem::UnsupportedLawStatusOnly => Words::of(
             tr("admin-status-only-update"),
-            tr_args(
-                "admin-the-message-in-only-changes-a-result-s-status",
-                location(),
-            ),
+            tr("admin-status-only-update-in-line"),
         ),
-        Problem::InvalidTime => (
+        Problem::InvalidTime => Words::of(
             tr("admin-time-cannot-be-read"),
-            tr_args("admin-the-time-in-could-not-be-read-the-text", location()),
+            tr("admin-time-cannot-be-read-in-line"),
         ),
-        Problem::UnqualifiedHl7Report => (
+        Problem::UnqualifiedHl7Report => Words::of(
             tr("admin-result-report-incomplete"),
-            tr_args("admin-the-result-report-in-lacks-a-field-or-a", location()),
+            tr("admin-result-report-incomplete-in-line"),
         ),
-        Problem::DepartureConflict => departure_conflict(&at),
-        Problem::IncompleteAstmReport => (
+        Problem::IncompleteAstmReport => Words::of(
             tr("admin-incomplete-astm-report"),
-            tr("admin-the-analyzer-did-not-report-normal-completion").to_owned(),
+            tr("admin-incomplete-astm-report-in-line"),
         ),
-        Problem::DerivedStatusContract => (derived_status().0, derived_status().1.to_owned()),
+        Problem::DepartureConflict => departure_title(),
+        Problem::DerivedStatusContract => derived_status().0,
     }
 }
 
@@ -230,9 +266,16 @@ fn kind_mismatch(expected: ValueKind, at: &str) -> String {
     }
 }
 
-fn departure_conflict(at: &str) -> (&'static str, String) {
-    (
+fn departure_title() -> Words {
+    Words::of(
         tr("admin-result-status-not-final"),
+        tr("admin-result-status-not-final-in-line"),
+    )
+}
+
+fn departure_conflict(at: &str) -> (Words, String) {
+    (
+        departure_title(),
         tr_args(
             "admin-the-result-status-in-is-not-final-but-this",
             [("at", (at).to_string().into())],
@@ -240,9 +283,12 @@ fn departure_conflict(at: &str) -> (&'static str, String) {
     )
 }
 
-fn derived_status() -> (&'static str, &'static str) {
+fn derived_status() -> (Words, &'static str) {
     (
-        tr("admin-final-status-cannot-be-sent"),
+        Words::of(
+            tr("admin-final-status-cannot-be-sent"),
+            tr("admin-final-status-cannot-be-sent-in-line"),
+        ),
         tr("admin-the-result-s-final-status-comes-from-what-this"),
     )
 }
@@ -264,7 +310,10 @@ fn mapping_finding(stored: &str) -> Explained {
 
 /// Why a result has no identity, in words.
 fn unidentified(reason: Unidentified) -> Explained {
-    let missing = tr("admin-identity-missing");
+    let missing = Words::of(
+        tr("admin-identity-missing"),
+        tr("admin-identity-missing-in-line"),
+    );
     match reason {
         Unidentified::Missing { setting, position } => {
             let (title, sentence) = problem_words(&Problem::MissingIdentity { setting }, position);
@@ -275,7 +324,10 @@ fn unidentified(reason: Unidentified) -> Explained {
             tr("admin-this-machine-sends-no-run-number-that-stays-the"),
         ),
         Unidentified::PoctRepeated => Explained::said(
-            tr("admin-result-identity-repeated"),
+            Words::of(
+                tr("admin-result-identity-repeated"),
+                tr("admin-result-identity-repeated-in-line"),
+            ),
             tr("admin-two-results-in-this-message-would-have-the-same"),
         ),
         Unidentified::PoctEvidence => Explained::said(
@@ -283,7 +335,10 @@ fn unidentified(reason: Unidentified) -> Explained {
             tr("admin-the-device-time-or-sequence-number-that-this-machine"),
         ),
         Unidentified::PoctSequence => Explained::said(
-            tr("admin-result-identity-not-trusted"),
+            Words::of(
+                tr("admin-result-identity-not-trusted"),
+                tr("admin-result-identity-not-trusted-in-line"),
+            ),
             tr("admin-this-machine-s-sequence-numbers-can-start-over-so"),
         ),
         Unidentified::VidasLiteral => Explained::said(
@@ -294,81 +349,132 @@ fn unidentified(reason: Unidentified) -> Explained {
 }
 
 /// The fixed reasons a message that could not be read is parked with.
-fn reading_reasons() -> [Fixed; 15] {
+fn reading_reasons() -> [Fixed; 8] {
     [
         (
             NO_RESULTS_REASON,
-            tr("admin-processing-again-produced-no-results"),
+            Words::of(
+                tr("admin-processing-again-produced-no-results"),
+                tr("admin-processing-again-produced-no-results-in-line"),
+            ),
             tr("admin-processing-the-message-again-with-the-current-settings-produced"),
         ),
         (
             astm::CONFLICT_REASON,
-            tr("admin-piece-resent-with-other-content"),
+            Words::of(
+                tr("admin-piece-resent-with-other-content"),
+                tr("admin-piece-resent-with-other-content-in-line"),
+            ),
             tr("admin-the-machine-sent-the-same-numbered-piece-of-a"),
         ),
         (
             astm::UNSOLICITED_REASON,
-            tr("admin-piece-arrived-out-of-turn"),
+            Words::of(
+                tr("admin-piece-arrived-out-of-turn"),
+                tr("admin-piece-arrived-out-of-turn-in-line"),
+            ),
             tr("admin-a-piece-of-a-message-arrived-when-no-transfer"),
         ),
         (
             hl7::UNSOLICITED_REASON,
-            tr("admin-message-not-expected"),
+            Words::of(
+                tr("admin-message-not-expected"),
+                tr("admin-message-not-expected-in-line"),
+            ),
             tr("admin-a-message-arrived-that-analyte-did-not-expect-or"),
         ),
         (
             law::INTERRUPTED_REASON,
-            tr("admin-processing-interrupted"),
+            Words::of(
+                tr("admin-processing-interrupted"),
+                tr("admin-processing-interrupted-in-line"),
+            ),
             tr("admin-processing-of-this-message-stopped-before-it-was-confirmed"),
         ),
         (
             law::policy::WORK_CONFLICT_REASON,
-            tr("admin-returned-work-differs-from-the-order-sent"),
+            Words::of(
+                tr("admin-returned-work-differs-from-the-order-sent"),
+                tr("admin-returned-work-differs-from-the-order-sent-in-line"),
+            ),
             tr("admin-the-work-the-machine-returned-differs-from-the-order"),
         ),
         (
             law::policy::MAPPING_REFUSAL,
-            tr("admin-results-held-back-for-review"),
+            Words::of(
+                tr("admin-results-held-back-for-review"),
+                tr("admin-results-held-back-for-review-in-line"),
+            ),
             tr("admin-part-of-this-message-needs-review-and-this-machine"),
         ),
         (
             law::policy::BATCH_CONFLICT_REASON,
-            tr("admin-results-conflict-with-earlier-ones"),
+            Words::of(
+                tr("admin-results-conflict-with-earlier-ones"),
+                tr("admin-results-conflict-with-earlier-ones-in-line"),
+            ),
             tr("admin-results-in-this-message-conflict-with-results-this-machine"),
         ),
+    ]
+}
+
+/// The fixed reasons a POCT or VIDAS message that could not be read is parked with.
+fn device_reasons() -> [Fixed; 7] {
+    [
         (
             poct::LIMIT_REASON,
-            tr("admin-message-too-large"),
+            Words::of(
+                tr("admin-message-too-large"),
+                tr("admin-message-too-large-in-line"),
+            ),
             tr("admin-the-message-was-larger-than-the-size-limit-for"),
         ),
         (
             poct::CANCELLED_REASON,
-            tr("admin-message-cut-off"),
+            Words::of(
+                tr("admin-message-cut-off"),
+                tr("admin-message-cut-off-in-line"),
+            ),
             tr("admin-the-connection-was-stopped-while-the-message-was-arriving"),
         ),
         (
             poct::DEADLINE_REASON,
-            tr("admin-message-not-finished-in-time"),
+            Words::of(
+                tr("admin-message-not-finished-in-time"),
+                tr("admin-message-not-finished-in-time-in-line"),
+            ),
             tr("admin-the-machine-did-not-finish-sending-the-message-in"),
         ),
         (
             poct::INCOMPLETE_REASON,
-            tr("admin-message-cut-off"),
+            Words::of(
+                tr("admin-message-cut-off"),
+                tr("admin-message-cut-off-in-line"),
+            ),
             tr("admin-the-connection-timed-out-or-closed-before-the-message"),
         ),
         (
             poct::DEFERRED_REASON,
-            tr("admin-message-arrived-while-busy"),
+            Words::of(
+                tr("admin-message-arrived-while-busy"),
+                tr("admin-message-arrived-while-busy-in-line"),
+            ),
             tr("admin-the-message-arrived-while-too-many-messages-were-waiting"),
         ),
         (
             vidas::SUFFIX_REASON,
-            tr("admin-check-characters-do-not-match"),
+            Words::of(
+                tr("admin-check-characters-do-not-match"),
+                tr("admin-check-characters-do-not-match-in-line"),
+            ),
             tr("admin-the-check-characters-at-the-end-of-the-message"),
         ),
         (
             vidas::INCOMPLETE_REASON,
-            tr("admin-transfer-cut-off-or-refused"),
+            Words::of(
+                tr("admin-transfer-cut-off-or-refused"),
+                tr("admin-transfer-cut-off-or-refused-in-line"),
+            ),
             tr("admin-the-transfer-from-the-machine-did-not-finish-or"),
         ),
     ]
@@ -378,7 +484,10 @@ fn reading_reasons() -> [Fixed; 15] {
 fn edited_reasons() -> [Fixed; 1] {
     [(
         poct::EDIT_GUARD_REASON,
-        tr("admin-edited-result-kept-for-review"),
+        Words::of(
+            tr("admin-edited-result-kept-for-review"),
+            tr("admin-edited-result-kept-for-review-in-line"),
+        ),
         tr("admin-the-machine-sent-an-edited-result-whose-content-looks"),
     )]
 }
@@ -388,12 +497,18 @@ fn transfer_reasons() -> [Fixed; 2] {
     [
         (
             astm::CUT_OFF_REASON,
-            tr("admin-transfer-cut-off"),
+            Words::of(
+                tr("admin-transfer-cut-off"),
+                tr("admin-transfer-cut-off-in-line"),
+            ),
             tr("admin-the-machine-stopped-sending-before-the-message-was-complete"),
         ),
         (
             astm::STOPPED_REASON,
-            tr("admin-transfer-cut-off-by-a-stop"),
+            Words::of(
+                tr("admin-transfer-cut-off-by-a-stop"),
+                tr("admin-transfer-cut-off-by-a-stop-in-line"),
+            ),
             tr("admin-analyte-stopped-while-the-machine-was-sending-the-pieces"),
         ),
     ]
@@ -403,7 +518,10 @@ fn transfer_reasons() -> [Fixed; 2] {
 fn conflict_reasons() -> [Fixed; 1] {
     [(
         analyte_sink::CONFLICT_REASON,
-        tr("admin-lab-app-already-has-different-content"),
+        Words::of(
+            tr("admin-lab-app-already-has-different-content"),
+            tr("admin-lab-app-already-has-different-content-in-line"),
+        ),
         tr("admin-the-lab-app-already-holds-different-content-under-this"),
     )]
 }
@@ -411,7 +529,10 @@ fn conflict_reasons() -> [Fixed; 1] {
 fn cancel_reasons() -> [Fixed; 1] {
     [(
         CANCEL_CONFLICT_REASON,
-        tr("admin-machine-s-cancel-answers-disagree"),
+        Words::of(
+            tr("admin-machine-s-cancel-answers-disagree"),
+            tr("admin-machine-s-cancel-answers-disagree-in-line"),
+        ),
         tr("admin-the-machine-answered-that-it-could-not-cancel-a"),
     )]
 }
@@ -419,14 +540,17 @@ fn cancel_reasons() -> [Fixed; 1] {
 fn model_reasons() -> [Fixed; 1] {
     [(
         MODEL_UNKNOWN_REASON,
-        tr("admin-order-event-not-sent"),
+        Words::of(
+            tr("admin-order-event-not-sent"),
+            tr("admin-order-event-not-sent-in-line"),
+        ),
         tr("admin-this-order-was-stored-before-analyte-kept-each-order"),
     )]
 }
 
 /// What an open request for a machine's next results is called, as its category and its title.
-pub(in crate::admin) fn poll_title() -> &'static str {
-    tr("admin-poll-title")
+pub(in crate::admin) fn poll_title() -> Words {
+    Words::of(tr("admin-poll-title"), tr("admin-poll-title-in-line"))
 }
 
 fn poll_reasons() -> [Fixed; 1] {
@@ -443,7 +567,10 @@ fn reconciliation(stored: &str) -> Explained {
     }
     let kept = |what: &str| {
         Explained::said(
-            tr("admin-result-kept-for-review"),
+            Words::of(
+                tr("admin-result-kept-for-review"),
+                tr("admin-result-kept-for-review-in-line"),
+            ),
             tr_args(
                 "admin-the-result-was-recorded-as-but-kept-for-review",
                 [("what", (what).to_string().into())],
@@ -452,11 +579,17 @@ fn reconciliation(stored: &str) -> Explained {
     };
     match reconciled_outcome(stored) {
         Some(RevisionOutcome::Conflict) => Explained::said(
-            tr("admin-result-differs-from-an-earlier-one"),
+            Words::of(
+                tr("admin-result-differs-from-an-earlier-one"),
+                tr("admin-result-differs-from-an-earlier-one-in-line"),
+            ),
             tr("admin-a-result-came-with-other-content-under-the-same"),
         ),
         Some(RevisionOutcome::Unresolved) => Explained::said(
-            tr("admin-identity-missing"),
+            Words::of(
+                tr("admin-identity-missing"),
+                tr("admin-identity-missing-in-line"),
+            ),
             tr("admin-the-message-does-not-give-this-result-an-identity"),
         ),
         Some(RevisionOutcome::New(_)) => kept(tr("admin-recorded-as-new")),
@@ -467,10 +600,16 @@ fn reconciliation(stored: &str) -> Explained {
 }
 
 fn rejected_delivery(stored: &str) -> Explained {
-    let unreadable = tr("admin-lab-app-answer-unreadable");
+    let unreadable = Words::of(
+        tr("admin-lab-app-answer-unreadable"),
+        tr("admin-lab-app-answer-unreadable-in-line"),
+    );
     if stored == analyte_sink::UNSUPPORTED_CONTRACT_REASON {
         return Explained::said(
-            tr("admin-delivery-stored-for-another-contract"),
+            Words::of(
+                tr("admin-delivery-stored-for-another-contract"),
+                tr("admin-delivery-stored-for-another-contract-in-line"),
+            ),
             tr("admin-the-delivery-was-stored-for-a-lab-app-contract"),
         );
     }
@@ -486,7 +625,10 @@ fn rejected_delivery(stored: &str) -> Explained {
         )
         .with_support(lab_app_answer("400 or 422")),
         Some(ReplyProblem::UnexpectedStatus(status)) => Explained::said(
-            tr("admin-unexpected-answer-from-the-lab-app"),
+            Words::of(
+                tr("admin-unexpected-answer-from-the-lab-app"),
+                tr("admin-unexpected-answer-from-the-lab-app-in-line"),
+            ),
             tr("admin-the-lab-app-gave-an-answer-that-the-lab"),
         )
         .with_support(lab_app_answer(&status.to_string())),
@@ -497,7 +639,10 @@ fn rejected_delivery(stored: &str) -> Explained {
 fn refused_order(stored: &str) -> Explained {
     match OrderRefusal::from_stored(stored) {
         Some(OrderRefusal::Older { offered, kept }) => Explained::said(
-            tr("admin-older-order-version-refused"),
+            Words::of(
+                tr("admin-older-order-version-refused"),
+                tr("admin-older-order-version-refused-in-line"),
+            ),
             tr_args(
                 "admin-the-lab-app-sent-version-of-an-order-after",
                 [
@@ -507,7 +652,10 @@ fn refused_order(stored: &str) -> Explained {
             ),
         ),
         Some(OrderRefusal::ChangedContent { kept }) => Explained::said(
-            tr("admin-changed-order-refused"),
+            Words::of(
+                tr("admin-changed-order-refused"),
+                tr("admin-changed-order-refused-in-line"),
+            ),
             tr_args(
                 "admin-the-lab-app-sent-other-content-under-version-of",
                 [("kept", (kept).to_string().into())],
@@ -614,7 +762,11 @@ mod tests {
         stored: &str,
     ) -> (Option<&'static str>, Option<String>, Vec<String>) {
         let explained = explain(kind, stored);
-        (explained.title, explained.sentence, explained.support)
+        (
+            explained.title.map(|title| title.alone),
+            explained.sentence,
+            explained.support,
+        )
     }
 
     /// Checks that `stored` reads as `title` and exactly `sentence`, with no support line.

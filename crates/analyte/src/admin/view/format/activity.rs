@@ -1,7 +1,7 @@
 //! Writes Activity's lines: the day dividers, the time of each line and the sentence for each stored event.
 use super::{
-    Moment, actor, attempt_look, exact_time, lab_app_href, machine_href, order_look, samples,
-    settled_action, test_count,
+    Moment, actor, attempt_look, exact_time, lab_app_href, machine_href, order_in_line, order_look,
+    samples, settled_words, test_count,
     time::{clock_in, not_a_date},
 };
 use crate::admin::view::{Tone, icon::Icon};
@@ -133,8 +133,8 @@ fn headed(machine: Option<Named<'_>>, other: &str) -> (String, String) {
 
 /// What `what` says, stored at `at`, about `machine` when it names one: the
 /// machine's ID in bold, then its model ("cobas-e411 (cobas e 411)").
-/// `headline` gives a Needs review item's title and tone, as its card shows
-/// them.
+/// `headline` gives a Needs review item's title, written for the middle of
+/// the line, and its tone, as its card shows them.
 pub(in crate::admin) fn said(
     what: &Activity,
     at: Option<i64>,
@@ -160,10 +160,7 @@ pub(in crate::admin) fn said(
                 "admin-item-3",
                 [
                     ("item", (item).to_string().into()),
-                    (
-                        "action",
-                        (lower_first(settled_action(action))).to_string().into(),
-                    ),
+                    ("action", settled_words(action).in_line.into()),
                 ],
             )),
             tone: Tone::Good,
@@ -247,7 +244,7 @@ fn parked_line(item: i64, title: &str, tone: Tone, from: impl FnOnce(String) -> 
             "admin-item-added",
             [
                 ("item", item.to_string().into()),
-                ("title", lower_first(title).into()),
+                ("title", title.to_owned().into()),
             ],
         )),
         tone,
@@ -297,7 +294,7 @@ fn ordered(order: &str, state: OrderState, machine: Option<Named<'_>>) -> Said {
     let (head, aside) = headed(machine, tr("admin-activity-a-machine"));
     Said {
         head,
-        rest: format!("{aside}{order}– {}", lower_first(look.word)),
+        rest: format!("{aside}{order}– {}", order_in_line(state)),
         tone: look.tone,
         icon: look.icon,
         word: tr("admin-order"),
@@ -534,26 +531,44 @@ fn change(action: &str, target: Option<&str>) -> (String, FeedLink) {
     }
 }
 
-/// `words` with a lowercase first letter, for the middle of a sentence,
-/// unless it starts with a short form such as "LAW".
-fn lower_first(words: &str) -> String {
-    let mut chars = words.chars();
-    match (chars.next(), chars.next()) {
-        (Some(first), Some(second)) if !second.is_uppercase() => {
-            let rest = words.get(first.len_utf8()..).unwrap_or_default();
-            format!("{}{rest}", first.to_lowercase())
-        }
-        _ => words.to_owned(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // ADR 0039 (owner request 2026-11-27): a label inside an Activity line is
+    // its own message in each language. English lowers it as it always did;
+    // German keeps its nouns capitalised.
+    #[test]
+    fn labels_inside_activity_lines_keep_each_language_s_capitals()
+    -> Result<(), analyte_model::TextError> {
+        let item = analyte_store::Parked {
+            kind: analyte_model::Identifier::new("mapping_finding")?,
+            reason: analyte_model::Reason::new("Position { record: 3, field: 3 }: MissingTest")?,
+            targets: Vec::new(),
+        };
+        let lines = || {
+            let (title, tone) = crate::admin::parked::headline(&item);
+            (
+                parked_line(5, &title, tone, |rest| rest).rest,
+                ordered("", OrderState::CancelRequested, None).rest,
+                settled_words(analyte_store::RERUN_MEASUREMENT_ACTION).in_line,
+            )
+        };
+        let (added, order, settled) = lines();
+        assert_eq!(added, "– item 5 added: test code missing");
+        assert!(order.ends_with("– cancel requested"), "{order}");
+        assert_eq!(settled, "rerun queued");
+        let german = analyte_i18n::Language::negotiate(["de"]).expect("German is installed");
+        let (added, order, settled) = german.sync_scope(lines);
+        assert_eq!(added, "– Eintrag 5 hinzugefügt: Testcode fehlt");
+        assert!(order.ends_with("– Stornierung angefordert"), "{order}");
+        assert_eq!(settled, "Wiederholungsmessung eingereiht");
+        Ok(())
+    }
+
     // Owner decision 2026-11-20 (PR c, Activity mockup): the feed's day
     // dividers say Today, then the weekday and date, with the year only before
-    // this year; words mid-sentence start in lowercase unless they are a short form.
+    // this year.
     #[test]
     fn feed_days_and_words_read_as_the_mockup() -> Result<(), jiff::Error> {
         let now = Timestamp::from_second(1_795_046_077)?; // 2026-11-18 23:54:37 UTC
@@ -567,11 +582,6 @@ mod tests {
             feed_day_in(Timestamp::UNIX_EPOCH, now, utc),
             "Thursday 1 January 1970"
         );
-        assert_eq!(
-            lower_first("Test or unit not mapped"),
-            "test or unit not mapped"
-        );
-        assert_eq!(lower_first("LAW cancel refused"), "LAW cancel refused");
         assert_eq!(feed_time_in(1_795_046_077, utc).shown, "23:54:37");
         assert_eq!(
             feed_time_in(1_795_046_077, utc).exact,

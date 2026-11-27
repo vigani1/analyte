@@ -76,6 +76,8 @@ doctor-overview-orders-with-unknown-outcome = Porositë me rezultat të panjohur
 
 doctor-overview-sending = Dërgimi
 
+doctor-overview-sending-in-line = dërgimi
+
 doctor-overview-disk = Disk
 
 doctor-overview-analyte-review-list = analyte review list

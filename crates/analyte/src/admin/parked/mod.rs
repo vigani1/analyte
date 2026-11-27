@@ -15,11 +15,11 @@ pub(super) use dialog::checked;
 pub(super) use page::RawRequest;
 pub(super) use raw::{RAW_VIEW, RawError};
 
-/// What an item is about in a few words, and its tone, as its card on Needs
-/// review shows them: for an Activity line.
+/// What an item is about in a few words, written for the middle of an
+/// Activity line, and its tone, as its card on Needs review shows them.
 pub(super) fn headline(details: &Parked) -> (String, Tone) {
     let category = Category::of(details);
-    (category.shown, category.tone)
+    (category.in_line, category.tone)
 }
 
 use crate::admin::error::CommandError;

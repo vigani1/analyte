@@ -397,10 +397,7 @@ pub(in super::super) fn devices_line(machine: &Listed) -> Option<String> {
         (None, true) => Some(tr_args(
             "setup-devices-warning-accept-only-the-analyzer-with-analyte-machines",
             [
-                (
-                    "to-lowercase",
-                    (format::open_to_any().to_lowercase()).to_string().into(),
-                ),
+                ("access", format::open_to_any_in_line().into()),
                 ("id", (machine.id).to_string().into()),
             ],
         )),
