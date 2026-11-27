@@ -457,7 +457,7 @@ impl Waiting {
                 label: "Oldest waiting".into(),
                 value: "—".into(),
                 when: None,
-                aside: "nothing waiting".into(),
+                aside: format::NOTHING_WAITING.into(),
                 aside_when: None,
                 tone: None,
             },

@@ -26,7 +26,7 @@
 </section>
 {% endmacro %}
 {% block main %}
-<h1>Compare measurements</h1>
+<h1>{{ crate::admin::view::format::COMPARE_MEASUREMENTS }}</h1>
 {% if let Some(sample) = sample %}
 <p>This looks like the same result, now with tube ID {{ sample }}. Resolve the held item?</p>
 {% else %}

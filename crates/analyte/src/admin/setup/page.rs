@@ -13,8 +13,8 @@ use crate::admin::view::{
 
 /// The machine table's columns.
 pub(super) const MACHINE_COLUMNS: [Column; 5] = [
-    Column::text("Machine"),
-    Column::text("Model"),
+    Column::text(crate::admin::view::format::MACHINE),
+    Column::text(crate::admin::view::format::MODEL),
     Column::text("Status"),
     Column::text("Settings version"),
     Column::text(""),
@@ -22,7 +22,7 @@ pub(super) const MACHINE_COLUMNS: [Column; 5] = [
 
 /// The supported models' columns.
 pub(super) const MODEL_COLUMNS: [Column; 3] = [
-    Column::text("Model"),
+    Column::text(crate::admin::view::format::MODEL),
     Column::text("How it was checked"),
     Column::text("Status"),
 ];

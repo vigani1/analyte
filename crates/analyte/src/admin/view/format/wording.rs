@@ -76,3 +76,12 @@ pub(in crate::admin) const KEY_NEEDED: &str = "Needed before Analyte can send re
 
 /// Said under a key's field when the locked keys file could not be read.
 pub(in crate::admin) const KEY_UNCHECKED: &str = "The locked keys file could not be read, so this key cannot be checked; the reason is under Details for support.";
+
+/// Heads reports where an action made no changes.
+pub(in crate::admin) const NOTHING_CHANGED: &str = "Nothing was changed";
+
+/// Labels the action to restart the engine to apply settings.
+pub(in crate::admin) const RESTART_NOW: &str = "Restart now";
+
+/// Labels the link out of an unavailable page of a list.
+pub(in crate::admin) const FIRST_PAGE: &str = "Back to the first page";

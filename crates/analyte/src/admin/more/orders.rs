@@ -179,7 +179,7 @@ fn empty(show: Show, shown: u64) -> Empty {
             good: false,
             title: "No more orders",
             text: "This page is past the last order.",
-            link: Some((Show::All.href(), "Back to the first page".into())),
+            link: Some((Show::All.href(), format::FIRST_PAGE.into())),
         };
     }
     match show {

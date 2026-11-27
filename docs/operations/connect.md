@@ -413,32 +413,38 @@ Follow [Adding a machine](../develop/adding-a-machine.md) and the
 send-ahead orders need separate evidence. Do not enable orders just because
 results work. Never infer identity from position or invent units or run keys.
 
-Five first-lab models ship with documented definitions. Swelab Lumi remains
-record-only. Read the corresponding README for the settings and evidence
-needed before clinical use.
+Five of the six first machines ship a full `machine.toml` written from their
+manuals, at level documented: cobas e 411, iFlash 1200, Biolyte 2000, VIDAS
+and Autolyser. None has run against a real analyzer yet, so confirm every
+open question in its README before clinical use. Swelab Lumi is still
+blocked: no activatable `machine.toml` is shipped for it, so it can only be
+connected to record only, and every fact in its README is needed.
 
-| Machine | Settings and evidence |
-| --- | --- |
-| Roche cobas e 411 | [Dialect, packed frames, serial settings and host codes](../../machines/roche/cobas-e411/README.md) |
-| YHLO iFlash 1200 | [1200 protocol applicability, status/QC mapping and deadlines](../../machines/yhlo/iflash-1200/README.md) |
-| Boule Swelab Lumi | [Installed protocol, framing, encoding and sample field](../../machines/boule/swelab-lumi/README.md) |
-| BioCARE Biolyte 2000 | [Flow control, codes and identity evidence](../../machines/biocare/biolyte-2000/README.md) |
-| bioMérieux VIDAS | [PC version, ID length and identity evidence](../../machines/biomerieux/vidas/README.md) |
-| Dialab Autolyser | [Installed interface, layout and identity evidence](../../machines/dialab/autolyser/README.md) |
+| Machine | Status | Settings and evidence |
+| --- | --- | --- |
+| Roche cobas e 411 | documented | [Installed software, host codes and recordings](../../machines/roche/cobas-e411/README.md) |
+| YHLO iFlash 1200 | documented | [1200 protocol applicability, status/QC mapping and deadlines](../../machines/yhlo/iflash-1200/README.md) |
+| Boule Swelab Lumi | blocked | [Installed protocol, framing, encoding and sample field](../../machines/boule/swelab-lumi/README.md) |
+| BioCARE Biolyte 2000 | documented | [Flow control, codes and identity evidence](../../machines/biocare/biolyte-2000/README.md) |
+| bioMérieux VIDAS | documented | [PC version, ID length and identity evidence](../../machines/biomerieux/vidas/README.md) |
+| Dialab Autolyser | documented | [Installed interface, layout and identity evidence](../../machines/dialab/autolyser/README.md) |
 
-To get those conversations, connect each machine to [record
-only](#first-visit-record-only) first.
+To get the recordings each README asks for, any of them can first be
+connected to [record only](#first-visit-record-only).
 
 Capture de-identified conversations with direction and timing. Keep originals
 protected outside Git. A maintainer must review config and replay evidence;
 the lab must check values, units, flags, corrections and sample identity through
 the report. Only exercised real-machine capabilities can become **proven**.
 
-Current VIDAS and Autolyser result mapping leaves result identity unresolved,
-so those results stay parked. The iFlash definition reads patient and OBR-only
-QC layouts. Patient uploads lacking run identity or final status and QC
-uploads lacking measurement identity stay in Needs review after Analyte
-acknowledges durable receipt.
+The Autolyser report carries no run identity, so its results stay held for
+staff rather than reaching the app (ADR 0035). A successful serial exchange
+does not remove this. The VIDAS definition declares its identity recipe
+(ADR 0035); a repeated key with a different value is held, never treated as
+a correction. The iFlash definition reads patient and OBR-only QC layouts.
+Patient uploads lacking run identity or final status and QC uploads lacking
+measurement identity stay in Needs review after Analyte acknowledges durable
+receipt.
 
 Machine definitions use `schema_version = 2`: set `protocol` and
 `transport.kind`, and the loader derives framing, dialog and syntax, so those
@@ -447,11 +453,12 @@ unsupported.
 
 ## First visit: record only
 
-The six first-lab models are not ready yet, so they cannot send results to a
-lab app. They can still be connected to **record only**
-([ADR 0034](../adr/0034-record-only-connections.md)): Analyte keeps the
-analyzer talking with its protocol's own rules and keeps every byte, so the
-visit ends with real recordings to write each definition from.
+A model that is not ready yet (today Swelab Lumi) cannot send
+results to a lab app. It, and any ready model, can still be connected to
+**record only** ([ADR 0034](../adr/0034-record-only-connections.md)): Analyte
+keeps the analyzer talking with its protocol's own rules and keeps every
+byte, so the visit ends with real recordings to write or confirm each
+definition from.
 
 | What record only does | What it never does |
 | --- | --- |

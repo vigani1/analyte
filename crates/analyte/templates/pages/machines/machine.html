@@ -31,7 +31,7 @@
 {% call feedback::whattodo(todo.text, todo.href, todo.label) %}{% endcall %}
 {%- endif %}
 <div class="split">
-{% call layout::titled_card("md-setup", "Setup", "", "") %}
+{% call layout::titled_card("md-setup", crate::admin::view::Tab::Setup.label(), "", "") %}
 <dl class="kv">
 {%- for fact in facts %}
 {% call display::fact(fact) %}{% endcall %}
@@ -57,7 +57,7 @@
 <section class="section" aria-labelledby="md-recent">
 <div class="section__head">{% call layout::label("md-recent", "Recent messages received", "") %}{% endcall %}{% if let Some(note) = recent_note %}<span class="subtle machine__note">{{ note }}</span>{% endif %}</div>
 {%- if recent.is_empty() %}
-{% call feedback::empty_card("Nothing received yet", "Messages this machine sends are listed here, newest first.") %}{% endcall %}
+{% call feedback::empty_card(crate::admin::view::format::NOTHING_RECEIVED_YET, "Messages this machine sends are listed here, newest first.") %}{% endcall %}
 {%- else %}
 {% call display::table(MESSAGE_COLUMNS) %}
 {%- for message in recent %}

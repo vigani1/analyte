@@ -75,28 +75,11 @@ pub(super) async fn test(
     };
     let found = verdict::of_view(&view, family, &route);
     say(&format!("{}. {}", found.title, found.text))?;
-    let mut received = format!(
-        "{} received",
-        format::amount(
-            u64::try_from(view.seen).unwrap_or(u64::MAX),
-            "byte",
-            "bytes"
-        )
-    );
-    if view.size_limit_reached {
-        received.push_str(&format!(
-            "; reading stopped at the {} limit",
-            format::bytes(u64::try_from(limits.bytes).unwrap_or(u64::MAX))
-        ));
-    }
-    say(&received)?;
+    say(&verdict::received(&view, limits.bytes))?;
     say(&format!(
-        "Framing characters: {}",
-        if view.framing.is_empty() {
-            "none".to_owned()
-        } else {
-            format::control_names(&view.framing)
-        }
+        "{}: {}",
+        verdict::FRAMING_CHARACTERS,
+        verdict::framing(&view.framing)
     ))?;
     if let Some(bytes) = bytes
         && let Ok(bytes) = bytes.await

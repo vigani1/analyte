@@ -98,7 +98,7 @@
 <li class="path__item">
 <a class="node{% if machine.wire == Wire::Cut %} node--bad{% endif %}" href="{{ machine.href }}">
 <span class="node__head">{% call draw::icon(machine.tone.icon(), "icon--md tone-" ~ machine.tone.class()) %}{% endcall %}<span class="node__name" title="{{ machine.id }}">{{ machine.id }}</span>{% if let Some(model) = machine.model %}<span class="node__model">{{ model }}</span>{% endif %}</span>
-<span class="node__meta"><span class="node__state tone-{{ machine.tone.class() }}">{{ machine.state }}</span><span class="subtle" aria-hidden="true">·</span>{% if let Some(last) = machine.last_data %}<span class="mono"><span class="sr-only">Last data </span>{% call time(last) %}{% endcall %}</span>{% else %}<span class="mono subtle">Nothing yet</span>{% endif %}<span class="subtle" aria-hidden="true">·</span><span class="with-icon muted">{% call draw::icon(machine.kind_icon, "icon--sm") %}{% endcall %}{{ machine.kind }}</span></span>
+<span class="node__meta"><span class="node__state tone-{{ machine.tone.class() }}">{{ machine.state }}</span><span class="subtle" aria-hidden="true">·</span>{% if let Some(last) = machine.last_data %}<span class="mono"><span class="sr-only">{{ crate::admin::view::format::LAST_DATA }} </span>{% call time(last) %}{% endcall %}</span>{% else %}<span class="mono subtle">{{ crate::admin::view::format::NOTHING_YET }}</span>{% endif %}<span class="subtle" aria-hidden="true">·</span><span class="with-icon muted">{% call draw::icon(machine.kind_icon, "icon--sm") %}{% endcall %}{{ machine.kind }}</span></span>
 {%- if let Some(line) = machine.line %}<span class="node__note">{{ line }}</span>{% endif %}
 {%- if let Some(recording) = machine.recording %}<span class="node__note tone-warn">{{ recording }}</span>{% endif %}
 </a>
@@ -119,7 +119,7 @@
 {% call feedback::support(crate::admin::view::format::SUPPORT, lab.support.as_slice()) %}{% endcall %}
 {%- endif %}
 {%- if let Some(todo) = lab.todo %}
-{% call feedback::whattodo(todo, crate::admin::view::Tab::LabApps.href(), "Add keys") %}{% endcall %}
+{% call feedback::whattodo(todo, crate::admin::view::Tab::LabApps.href(), crate::admin::setup::ADD_KEYS) %}{% endcall %}
 {%- endif %}
 </div>
 </li>
@@ -146,15 +146,15 @@
 <div class="card">
 <div class="path-scroll">
 <div class="path">
-<ul class="path__col" aria-label="Machines">
+<ul class="path__col" aria-label="{{ crate::admin::view::Tab::Machines.label() }}">
 {%- for machine in machines %}
 {% call machine_node(machine) %}{% endcall %}
 {%- else %}
-<li class="path__item">{% call feedback::empty("No machine is running", "Add or set one up on the Setup page.") %}{% call forms::link_button(crate::admin::view::Tab::Setup.href(), "Setup", "btn--outline btn--sm") %}{% endcall %}{% endcall %}</li>
+<li class="path__item">{% call feedback::empty(crate::admin::view::format::NO_MACHINE_RUNNING, "Add or set one up on the Setup page.") %}{% call forms::link_button(crate::admin::view::Tab::Setup.href(), crate::admin::view::Tab::Setup.label(), "btn--outline btn--sm") %}{% endcall %}{% endcall %}</li>
 {%- endfor %}
 </ul>
 <div class="bus"><span class="live-dot live-dot--accent live-dot--still"></span><span class="bus__label">Analyte · reads · keeps a copy · sends</span></div>
-<ul class="path__col path__col--out" aria-label="Lab apps">
+<ul class="path__col path__col--out" aria-label="{{ crate::admin::view::Tab::LabApps.label() }}">
 {%- for lab in labs %}
 {% call lab_node(lab) %}{% endcall %}
 {%- else %}
@@ -195,7 +195,7 @@
 {%- when Value::Code { shown, exact } %}{% call code(shown, exact) %}{% endcall %}
 {%- when Value::Status(status) %}{% call status_with(status.tone, status.icon, status.word, status.exact) %}{% endcall %}{% if let Some(note) = status.note %}<span class="kv__note">{{ note }}</span>{% endif %}
 {%- when Value::Link(link) %}<span class="with-icon">{% call draw::icon(link.icon, "icon--md") %}{% endcall %}{{ link.kind }}{% if let Some(detail) = link.detail %}, <span class="mono">{{ detail }}</span>{% endif %}</span>{% if let Some(note) = link.note %}<span class="kv__note">{{ note }}</span>{% endif %}
-{%- when Value::Time(moment) %}{% if let Some(moment) = moment %}<span class="mono">{% call time(moment) %}{% endcall %}</span>{% else %}<span class="subtle">Nothing yet</span>{% endif %}
+{%- when Value::Time(moment) %}{% if let Some(moment) = moment %}<span class="mono">{% call time(moment) %}{% endcall %}</span>{% else %}<span class="subtle">{{ crate::admin::view::format::NOTHING_YET }}</span>{% endif %}
 {%- when Value::Page { href, label } %}<a class="link" href="{{ href }}">{{ label }}</a>
 {%- endmatch -%}
 </dd>
