@@ -47,6 +47,52 @@ async fn unsafe_reports_are_parked() -> Result<(), Error> {
     Ok(())
 }
 
+// HL7 2.5.1 §2.9.2.1 b and §2.15.5, table 0357 code 203; ADR 0003; AGENTS.md
+// safety rules 1 and 2: an MSH-12 we do not recognise is stored and parked, then
+// answered AR with its reason, and the connection carries the next message.
+#[tokio::test]
+async fn unsupported_version_is_rejected_and_link_stays_open() -> Result<(), Error> {
+    let original = String::from_utf8(ORU.to_vec())?;
+    let unsupported = original
+        .rewrite("|2.5.1\r", "|9.9\r")
+        .rewrite("|message1|", "|message0|");
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), false)?;
+    let program = Program::load(&path)?;
+    let (shutdown, service) = start_service(&path)?;
+    let mut peer = connect(&program).await?;
+    let limit = analyte_framing::hl7::Limit::new(1048576)?;
+    let wire = analyte_framing::hl7::encode(unsupported.as_bytes(), limit)?;
+    peer.write_all(&wire).await?;
+    let ack = String::from_utf8(read_ack(&mut peer).await?)?;
+    assert!(ack.contains("|P|2.5.1|"), "{ack}");
+    assert!(ack.contains("MSA|AR|message0\r"), "{ack}");
+    assert!(ack.contains("ERR||MSH^1^12|203|E|"), "{ack}");
+
+    peer.write_all(&analyte_framing::hl7::encode(ORU, limit)?)
+        .await?;
+    let ack = String::from_utf8(read_ack(&mut peer).await?)?;
+    assert!(ack.contains("MSA|AA|message1"), "{ack}");
+
+    let store = stored(&program)?;
+    assert!(store.receipts("")?.iter().any(|receipt| {
+        store
+            .receipt(receipt.id)
+            .ok()
+            .flatten()
+            .is_some_and(|r| r.raw == wire)
+    }));
+    assert!(
+        store
+            .parked(0)?
+            .iter()
+            .any(|parked| parked.evidence.contains("MSH-12"))
+    );
+    shutdown.send(()).map_err(|()| "shutdown")?;
+    tokio::time::timeout(HANG_GUARD, service).await???;
+    Ok(())
+}
+
 // ADR 0003 store before acknowledging; AGENTS.md safety rules 2 and 3. A message
 // near the store record bound gets a final ACK, so the machine never retransmits.
 // HL7 2.5.1 §2.9.2; ADR 0010 (2026-11-26): the larger one is stored and parked
