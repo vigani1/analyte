@@ -704,7 +704,7 @@ fn review(count: u64) -> Thing {
         // An alert raised just before the last item was resolved.
         tr("doctor-overview-items-may-need-review").into()
     } else {
-        format!("{} review", tr_count("admin-count-items-need", count))
+        tr_count("admin-count-items-need", count)
     };
     Thing::new(Subject::Review, text, Fix::Page(Tab::NeedsReview))
 }

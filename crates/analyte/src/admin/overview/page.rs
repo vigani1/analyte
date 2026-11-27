@@ -94,12 +94,9 @@ pub(super) fn title(count: usize) -> String {
     if count == 0 {
         return tr("desktop-all-good").into();
     }
-    format!(
-        "{} you",
-        tr_count(
-            "admin-count-things-need",
-            u64::try_from(count).unwrap_or(u64::MAX)
-        )
+    tr_count(
+        "admin-count-things-need",
+        u64::try_from(count).unwrap_or(u64::MAX),
     )
 }
 

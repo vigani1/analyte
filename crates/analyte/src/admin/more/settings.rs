@@ -106,12 +106,7 @@ pub(in crate::admin) async fn settings(
     let page = Settings {
         languages: if analyte_i18n::Language::installed().count() > 1 {
             analyte_i18n::Language::installed()
-                .map(|language| {
-                    (
-                        language.tag(),
-                        language == analyte_i18n::Language::current(),
-                    )
-                })
+                .map(|language| (language, language == analyte_i18n::Language::current()))
                 .collect()
         } else {
             Vec::new()

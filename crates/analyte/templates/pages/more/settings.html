@@ -4,7 +4,7 @@
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("", "Settings", crate::admin::more::page::settings_lede()) %}{% endcall %}
+{% call layout::intro_head("", analyte_i18n::text("admin-settings"), crate::admin::more::page::settings_lede()) %}{% endcall %}
 {%- for problem in problems %}
 {% call feedback::alert(crate::admin::view::Tone::Attention, problem, "") %}{% endcall %}
 {%- endfor %}
@@ -16,8 +16,8 @@
 <label for="settings-language">{{ analyte_i18n::text("admin-language") }}</label>
 <select id="settings-language" name="language">
 <option value="">{{ analyte_i18n::text("admin-browser-language") }}</option>
-{%- for (tag, selected) in languages %}
-<option value="{{ tag }}"{% if *selected %} selected{% endif %}>{{ tag }}</option>
+{%- for (language, selected) in languages %}
+<option value="{{ language.tag() }}" lang="{{ language.tag() }}"{% if *selected %} selected{% endif %}>{{ language.name() }}</option>
 {%- endfor %}
 </select>
 <button type="submit" class="btn btn--primary">{{ crate::admin::setup::save_label() }}</button>
