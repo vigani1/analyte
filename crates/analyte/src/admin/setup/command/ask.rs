@@ -4,6 +4,7 @@
 //! scripts and piped input are never prompted: a missing option is then the
 //! page's own refusal. Every answer is checked by the same code as the page's
 //! form, after it is given. Reads are bounded.
+use analyte_i18n::{message as tr_args, text as tr};
 use std::io::{self, BufRead as _, IsTerminal as _, Read as _, Write as _};
 
 /// The longest answer read for one question; a key may be 4096 bytes.
@@ -60,7 +61,11 @@ impl Ask {
         }
         drop(out);
         let only = choices.len() == 1;
-        let answer = self.line(if only { "Number [1]" } else { "Number" })?;
+        let answer = self.line(if only {
+            "Number [1]"
+        } else {
+            tr("setup-number")
+        })?;
         let number = match answer {
             None if only => 1,
             None => return Ok(None),
@@ -91,8 +96,9 @@ pub(super) fn keys(ask: Ask, names: &[&str]) -> io::Result<Vec<String>> {
         Ask::Terminal => names
             .iter()
             .map(|name| {
-                rpassword::prompt_password(format!(
-                    "{name} (nothing is shown as you type; leave empty to keep the stored one): "
+                rpassword::prompt_password(tr_args(
+                    "setup-nothing-is-shown-as-you-type-leave-empty-to",
+                    [("name", (name).to_string().into())],
                 ))
                 .map(|value| value.trim().to_owned())
             })
@@ -121,7 +127,7 @@ fn read_line(input: &mut impl io::BufRead) -> io::Result<String> {
     if line.len() as u64 >= LINE_LIMIT && !line.ends_with('\n') {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "an answer is longer than 4200 characters",
+            tr("setup-an-answer-is-longer-than-4200-characters"),
         ));
     }
     Ok(line.trim_end_matches(['\r', '\n']).to_owned())

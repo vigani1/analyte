@@ -8,6 +8,7 @@ use crate::admin::setup::Setup;
 use crate::admin::view::{Tone, format, parts::Notice};
 use analyte_config::Stack;
 use analyte_framing::{astm, hl7, vidas};
+use analyte_i18n::{count as tr_count, message as tr_args, text as tr};
 use std::net::{Ipv4Addr, SocketAddr};
 
 /// The Windows Firewall rule the installer adds (packaging/windows/install.ps1);
@@ -31,17 +32,11 @@ pub(crate) enum Route {
 
 impl Route {
     /// What to check after the test could not listen or connect.
-    pub(super) const fn failed(&self) -> &'static str {
+    pub(super) fn failed(&self) -> &'static str {
         match self {
             Self::Serial => "",
-            Self::Listens { .. } => concat!(
-                " Check that the address is one of this PC’s and that no other program uses ",
-                "the port, or go back and choose another."
-            ),
-            Self::Connects(_) => concat!(
-                " Check the machine’s address and port, that it is switched on and on the ",
-                "network, and that no firewall between this PC and the machine blocks it."
-            ),
+            Self::Listens { .. } => tr("setup-check-that-the-address-is-one-of-this-pc"),
+            Self::Connects(_) => tr("setup-check-the-machine-s-address-and-port-that-it"),
         }
     }
 }
@@ -167,35 +162,40 @@ pub(super) fn verdict(
     connected: bool,
 ) -> (Tone, String, String) {
     let data = if ended {
-        "Received data"
+        tr("setup-received-data")
     } else {
-        "Receiving data"
+        tr("setup-receiving-data")
     };
     let nothing = if ended {
-        "Nothing received"
+        tr("setup-nothing-received")
     } else {
-        format::NOTHING_RECEIVED_YET
+        format::nothing_received_yet()
     };
     let receiving = |seen: &str| {
         if fits(guess, model) {
             (
                 Tone::Good,
-                format!("{data}, looks like {}", model.name()),
-                "It starts the way this model’s format does. You can go on to the next step."
-                    .to_owned(),
+                tr_args(
+                    "setup-looks-like",
+                    [
+                        ("data", (data).to_string().into()),
+                        ("name", (model.name()).to_string().into()),
+                    ],
+                ),
+                tr("setup-it-starts-the-way-this-model-s-format-does").to_owned(),
             )
         } else {
             (
                 Tone::Problem,
-                format!(
-                    "{data}, but it looks like {seen} and this model uses {}",
-                    model.name()
+                tr_args(
+                    "setup-but-it-looks-like-and-this-model-uses",
+                    [
+                        ("data", (data).to_string().into()),
+                        ("seen", (seen).to_string().into()),
+                        ("name", (model.name()).to_string().into()),
+                    ],
                 ),
-                concat!(
-                    "The machine may be set to a different output format. Change its host ",
-                    "format setting, or go back and pick the right model."
-                )
-                .to_owned(),
+                tr("setup-the-machine-may-be-set-to-a-different-output").to_owned(),
             )
         }
     };
@@ -203,19 +203,18 @@ pub(super) fn verdict(
         Guess::Nothing if model == Family::Autolyser => (
             Tone::Attention,
             nothing.into(),
-            concat!(
-                "That is expected for this model: it waits for Analyte to ask first, and the ",
-                "test never sends anything."
-            )
-            .to_owned(),
+            tr("setup-that-is-expected-for-this-model-it-waits-for").to_owned(),
         ),
         Guess::Nothing => nothing_received(route, connected, ended),
         Guess::Family(family) => receiving(family.name()),
-        Guess::AstmOrVidas => receiving("ASTM or VIDAS"),
+        Guess::AstmOrVidas => receiving(tr("setup-astm-or-vidas")),
         Guess::Unknown => (
             Tone::Attention,
-            format!("{data}, but not in a format Analyte knows"),
-            "Check the machine’s host protocol setting.".to_owned(),
+            tr_args(
+                "setup-but-not-in-a-format-analyte-knows",
+                [("data", (data).to_string().into())],
+            ),
+            tr("setup-check-the-machine-s-host-protocol-setting").to_owned(),
         ),
     }
 }
@@ -251,7 +250,7 @@ pub(in crate::admin::setup) fn of_view(
     let (tone, title, text) = match &view.end {
         Some(listen::End::Failed(why)) => (
             Tone::Problem,
-            "The test could not run".to_owned(),
+            tr("setup-the-test-could-not-run").to_owned(),
             // Once connected, the failure was a read, not the address or port.
             format!(
                 "{}{}",
@@ -281,24 +280,16 @@ fn nothing_received(route: &Route, connected: bool, ended: bool) -> (Tone, Strin
     match route {
         Route::Serial => (
             Tone::Attention,
-            tense(format::NOTHING_RECEIVED_YET, "Nothing received"),
-            concat!(
-                "Check the cable and the machine’s host settings, then ask the machine to send ",
-                "a result again."
-            )
-            .to_owned(),
+            tense(format::nothing_received_yet(), tr("setup-nothing-received")),
+            tr("setup-check-the-cable-and-the-machine-s-host-settings").to_owned(),
         ),
         Route::Listens { .. } | Route::Connects(_) if connected => (
             Tone::Attention,
             tense(
-                "Connected, nothing received yet",
-                "Connected, but nothing received",
+                tr("setup-connected-nothing-received-yet"),
+                tr("setup-connected-but-nothing-received"),
             ),
-            concat!(
-                "The machine connected but sent nothing. Ask it to send a result again, and ",
-                "check that its host (LIS) connection is switched on."
-            )
-            .to_owned(),
+            tr("setup-the-machine-connected-but-sent-nothing-ask-it-to").to_owned(),
         ),
         Route::Listens { on, mine } => {
             let port = on.port();
@@ -309,21 +300,36 @@ fn nothing_received(route: &Route, connected: bool, ended: bool) -> (Tone, Strin
                     .collect::<Vec<_>>()
                     .join(" or ");
                 (
-                    format!("on every network card of this PC, port {port}"),
+                    tr_args(
+                        "setup-on-every-network-card-of-this-pc-port",
+                        [("port", (port).to_string().into())],
+                    ),
                     if examples.is_empty() {
-                        "this PC’s address on the machine’s network".to_owned()
+                        tr("setup-this-pc-s-address-on-the-machine-s-network-2").to_owned()
                     } else {
-                        format!("this PC’s address on the machine’s network ({examples})")
+                        tr_args(
+                            "setup-this-pc-s-address-on-the-machine-s-network",
+                            [("examples", (examples).to_string().into())],
+                        )
                     },
                 )
             } else {
-                (format!("on {}, port {port}", on.ip()), on.ip().to_string())
+                (
+                    tr_args(
+                        "setup-on-port",
+                        [
+                            ("ip", (on.ip()).to_string().into()),
+                            ("port", (port).to_string().into()),
+                        ],
+                    ),
+                    on.ip().to_string(),
+                )
             };
             (
                 Tone::Attention,
                 tense(
-                    "The machine has not connected yet",
-                    "The machine did not connect",
+                    tr("setup-the-machine-has-not-connected-yet"),
+                    tr("setup-the-machine-did-not-connect"),
                 ),
                 format!(
                     "Analyte listens {listens}. Set the machine’s host (LIS) address to {target} \
@@ -379,10 +385,13 @@ fn fits(guess: Guess, model: Family) -> bool {
 /// How many test bytes arrived, and whether the byte limit stopped the read.
 pub(in crate::admin::setup) fn received(view: &listen::View, byte_limit: usize) -> String {
     let count = u64::try_from(view.seen).unwrap_or(u64::MAX);
-    let mut received = format!("{} received", format::amount(count, "byte", "bytes"));
+    let mut received = format!("{} received", tr_count("admin-count-bytes", count));
     if view.size_limit_reached {
         let limit = format::bytes(u64::try_from(byte_limit).unwrap_or(u64::MAX));
-        received.push_str(&format!(" · reading stopped at the {limit} limit"));
+        received.push_str(&tr_args(
+            "setup-reading-stopped-at-the-limit",
+            [("limit", (limit).to_string().into())],
+        ));
     }
     received
 }
@@ -390,14 +399,16 @@ pub(in crate::admin::setup) fn received(view: &listen::View, byte_limit: usize) 
 /// The control characters observed during the test, or the empty state.
 pub(in crate::admin::setup) fn framing(bytes: &[u8]) -> String {
     if bytes.is_empty() {
-        "None yet".to_owned()
+        tr("setup-none-yet-2").to_owned()
     } else {
         format::control_names(bytes)
     }
 }
 
 /// Labels the control characters observed during a connection test.
-pub(in crate::admin::setup) const FRAMING_CHARACTERS: &str = "Framing characters";
+pub(in crate::admin::setup) fn framing_characters() -> &'static str {
+    tr("setup-framing-characters")
+}
 
 #[cfg(test)]
 mod tests {

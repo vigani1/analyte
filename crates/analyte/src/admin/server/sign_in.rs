@@ -5,6 +5,7 @@ use super::{
     windows::line::{Next, Refusal as Declined},
 };
 use crate::admin::view::{Tone, format, frame::Plain, refusal::Refusal};
+use analyte_i18n::{message as tr_args, text as tr};
 use askama::Template as _;
 use axum::{
     Extension, Form,
@@ -77,16 +78,16 @@ pub(super) enum Attempt {
 
 impl Attempt {
     /// What the page says under the key's field.
-    const fn error(self) -> Option<&'static str> {
+    fn error(self) -> Option<&'static str> {
         match self {
             Self::Open | Self::Form | Self::Windows(_) | Self::CodeSpent | Self::Browser => None,
-            Self::WrongKey => Some("This is not the admin key. Check it and try again."),
-            Self::Unreadable => Some("Analyte could not read the form. Enter the key again."),
+            Self::WrongKey => Some(tr("admin-this-is-not-the-admin-key-check-it-and")),
+            Self::Unreadable => Some(tr("admin-analyte-could-not-read-the-form-enter-the-key")),
         }
     }
 
     /// What the page says above the key's field.
-    const fn notice(self) -> Option<Notice> {
+    fn notice(self) -> Option<Notice> {
         const fn attention(title: &'static str, text: &'static str) -> Option<Notice> {
             Some(Notice::Alert {
                 tone: Tone::Attention,
@@ -94,36 +95,36 @@ impl Attempt {
                 text,
             })
         }
-        let refused = "Windows sign-in did not work";
+        let refused = tr("admin-windows-sign-in-did-not-work");
         match self {
             Self::Open | Self::WrongKey | Self::Unreadable => None,
             Self::Form => attention(
-                format::NOTHING_CHANGED,
-                "The form was sent without a signed-in session. Sign in, then open the page again and repeat what you did.",
+                format::nothing_changed(),
+                tr("admin-the-form-was-sent-without-a-signed-in-session"),
             ),
             Self::Windows(Declined::NotAllowed) => attention(
                 refused,
-                "Your Windows account is not allowed to use Analyte. Ask an administrator to add it to the Analyte users group, or sign in with the admin key.",
+                tr("admin-your-windows-account-is-not-allowed-to-use-analyte"),
             ),
             Self::Windows(Declined::BadRequest) => attention(
                 refused,
-                "The Analyte app asked in a way this engine does not understand. Sign in with the admin key, and ask IT to update the app.",
+                tr("admin-the-analyte-app-asked-in-a-way-this-engine"),
             ),
             Self::Windows(Declined::Unidentified) => attention(
                 refused,
-                "Windows could not say which account is asking. Sign in with the admin key.",
+                tr("admin-windows-could-not-say-which-account-is-asking-sign"),
             ),
             Self::Windows(Declined::Unavailable) => attention(
                 refused,
-                "Windows sign-in is not available right now. Try again in a moment, or sign in with the admin key.",
+                tr("admin-windows-sign-in-is-not-available-right-now-try"),
             ),
             Self::CodeSpent => attention(
-                "This sign-in has expired",
-                "A Windows sign-in works once, within 20 seconds. Open the Analyte app again, or sign in with the admin key.",
+                tr("admin-this-sign-in-has-expired"),
+                tr("admin-a-windows-sign-in-works-once-within-20-seconds"),
             ),
             Self::Browser => Some(Notice::Note {
-                title: "Windows sign-in works in the Analyte app",
-                text: "In a browser, sign in with the admin key.",
+                title: tr("admin-windows-sign-in-works-in-the-analyte-app"),
+                text: tr("admin-in-a-browser-sign-in-with-the-admin-key"),
             }),
         }
     }
@@ -188,7 +189,7 @@ fn sign_in_page(
     let mut response = match session {
         Ok(session) => {
             let page = Page {
-                frame: Plain::new(&state.assets, SIGN_IN),
+                frame: Plain::new(&state.assets, sign_in()),
                 csrf: session.csrf.form_value().to_owned(),
                 error: attempt.error(),
                 notice: attempt.notice(),
@@ -199,9 +200,12 @@ fn sign_in_page(
                 Ok(html) => (StatusCode::UNAUTHORIZED, Html(html)).into_response(),
                 Err(render) => Refusal::PageFailed {
                     status: StatusCode::UNAUTHORIZED,
-                    title: SIGN_IN,
-                    text: "The sign-in page could not be shown. Give the details below to support.",
-                    detail: format!("sign-in page failed: {render}"),
+                    title: sign_in(),
+                    text: tr("admin-the-sign-in-page-could-not-be-shown-give"),
+                    detail: tr_args(
+                        "admin-sign-in-page-failed",
+                        [("render", (render).to_string().into())],
+                    ),
                 }
                 .page(&state.assets),
             };
@@ -357,4 +361,6 @@ pub(super) async fn logout(
 }
 
 /// Labels the sign-in page and its action.
-pub(in crate::admin) const SIGN_IN: &str = "Sign in";
+pub(in crate::admin) fn sign_in() -> &'static str {
+    tr("admin-sign-in")
+}

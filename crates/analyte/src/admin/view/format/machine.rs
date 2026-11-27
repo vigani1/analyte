@@ -1,17 +1,18 @@
 //! Says how a machine is connected, how its link stands, and how its messages were read and delivered.
-use super::{Line, Moment, amount, delivery_look};
+use super::{Line, Moment, delivery_look, nonzero_count};
 use crate::admin::server::Connection;
 use crate::machine::link::status::{Light, Refusal};
+use analyte_i18n::{count as tr_count, message as tr_args, text as tr};
 use analyte_model::SampleId;
 use analyte_store::{DeliveryState, RecentOutcome};
 
 /// How a machine is attached, in one or two words.
-pub(in crate::admin) const fn connection_kind(connection: &Connection) -> &'static str {
+pub(in crate::admin) fn connection_kind(connection: &Connection) -> &'static str {
     match connection {
-        Connection::Serial(_) => "Serial",
-        Connection::UsbAdapter(_) => "USB adapter",
-        Connection::Listening(_) | Connection::Dialing => "Network",
-        Connection::Folder(_) => "Watched folder",
+        Connection::Serial(_) => tr("admin-serial-2"),
+        Connection::UsbAdapter(_) => tr("admin-usb-adapter"),
+        Connection::Listening(_) | Connection::Dialing => tr("admin-network"),
+        Connection::Folder(_) => tr("admin-watched-folder"),
     }
 }
 
@@ -21,41 +22,55 @@ pub(in crate::admin) const fn connection_kind(connection: &Connection) -> &'stat
 pub(in crate::admin) fn connection_detail(connection: &Connection) -> Option<String> {
     match connection {
         Connection::Serial(port) => Some(port.clone()),
-        Connection::UsbAdapter(serial) => Some(format!("serial {serial}")),
-        Connection::Listening(port) => port.map(|port| format!("port {port}")),
+        Connection::UsbAdapter(serial) => Some(tr_args(
+            "admin-serial",
+            [("serial", (serial).to_string().into())],
+        )),
+        Connection::Listening(port) => {
+            port.map(|port| tr_args("admin-port", [("port", (port).to_string().into())]))
+        }
         Connection::Dialing => None,
         Connection::Folder(folder) => Some(folder.clone()),
     }
 }
 
 /// What every page and command says about a record-only machine (ADR 0034).
-pub(crate) const RECORDING_ONLY: &str = "Recording only — nothing is sent to a lab app";
+pub(crate) fn recording_only() -> &'static str {
+    tr("admin-recording-only")
+}
 
 /// A record-only machine's counts since start, in words (ADR 0034): what it
 /// kept and how many exchanges failed; every byte of both is in the store.
 pub(crate) fn recording_counts(tally: crate::machine::link::status::Tally) -> String {
-    let count = |n: u64, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
-    format!(
-        "{} kept, {} since the start; export the recordings with analyte captures export",
-        count(tally.messages, "message", "messages"),
-        count(tally.failures, "failed exchange", "failed exchanges"),
+    tr_args(
+        "admin-kept-since-the-start-export-the-recordings-with-analyte",
+        [
+            (
+                "messages",
+                tr_count("admin-count-recorded-messages", tally.messages).into(),
+            ),
+            (
+                "exchanges",
+                tr_count("admin-count-failed-exchanges", tally.failures).into(),
+            ),
+        ],
     )
 }
 
 /// What a page says about a listening machine without `allowed_peers` (ADR 0026).
-pub(in crate::admin) const OPEN_TO_ANY: &str = "Accepts connections from any device";
+pub(in crate::admin) fn open_to_any() -> &'static str {
+    tr("admin-open-to-any")
+}
 
 /// What to do about [`OPEN_TO_ANY`].
-pub(in crate::admin) const OPEN_TO_ANY_ADVICE: &str = concat!(
-    "Any device on the lab network that reaches this port can send results as this machine. ",
-    "Edit its setup and choose “Only accept this device” after the connection test."
-);
+pub(in crate::admin) fn open_to_any_advice() -> &'static str {
+    tr("admin-open-to-any-advice")
+}
 
 /// What to check after a refused connection (ADR 0026).
-pub(in crate::admin) const REFUSED_ADVICE: &str = concat!(
-    "Only the machine should connect to this port. If this is the machine itself, its ",
-    "address changed: add the new address in its setup. If not, find that device."
-);
+pub(in crate::admin) fn refused_advice() -> &'static str {
+    tr("admin-refused-advice")
+}
 
 /// Which devices a listening machine accepts, for its page: the allowed
 /// addresses, or that any device is accepted; none for other links.
@@ -65,7 +80,7 @@ pub(in crate::admin) fn accepts(
 ) -> Option<String> {
     match (connection, allowed) {
         (Connection::Listening(_), Some(allowed)) => Some(only_devices(allowed)),
-        (Connection::Listening(_), None) => Some(ANY_DEVICE.into()),
+        (Connection::Listening(_), None) => Some(any_device().into()),
         (
             Connection::Serial(_)
             | Connection::UsbAdapter(_)
@@ -80,89 +95,76 @@ pub(in crate::admin) fn accepts(
 /// 14:32", or with its count when it tried more than once.
 pub(in crate::admin) fn refused(refusal: &Refusal, at: &str) -> String {
     if refusal.count > 1 {
-        format!(
-            "Refused {} connections from {}, the last at {at}",
-            refusal.count, refusal.peer
+        tr_args(
+            "admin-refused-connections-from-the-last-at",
+            [
+                ("count", (refusal.count).to_string().into()),
+                ("peer", (refusal.peer).to_string().into()),
+                ("at", (at).to_string().into()),
+            ],
         )
     } else {
-        format!("Refused a connection from {} at {at}", refusal.peer)
+        tr_args(
+            "admin-refused-a-connection-from-at",
+            [
+                ("peer", (refusal.peer).to_string().into()),
+                ("at", (at).to_string().into()),
+            ],
+        )
     }
 }
 
 /// One accepted difference from the standard in plain words for a lab manager:
 /// what the machine does and what Analyte does about it. The exact rule stays on
 /// hover and in the declaration under "Details for support".
-pub(in crate::admin) const fn departure(rule: &analyte_config::MachineDeparture) -> &'static str {
+pub(in crate::admin) fn departure(rule: &analyte_config::MachineDeparture) -> &'static str {
     use analyte_config::MachineDeparture as D;
     match rule {
-        D::Hl7AbsentObr25MeansFinal(_) => concat!(
-            "Leaves a report's status empty when the report is final; ",
-            "Analyte reads only an empty report status as final.",
-        ),
-        D::Hl7AbsentObx11MeansFinal(_) => concat!(
-            "Leaves a result's status empty when the result is final; ",
-            "Analyte reads only an empty result status as final.",
-        ),
+        D::Hl7AbsentObr25MeansFinal(_) => {
+            tr("admin-leaves-a-report-s-status-empty-when-the-report")
+        }
+        D::Hl7AbsentObx11MeansFinal(_) => {
+            tr("admin-leaves-a-result-s-status-empty-when-the-result")
+        }
         D::AstmAbsentH12MeansProduction(_) => {
-            "Empty H.12 in a documented upload is treated as production."
+            tr("admin-empty-h-12-in-a-documented-upload-is-treated")
         }
         D::AstmRepeatEnqAfterLostAck(_) => {
-            "One repeated ENQ before any frame can recover a lost establishment ACK."
+            tr("admin-one-repeated-enq-before-any-frame-can-recover-a")
         }
-        D::AstmPackedRecordsInFrame(_) => concat!(
-            "Puts several records in one frame; Analyte reads each record after ",
-            "the frame's check passes.",
-        ),
-        D::Hl7RecordDisplayQuery(_) => "Answer record-format HL7 barcode queries",
+        D::AstmPackedRecordsInFrame(_) => {
+            tr("admin-puts-several-records-in-one-frame-analyte-reads-each")
+        }
+        D::Hl7RecordDisplayQuery(_) => tr("admin-answer-record-format-hl7-barcode-queries"),
         D::Hl7CategorizedOruResults(_) => {
-            "Reads combined patient values and divides control uploads into their original rows."
+            tr("admin-reads-combined-patient-values-and-divides-control-uploads-into")
         }
         D::Hl7Msh16MessageCategory(_) => {
-            "Puts the upload category in MSH-16. Analyte reads that category on result uploads."
+            tr("admin-puts-the-upload-category-in-msh-16-analyte-reads")
         }
-        D::Hl7Utf8InV231(_) => concat!(
-            "Marks its text as UTF-8, a name its HL7 version did not have yet; ",
-            "Analyte reads the text as UTF-8.",
-        ),
-        D::Hl7CrLfTerminators(_) => {
-            "Ends each message line with CR LF instead of CR; Analyte reads the lines that way."
+        D::Hl7Utf8InV231(_) => tr("admin-marks-its-text-as-utf-8-a-name-its"),
+        D::Hl7CrLfTerminators(_) => tr("admin-ends-each-message-line-with-cr-lf-instead-of"),
+        D::Hl7LfTerminators(_) => tr("admin-ends-each-message-line-with-lf-instead-of-cr"),
+        D::Hl7PreserveUnsupportedEscapes(_) => {
+            tr("admin-uses-escape-codes-analyte-does-not-translate-analyte-keeps")
         }
-        D::Hl7LfTerminators(_) => {
-            "Ends each message line with LF instead of CR; Analyte reads the lines that way."
-        }
-        D::Hl7PreserveUnsupportedEscapes(_) => concat!(
-            "Uses escape codes Analyte does not translate; Analyte keeps them as written ",
-            "and never uses them to identify a sample or result.",
-        ),
-        D::AstmFrameLimit(_) => concat!(
-            "Sends frames of a size other than the standard's; Analyte accepts frames ",
-            "up to the limit in this machine's settings.",
-        ),
-        D::AstmReceiveTimeout(_) => concat!(
-            "While the machine sends, Analyte waits for each part as long as this ",
-            "machine's settings say, not the standard's default.",
-        ),
-        D::AstmSendTimeout(_) => concat!(
-            "While Analyte sends, it waits for the machine's answers as long as this ",
-            "machine's settings say, not the standard's default.",
-        ),
+        D::AstmFrameLimit(_) => tr("admin-sends-frames-of-a-size-other-than-the-standard"),
+        D::AstmReceiveTimeout(_) => tr("admin-while-the-machine-sends-analyte-waits-for-each-part"),
+        D::AstmSendTimeout(_) => tr("admin-while-analyte-sends-it-waits-for-the-machine-s"),
         D::AstmHostContentionPriority(_) => {
-            "When both sides start at the same moment, Analyte goes first instead of the machine."
+            tr("admin-when-both-sides-start-at-the-same-moment-analyte")
         }
-        D::AstmLowercaseChecksumHex(_) => concat!(
-            "Writes check digits in lowercase; Analyte accepts them only when the ",
-            "check is correct.",
-        ),
+        D::AstmLowercaseChecksumHex(_) => {
+            tr("admin-writes-check-digits-in-lowercase-analyte-accepts-them-only")
+        }
     }
 }
 
 /// What a machine's connection does that people may not expect; only a USB
 /// adapter has something to say.
-pub(in crate::admin) const fn connection_note(connection: &Connection) -> Option<&'static str> {
+pub(in crate::admin) fn connection_note(connection: &Connection) -> Option<&'static str> {
     match connection {
-        Connection::UsbAdapter(_) => Some(
-            "Found by its USB serial number, so it keeps working if Windows gives the adapter another port name.",
-        ),
+        Connection::UsbAdapter(_) => Some(tr("admin-found-by-its-usb-serial-number-so-it-keeps")),
         Connection::Serial(_)
         | Connection::Listening(_)
         | Connection::Dialing
@@ -175,15 +177,15 @@ pub(in crate::admin) const fn connection_note(connection: &Connection) -> Option
 pub(in crate::admin) fn machine_lede(model: Option<&str>, last: Option<Moment>) -> Line {
     let data = match last {
         Some(at) => Line::text(if model.is_some() {
-            "last data "
+            tr("admin-last-data-2")
         } else {
-            "Last data "
+            tr("admin-last-data-3")
         })
         .time(at),
         None => Line::text(if model.is_some() {
-            "nothing received yet"
+            tr("admin-nothing-received-yet-2")
         } else {
-            NOTHING_RECEIVED_YET
+            nothing_received_yet()
         }),
     };
     match model {
@@ -236,37 +238,32 @@ pub(in crate::admin) struct MachineCounts {
 pub(in crate::admin) fn machines_summary(counts: &MachineCounts) -> String {
     let mut parts = Vec::new();
     if counts.running == 0 {
-        parts.push(NO_MACHINE_RUNNING.to_owned());
+        parts.push(no_machine_running().to_owned());
     } else {
-        parts.push(format!(
-            "{} of {} open",
-            counts.open,
-            amount(counts.running, "link", "links")
+        parts.push(tr_args(
+            "admin-of-open",
+            [
+                ("open", (counts.open).to_string().into()),
+                (
+                    "links",
+                    (tr_count("admin-count-links", counts.running))
+                        .to_string()
+                        .into(),
+                ),
+            ],
         ));
     }
-    for (count, one, many) in [
-        (counts.problems, "problem", "problems"),
-        (
-            counts.waiting,
-            "waiting for the machine",
-            "waiting for the machine",
-        ),
-        (counts.not_set_up, "not set up yet", "not set up yet"),
-        (
-            counts.saved,
-            "starts after a restart",
-            "start after a restart",
-        ),
-        (
-            counts.removed,
-            "removed, stops at the restart",
-            "removed, stop at the restart",
-        ),
-    ] {
-        if count > 0 {
-            parts.push(amount(count, one, many));
-        }
-    }
+    parts.extend(
+        [
+            nonzero_count("admin-count-machine-problems", counts.problems),
+            nonzero_count("admin-count-machines-waiting", counts.waiting),
+            nonzero_count("admin-count-machines-awaiting-setup", counts.not_set_up),
+            nonzero_count("admin-count-machines-start-on-restart", counts.saved),
+            nonzero_count("admin-count-machines-stop-on-restart", counts.removed),
+        ]
+        .into_iter()
+        .flatten(),
+    );
     parts.join(" · ")
 }
 
@@ -274,15 +271,14 @@ pub(in crate::admin) fn machines_summary(counts: &MachineCounts) -> String {
 /// "Could not be read", or "Not read yet" when it never was.
 pub(in crate::admin) fn reading(outcome: Option<&RecentOutcome>) -> String {
     match outcome {
-        None => "Not read yet".into(),
-        Some(RecentOutcome::Failed) => "Could not be read".into(),
-        Some(RecentOutcome::Results { results: 0, .. }) => "Read · no results".into(),
+        None => tr("admin-not-read-yet").into(),
+        Some(RecentOutcome::Failed) => tr("admin-could-not-be-read").into(),
+        Some(RecentOutcome::Results { results: 0, .. }) => tr("admin-read-no-results").into(),
         Some(RecentOutcome::Results { results, .. }) => format!(
             "Read · {}",
-            amount(
-                u64::try_from(*results).unwrap_or(u64::MAX),
-                "result",
-                "results"
+            tr_count(
+                "admin-count-results",
+                u64::try_from(*results).unwrap_or(u64::MAX)
             )
         ),
     }
@@ -324,9 +320,15 @@ pub(in crate::admin) fn deliveries(
         .sum::<u64>();
     let mut words = delivery_look(worst).word.to_owned();
     if worst != DeliveryState::Done && done > 0 {
-        words.push_str(&format!(" · {done} of {total} delivered"));
+        words.push_str(&tr_args(
+            "admin-of-delivered",
+            [
+                ("done", (done).to_string().into()),
+                ("total", (total).to_string().into()),
+            ],
+        ));
     } else if worst == DeliveryState::Done && total > 1 {
-        words = format!("{total} delivered");
+        words = tr_args("admin-delivered-2", [("total", (total).to_string().into())]);
     }
     let exact = deliveries
         .iter()
@@ -358,42 +360,87 @@ pub(in crate::admin) fn link_sentence(
     machine: &str,
 ) -> String {
     match (connection, light) {
-        (Connection::Serial(port), Light::Live) => format!("Port {port} open since {since}"),
-        (Connection::Serial(port), Light::Waiting | Light::Off) => {
-            format!("Port {port} not open since {since}")
+        (Connection::Serial(port), Light::Live) => tr_args(
+            "admin-port-open-since",
+            [
+                ("port", (port).to_string().into()),
+                ("since", (since).to_string().into()),
+            ],
+        ),
+        (Connection::Serial(port), Light::Waiting | Light::Off) => tr_args(
+            "admin-port-not-open-since",
+            [
+                ("port", (port).to_string().into()),
+                ("since", (since).to_string().into()),
+            ],
+        ),
+        (Connection::UsbAdapter(serial), Light::Live) => tr_args(
+            "admin-port-of-usb-adapter-open-since",
+            [
+                ("serial", (serial).to_string().into()),
+                ("since", (since).to_string().into()),
+            ],
+        ),
+        (Connection::UsbAdapter(serial), Light::Waiting | Light::Off) => tr_args(
+            "admin-port-of-usb-adapter-not-open-since",
+            [
+                ("serial", (serial).to_string().into()),
+                ("since", (since).to_string().into()),
+            ],
+        ),
+        (Connection::Listening(port), Light::Live) => tr_args(
+            "admin-machine-connected-since",
+            [
+                ("port", (on_port(*port)).to_string().into()),
+                ("since", (since).to_string().into()),
+            ],
+        ),
+        (Connection::Listening(port), Light::Waiting) => tr_args(
+            "admin-listening-nothing-connected-since",
+            [
+                ("port", (on_port(*port)).to_string().into()),
+                ("since", (since).to_string().into()),
+            ],
+        ),
+        (Connection::Listening(port), Light::Off) => tr_args(
+            "admin-not-listening-since",
+            [
+                ("port", (on_port(*port)).to_string().into()),
+                ("since", (since).to_string().into()),
+            ],
+        ),
+        (Connection::Dialing, Light::Live) => tr_args(
+            "admin-connected-to-since",
+            [
+                ("machine", (machine).to_string().into()),
+                ("since", (since).to_string().into()),
+            ],
+        ),
+        (Connection::Dialing, Light::Waiting | Light::Off) => tr_args(
+            "admin-no-connection-to-since",
+            [
+                ("machine", (machine).to_string().into()),
+                ("since", (since).to_string().into()),
+            ],
+        ),
+        (Connection::Folder(folder), Light::Live) => {
+            tr_args("admin-watching", [("folder", (folder).to_string().into())])
         }
-        (Connection::UsbAdapter(serial), Light::Live) => {
-            format!("Port of USB adapter {serial} open since {since}")
-        }
-        (Connection::UsbAdapter(serial), Light::Waiting | Light::Off) => {
-            format!("Port of USB adapter {serial} not open since {since}")
-        }
-        (Connection::Listening(port), Light::Live) => {
-            format!("Machine connected{} since {since}", on_port(*port))
-        }
-        (Connection::Listening(port), Light::Waiting) => {
-            format!(
-                "Listening{}, nothing connected since {since}",
-                on_port(*port)
-            )
-        }
-        (Connection::Listening(port), Light::Off) => {
-            format!("Not listening{} since {since}", on_port(*port))
-        }
-        (Connection::Dialing, Light::Live) => format!("Connected to {machine} since {since}"),
-        (Connection::Dialing, Light::Waiting | Light::Off) => {
-            format!("No connection to {machine} since {since}")
-        }
-        (Connection::Folder(folder), Light::Live) => format!("Watching {folder}"),
-        (Connection::Folder(folder), Light::Waiting | Light::Off) => {
-            format!("Not watching {folder} since {since}")
-        }
+        (Connection::Folder(folder), Light::Waiting | Light::Off) => tr_args(
+            "admin-not-watching-since",
+            [
+                ("folder", (folder).to_string().into()),
+                ("since", (since).to_string().into()),
+            ],
+        ),
     }
 }
 
 /// " on port 5000", or nothing when the site file names no plain port.
 fn on_port(port: Option<u16>) -> String {
-    port.map_or_else(String::new, |port| format!(" on port {port}"))
+    port.map_or_else(String::new, |port| {
+        tr_args("admin-on-port", [("port", (port).to_string().into())])
+    })
 }
 
 /// What to check when a machine's link is not open: what Analyte cannot see.
@@ -403,18 +450,18 @@ fn on_port(port: Option<u16>) -> String {
 /// is open and nothing arrives, which the listen test says.
 pub(in crate::admin) fn link_advice(connection: &Connection) -> String {
     match connection {
-        Connection::Serial(port) => format!(
-            "Check that the USB adapter or cable is plugged into this PC, that {port} is the right port, and that no other program is using it."
+        Connection::Serial(port) => tr_args(
+            "admin-check-that-the-usb-adapter-or-cable-is-plugged",
+            [("port", (port).to_string().into())],
         ),
-        Connection::UsbAdapter(serial) => format!(
-            "Check that the USB adapter with serial {serial} is plugged into this PC and that no other program is using its port."
+        Connection::UsbAdapter(serial) => tr_args(
+            "admin-check-that-the-usb-adapter-with-serial-is-plugged",
+            [("serial", (serial).to_string().into())],
         ),
         Connection::Listening(_) | Connection::Dialing => {
-            "Check the network cable and the machine's host settings.".into()
+            tr("admin-check-the-network-cable-and-the-machine-s-host").into()
         }
-        Connection::Folder(_) => {
-            "Check that the folder exists and that Analyte's service account may read it.".into()
-        }
+        Connection::Folder(_) => tr("admin-check-that-the-folder-exists-and-that-analyte-s").into(),
     }
 }
 
@@ -428,75 +475,122 @@ pub(in crate::admin) fn driver(driver: &analyte_model::NamespacedId) -> String {
 }
 
 /// The connection accepts devices without an address restriction.
-pub(in crate::admin) const ANY_DEVICE: &str = "Any device";
+pub(in crate::admin) fn any_device() -> &'static str {
+    tr("admin-any-device")
+}
 
 /// The page's wording for the addresses a listening port accepts.
 pub(in crate::admin) fn only_devices(addresses: impl std::fmt::Display) -> String {
-    format!("Only {addresses}")
+    tr_args(
+        "admin-only",
+        [("addresses", (addresses).to_string().into())],
+    )
 }
 
 /// The state before a machine has been configured.
-pub(in crate::admin) const NOT_SET_UP: &str = "Not set up yet";
+pub(in crate::admin) fn not_set_up() -> &'static str {
+    tr("admin-not-set-up")
+}
 
 /// The state of a saved machine the engine has yet to start.
-pub(in crate::admin) const STARTS_AFTER_RESTART: &str = "Saved: starts after a restart";
+pub(in crate::admin) fn starts_after_restart() -> &'static str {
+    tr("admin-starts-after-restart")
+}
 
 /// The state of a removed machine the engine still runs.
-pub(in crate::admin) const STOPS_AT_RESTART: &str = "Removed: stops at the restart";
+pub(in crate::admin) fn stops_at_restart() -> &'static str {
+    tr("admin-stops-at-restart")
+}
 
 /// Heads the warning when machine settings cannot be read.
-pub(in crate::admin) const SETTINGS_UNREADABLE: &str = "Analyte’s settings could not be read";
+pub(in crate::admin) fn settings_unreadable() -> &'static str {
+    tr("admin-settings-unreadable")
+}
 
 /// Names the action to add a machine in Setup.
-pub(in crate::admin) const ADD_MACHINE: &str = "Add a machine";
+pub(in crate::admin) fn add_machine() -> &'static str {
+    tr("admin-add-machine")
+}
 
 /// The machine model has not been chosen.
-pub(in crate::admin) const NOT_CHOSEN: &str = "Not chosen yet";
+pub(in crate::admin) fn not_chosen() -> &'static str {
+    tr("admin-not-chosen")
+}
 
 /// The saved machine has yet to run.
-pub(in crate::admin) const NOT_RUNNING: &str = "Not running yet";
+pub(in crate::admin) fn not_running() -> &'static str {
+    tr("admin-not-running")
+}
 
 /// Heads the connection state inside Analyte.
-pub(in crate::admin) const IN_ANALYTE: &str = "In Analyte";
+pub(in crate::admin) fn in_analyte() -> &'static str {
+    tr("admin-in-analyte")
+}
 
 /// Labels the kind of connection.
-pub(in crate::admin) const CONNECTED_BY: &str = "Connected by";
+pub(in crate::admin) fn connected_by() -> &'static str {
+    tr("admin-connected-by")
+}
 
 /// Labels the devices a machine accepts.
-pub(in crate::admin) const ACCEPTS_FROM: &str = "Accepts connections from";
+pub(in crate::admin) fn accepts_from() -> &'static str {
+    tr("admin-accepts-from")
+}
 
 /// Labels the serial cable settings.
-pub(in crate::admin) const CABLE_SETTINGS: &str = "Cable settings";
+pub(in crate::admin) fn cable_settings() -> &'static str {
+    tr("admin-cable-settings")
+}
 
 /// Labels choices from the analyzer model.
-pub(in crate::admin) const ANALYZER_SETTINGS: &str = "Analyzer settings";
+pub(in crate::admin) fn analyzer_settings() -> &'static str {
+    tr("admin-analyzer-settings")
+}
 
 /// Labels when data last arrived from a machine.
-pub(in crate::admin) const LAST_DATA: &str = "Last data";
+pub(in crate::admin) fn last_data() -> &'static str {
+    tr("admin-last-data")
+}
 
 /// Labels the lab app that receives this machine’s results.
-pub(in crate::admin) const SENDS_RESULTS_TO: &str = "Sends results to";
+pub(in crate::admin) fn sends_results_to() -> &'static str {
+    tr("admin-sends-results-to")
+}
 
 /// Labels the model of a machine.
-pub(in crate::admin) const MODEL: &str = "Model";
+pub(in crate::admin) fn model() -> &'static str {
+    tr("admin-model")
+}
 
 /// Labels the configured connection.
-pub(in crate::admin) const CONNECTION: &str = "Connection";
+pub(in crate::admin) fn connection() -> &'static str {
+    tr("admin-connection")
+}
 
 /// Labels the machine associated with the settings or data.
-pub(in crate::admin) const MACHINE: &str = "Machine";
+pub(in crate::admin) fn machine() -> &'static str {
+    tr("admin-machine")
+}
 
 /// Labels the link to a machine’s details.
-pub(in crate::admin) const OPEN_MACHINE: &str = "Open the machine";
+pub(in crate::admin) fn open_machine() -> &'static str {
+    tr("admin-open-machine")
+}
 
 /// Says that the machine has sent no data in the activity being shown.
-pub(in crate::admin) const NOTHING_RECEIVED_YET: &str = "Nothing received yet";
+pub(in crate::admin) fn nothing_received_yet() -> &'static str {
+    tr("admin-nothing-received-yet")
+}
 
 /// Reports that the engine has no running machines.
-pub(in crate::admin) const NO_MACHINE_RUNNING: &str = "No machine is running";
+pub(in crate::admin) fn no_machine_running() -> &'static str {
+    tr("admin-no-machine-running")
+}
 
 /// Reports that none of the machines have been set up.
-pub(in crate::admin) const NO_MACHINE_SET_UP: &str = "No machine is set up.";
+pub(in crate::admin) fn no_machine_set_up() -> &'static str {
+    tr("admin-no-machine-set-up")
+}
 
 #[cfg(test)]
 mod tests {

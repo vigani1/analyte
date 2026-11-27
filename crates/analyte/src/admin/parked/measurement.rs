@@ -9,6 +9,7 @@ use crate::admin::view::{
     report::{Problem, Section, respond},
 };
 use crate::operator::recovery::measurement;
+use analyte_i18n::text as tr;
 use analyte_model::ResultContent;
 use analyte_store::MeasurementDecision;
 use askama::Template;
@@ -100,8 +101,10 @@ pub(in crate::admin) async fn show(
     let review = match measurement::review(&state.store, id, actor).await {
         Ok(Some(review)) => review,
         Ok(None) => {
-            return Problem::Failed("No eligible measurement comparison is available.".into())
-                .page(&state, Some(session), section);
+            return Problem::Failed(
+                tr("admin-no-eligible-measurement-comparison-is-available").into(),
+            )
+            .page(&state, Some(session), section);
         }
         Err(error) => {
             return Problem::Failed(error.to_string()).page(&state, Some(session), section);
@@ -111,11 +114,8 @@ pub(in crate::admin) async fn show(
         Evidence::from_results(&review.held),
         Evidence::from_results(&review.other),
     ) else {
-        return Problem::Failed("The retained results could not be displayed.".into()).page(
-            &state,
-            Some(session),
-            section,
-        );
+        return Problem::Failed(tr("admin-the-retained-results-could-not-be-displayed").into())
+            .page(&state, Some(session), section);
     };
     let sample = if review.suggestion {
         other.sample.clone()
@@ -126,7 +126,7 @@ pub(in crate::admin) async fn show(
         frame: Frame::new(
             &state,
             Tab::NeedsReview,
-            crate::admin::view::format::COMPARE_MEASUREMENTS,
+            crate::admin::view::format::compare_measurements(),
             None,
             Some(session),
             Timestamp::now(),

@@ -1048,11 +1048,25 @@ fn machine(
         allowed_peers: matches!(connection, Connection::Listening(_))
             .then(|| analyte_config::AllowedPeers::parse(&["192.168.1.50"]))
             .transpose()?,
-        choices: None,
+        choices: Vec::new(),
         repeated_results: None,
         cable: matches!(connection, Connection::Serial(_)).then(|| {
-            "9600 baud, 8 data bits, no parity, 1 stop bit, no flow control; as the manual suggests"
-                .to_owned()
+            (
+                analyte_config::Serial {
+                    baud: 9600,
+                    data_bits: 8,
+                    parity: analyte_config::Parity::None,
+                    stop_bits: 1,
+                    flow_control: analyte_config::FlowControl::None,
+                },
+                Some(analyte_config::SerialValues {
+                    baud: Some(9600),
+                    data_bits: Some(8),
+                    parity: Some(analyte_config::Parity::None),
+                    stop_bits: Some(1),
+                    flow_control: Some(analyte_config::FlowControl::None),
+                }),
+            )
         }),
         connection,
         lab_app: Some(Identifier::new(lab_app)?),

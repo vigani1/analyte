@@ -1,6 +1,7 @@
 //! Runs audited placement and release of indefinite retention holds.
 use crate::operator::Error;
 use crate::{deadline, installation::config::Program};
+use analyte_i18n::text as tr;
 use analyte_model::{Identifier, Reason};
 use analyte_store::{Audit, HoldTarget};
 use clap::Subcommand;
@@ -9,26 +10,35 @@ use clap::Subcommand;
 #[derive(Subcommand)]
 pub enum Command {
     /// Places or releases a hold on one receipt.
+    #[command(about = tr("cli-help-holds-command-receipt"))]
     Receipt {
         /// Host receipt UUID.
+        #[arg(help = tr("cli-help-holds-command-receipt-id"))]
         id: String,
         /// Release an existing hold instead of placing one.
+        #[arg(help = tr("cli-help-holds-command-receipt-release"))]
         #[arg(long)]
         release: bool,
         /// Required operator explanation.
+        #[arg(help = tr("cli-help-holds-command-receipt-reason"))]
         #[arg(long)]
         reason: String,
     },
     /// Places or releases a hold covering an app order and its linked receipts.
+    #[command(about = tr("cli-help-holds-command-order"))]
     Order {
         /// Destination namespace.
+        #[arg(help = tr("cli-help-holds-command-order-destination"))]
         destination: String,
         /// App order identity.
+        #[arg(help = tr("cli-help-holds-command-order-id"))]
         id: String,
         /// Release an existing hold instead of placing one.
+        #[arg(help = tr("cli-help-holds-command-receipt-release"))]
         #[arg(long)]
         release: bool,
         /// Required operator explanation.
+        #[arg(help = tr("cli-help-holds-command-receipt-reason"))]
         #[arg(long)]
         reason: String,
     },
@@ -80,6 +90,6 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
         .await;
     store.shutdown(deadline()?).await?;
     result?;
-    super::display::line("Retention hold updated.")?;
+    super::display::line(tr("cli-retention-hold-updated"))?;
     Ok(())
 }

@@ -12,6 +12,7 @@ use crate::admin::setup::{
 use crate::admin::view::format;
 use crate::machine::link::status::Link;
 use analyte_config::{DefinitionDetails, SerialSetting, TransportKind};
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_model::Identifier;
 use analyte_transport::serial;
 
@@ -31,13 +32,12 @@ pub(super) fn ask_peers(
     if Link::of(plan.validated.effective().stack()) != Link::TcpServer {
         return Ok(false);
     }
-    say(concat!(
-        "Any device that reaches this port could send results as this machine. ",
-        "Run analyte machines test to see the analyzer's address."
+    say(tr(
+        "setup-any-device-that-reaches-this-port-could-send-results",
     ))?;
-    let typed = ask.line(
-        "Only accept these devices: the analyzer's IP address (several with commas; empty accepts any device)",
-    )?;
+    let typed = ask.line(tr(
+        "setup-only-accept-these-devices-the-analyzer-s-ip-address",
+    ))?;
     draft.allowed_peers = Some(typed.unwrap_or_default());
     Ok(true)
 }
@@ -71,7 +71,8 @@ pub(super) fn fill(setup: &Setup, id: &str, draft: &mut Draft, ask: Ask) -> Resu
                     label: model_label(definition),
                 })
                 .collect();
-            draft.definition = ask.choose("Step 1, Machine: which model is it?", &choices)?;
+            draft.definition =
+                ask.choose(tr("setup-step-1-machine-which-model-is-it"), &choices)?;
             plan::model_of(&list, draft, &installed)?
         }
     };
@@ -92,9 +93,12 @@ pub(super) fn fill(setup: &Setup, id: &str, draft: &mut Draft, ask: Ask) -> Resu
                 .into_iter()
                 .map(|(value, label)| ask::Choice { value, label })
                 .collect();
-            let question = format!(
-                "Step 2, Cable: {}? The model suggests none; match the analyzer's LIS/host settings screen",
-                cable::label(setting).to_lowercase()
+            let question = tr_args(
+                "setup-step-2-cable-the-model-suggests-none-match-the",
+                [(
+                    "to-lowercase",
+                    (cable::label(setting).to_lowercase()).to_string().into(),
+                )],
             );
             let chosen = ask.choose(&question, &choices)?;
             cable::set(draft, setting, chosen);
@@ -125,7 +129,7 @@ pub(super) fn fill(setup: &Setup, id: &str, draft: &mut Draft, ask: Ask) -> Resu
                 "There is no lab app yet; add one first with: analyte lab-apps add <name> --address <https://...>",
             )?;
         }
-        draft.lab_app = ask.choose("Which lab app does it send results to?", &choices)?;
+        draft.lab_app = ask.choose(tr("setup-which-lab-app-does-it-send-results-to"), &choices)?;
     }
     Ok(asked)
 }
@@ -140,10 +144,12 @@ fn ask_model_choices(
     if definition.asks_autolyser_poll && draft.poll_seconds.is_none() {
         asked = true;
         let range = analyte_config::AUTOLYSER_POLL_SECONDS;
-        draft.poll_seconds = ask.line(&format!(
-            "Step 2, Analyzer settings: seconds between report polls ({} to {})",
-            range.start(),
-            range.end(),
+        draft.poll_seconds = ask.line(&tr_args(
+            "setup-step-2-analyzer-settings-seconds-between-report-polls-to",
+            [
+                ("start", (range.start()).to_string().into()),
+                ("end", (range.end()).to_string().into()),
+            ],
         ))?;
     }
     for choice in choices::missing(draft, &definition.choices) {
@@ -156,10 +162,17 @@ fn ask_model_choices(
                 label: choices::value_words(&value.label, value.version_evidence),
             })
             .collect();
-        let question = format!(
-            "Step 2, Analyzer settings: {}? The model suggests none; {}",
-            choice.label.as_str(),
-            choices::hint(choice.kind).to_lowercase()
+        let question = tr_args(
+            "setup-step-2-analyzer-settings-the-model-suggests-none",
+            [
+                ("label", (choice.label.as_str()).to_string().into()),
+                (
+                    "to-lowercase",
+                    (choices::hint(choice.kind).to_lowercase())
+                        .to_string()
+                        .into(),
+                ),
+            ],
         );
         if let Some(value) = ask.choose(&question, &options)? {
             draft.choices.insert(choice.name.as_str().to_owned(), value);
@@ -182,20 +195,25 @@ fn ask_recording(
             if empty(&draft.poll_seconds) {
                 asked = true;
                 let range = analyte_config::recording::POLL_SECONDS;
-                draft.poll_seconds = ask.line(&format!(
-                    "Step 2, Recording: seconds between asks for the next report ({} to {})",
-                    range.start(),
-                    range.end(),
+                draft.poll_seconds = ask.line(&tr_args(
+                    "setup-step-2-recording-seconds-between-asks-for-the-next",
+                    [
+                        ("start", (range.start()).to_string().into()),
+                        ("end", (range.end()).to_string().into()),
+                    ],
                 ))?;
             }
             if empty(&draft.controls) {
                 asked = true;
-                let options = [("yes", "Yes"), ("no", "No")].map(|(value, label)| ask::Choice {
-                    value: value.into(),
-                    label: label.into(),
-                });
+                let options =
+                    [("yes", tr("setup-yes")), ("no", tr("setup-no"))].map(|(value, label)| {
+                        ask::Choice {
+                            value: value.into(),
+                            label: label.into(),
+                        }
+                    });
                 draft.controls = ask.choose(
-                    "Step 2, Recording: do the analyzer's reports carry its controls?",
+                    tr("setup-step-2-recording-do-the-analyzer-s-reports-carry"),
                     &options,
                 )?;
             }
@@ -203,15 +221,15 @@ fn ask_recording(
         "vidas" if empty(&draft.acknowledgment) => {
             asked = true;
             let options = [
-                ("literal", "Literal (after the checksum)"),
-                ("alternate", "Alternate (after ETX)"),
+                ("literal", tr("setup-literal-after-the-checksum")),
+                ("alternate", tr("setup-alternate-after-etx")),
             ]
             .map(|(value, label)| ask::Choice {
                 value: value.into(),
                 label: label.into(),
             });
             draft.acknowledgment = ask.choose(
-                "Step 2, Recording: which acknowledgment does the VIDAS PC use?",
+                tr("setup-step-2-recording-which-acknowledgment-does-the-vidas-pc"),
                 &options,
             )?;
         }
@@ -280,8 +298,9 @@ fn ask_connection(
             let ports = match (setup.seams.ports)() {
                 Ok(ports) => ports,
                 Err(error) => {
-                    problem(&format!(
-                        "Could not list serial ports: {error}. You can enter a port name."
+                    problem(&tr_args(
+                        "setup-could-not-list-serial-ports-you-can-enter-a",
+                        [("error", (error).to_string().into())],
                     ))?;
                     Vec::new()
                 }
@@ -292,35 +311,38 @@ fn ask_connection(
                 .map(|port| ask::Choice {
                     value: port.factory_serial().map_or_else(
                         || format!("name:{}", port.name),
-                        |number| format!("usb:{number}"),
+                        |number| tr_args("setup-usb", [("number", (number).to_string().into())]),
                     ),
                     label: port_line(port, None),
                 })
                 .collect();
             choices.push(ask::Choice {
                 value: String::new(),
-                label: "Type a port name".into(),
+                label: tr("setup-type-a-port-name").into(),
             });
             match ask
-                .choose("Step 2, Connection: which serial port?", &choices)?
+                .choose(tr("setup-step-2-connection-which-serial-port"), &choices)?
                 .as_deref()
             {
-                Some("") => draft.port_name = ask.line("Port name, such as COM3")?,
+                Some("") => {
+                    draft.port_name = ask.line(tr("setup-port-name-such-as-com3"))?;
+                }
                 Some(port) => draft.port = Some(port.to_owned()),
                 None => {}
             }
         }
         TransportKind::TcpServer => {
             draft.host = ask_listen_address(setup, ask)?;
-            draft.tcp_port = ask.line("Port number, 1 to 65535")?;
+            draft.tcp_port = ask.line(tr("setup-port-number-1-to-65535"))?;
         }
         TransportKind::TcpClient => {
-            draft.host =
-                ask.line("Step 2, Connection: the machine's IP address, such as 192.168.1.20")?;
-            draft.tcp_port = ask.line("Port number, 1 to 65535")?;
+            draft.host = ask.line(tr("setup-step-2-connection-the-machine-s-ip-address-such"))?;
+            draft.tcp_port = ask.line(tr("setup-port-number-1-to-65535"))?;
         }
         TransportKind::WatchedFolder => {
-            draft.folder = ask.line("Step 2, Connection: the folder Analyte reads results from")?;
+            draft.folder = ask.line(tr(
+                "setup-step-2-connection-the-folder-analyte-reads-results-from",
+            ))?;
         }
     }
     Ok(())
@@ -345,11 +367,11 @@ fn ask_listen_address(setup: &Setup, ask: Ask) -> Result<Option<String>, Failure
         .collect();
     choices.push(ask::Choice {
         value: String::new(),
-        label: "Type an address".into(),
+        label: tr("setup-type-an-address").into(),
     });
-    let question = "Step 2, Connection: the machine connects to this PC. Which address does Analyte listen on?";
+    let question = tr("setup-step-2-connection-the-machine-connects-to-this-pc");
     Ok(match ask.choose(question, &choices)?.as_deref() {
-        Some("") => ask.line("IP address, such as 192.168.1.20")?,
+        Some("") => ask.line(tr("setup-ip-address-such-as-192-168-1-20"))?,
         chosen => chosen.map(str::to_owned),
     })
 }
@@ -358,16 +380,22 @@ fn ask_listen_address(setup: &Setup, ask: Ask) -> Result<Option<String>, Failure
 /// remembered, and the running machine that uses it, if any.
 pub(super) fn port_line(port: &serial::Listed, used_by: Option<&Identifier>) -> String {
     let remembered = match port.factory_serial() {
-        Some(number) => format!("remembered by its serial number {number} (--usb-serial {number})"),
-        None => format!(
-            "no serial number; remembered by its port name (--serial-port {})",
-            port.name
+        Some(number) => tr_args(
+            "setup-remembered-by-its-serial-number-usb-serial",
+            [("number", (number).to_string().into())],
+        ),
+        None => tr_args(
+            "setup-no-serial-number-remembered-by-its-port-name-serial",
+            [("name", (port.name).to_string().into())],
         ),
     };
     format!(
         "{} - {} - {}",
         port.name,
         port.description.as_deref().unwrap_or("unknown adapter"),
-        used_by.map_or(remembered, |holder| format!("used by {}", holder.as_str()))
+        used_by.map_or(remembered, |holder| tr_args(
+            "setup-used-by-4",
+            [("holder", (holder.as_str()).to_string().into())]
+        ))
     )
 }

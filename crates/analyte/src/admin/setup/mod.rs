@@ -52,6 +52,7 @@ use crate::installation::{
 };
 use crate::machine::link::status::Link;
 use analyte_config::Endpoint;
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_model::{Identifier, Reason};
 use analyte_transport::serial;
 use askama::Template as _;
@@ -230,90 +231,78 @@ impl Setup {
 /// Why a setup step was refused. The text is shown on the page; it never holds a key.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum SetupError {
-    #[error("no installed machine is called {0}")]
+    #[error("{}", analyte_i18n::message("setup-error-unknown-machine", [("value", (.0).to_string().into())]))]
     UnknownMachine(String),
-    #[error("choose one of the listed machine models")]
+    #[error("{}", analyte_i18n::text("setup-error-unknown-definition"))]
     UnknownDefinition,
-    #[error("this machine is not set up yet: choose its machine model first")]
+    #[error("{}", analyte_i18n::text("setup-error-no-definition-yet"))]
     NoDefinitionYet,
-    #[error(
-        "model {0} is not ready yet: facts or recordings are still missing (its README lists them)"
-    )]
+    #[error("{}", analyte_i18n::message("setup-error-blocked-definition", [("value", (.0).to_string().into())]))]
     BlockedDefinition(String),
     #[error("{0}")]
     DefinitionFile(#[from] Arc<definitions::FileError>),
-    #[error(
-        "model {0} is not ready yet, so it can only record: choose Record only (nothing is sent to a lab app) to keep its conversation"
-    )]
+    #[error("{}", analyte_i18n::message("setup-error-record-only-model", [("value", (.0).to_string().into())]))]
     RecordOnlyModel(String),
-    #[error("a record-only machine sends nothing to a lab app; leave the lab app empty")]
+    #[error("{}", analyte_i18n::text("setup-error-lab-app-while-recording"))]
     LabAppWhileRecording,
     #[error("{0}")]
     RecordingAnswer(&'static str),
     #[error("{0}")]
     Definitions(#[from] definitions::ListError),
-    #[error("the lab app address is not accepted: {0}")]
+    #[error("{}", analyte_i18n::message("setup-error-invalid-url", [("value", (.0).to_string().into())]))]
     InvalidUrl(&'static str),
-    #[error("choose the lab app this machine sends results to; add one on the Lab apps page first")]
+    #[error("{}", analyte_i18n::text("setup-error-no-lab-app-chosen"))]
     NoLabAppChosen,
-    #[error("there is no lab app called {0}; add it on the Lab apps page")]
+    #[error("{}", analyte_i18n::message("setup-error-unknown-lab-app", [("value", (.0).to_string().into())]))]
     UnknownLabApp(String),
-    #[error(
-        "lab app {0} is already set up with other settings; make them the same on the Lab apps page, then save again"
-    )]
+    #[error("{}", analyte_i18n::message("setup-error-lab-app-differs", [("value", (.0).to_string().into())]))]
     LabAppDiffers(String),
-    #[error(
-        "a lab app name uses only letters A to Z, digits, - and _ (at most 64), because it also names its keys"
-    )]
+    #[error("{}", analyte_i18n::text("setup-error-lab-app-name"))]
     LabAppName,
-    #[error("a lab app called {0} already exists; edit it, or choose another name")]
+    #[error("{}", analyte_i18n::message("setup-error-lab-app-taken", [("value", (.0).to_string().into())]))]
     LabAppTaken(String),
-    #[error("enter both keys for a new lab app: the API key and the signing key")]
+    #[error("{}", analyte_i18n::text("setup-error-keys-required"))]
     KeysRequired,
-    #[error("enter {0} as a whole number of seconds")]
+    #[error("{}", analyte_i18n::message("setup-error-invalid-number", [("value", (.0).to_string().into())]))]
     InvalidNumber(&'static str),
-    #[error("choose yes or no for sending Needs review notices")]
+    #[error("{}", analyte_i18n::text("setup-error-review-notices-choice"))]
     ReviewNoticesChoice,
-    #[error(
-        "lab app {0} is still kept in the settings of {1}; save that machine on its setup page first, which moves the lab app to the Lab apps page, then change it there"
-    )]
+    #[error("{}", analyte_i18n::message("setup-error-lab-app-in-site-file", [("value", (.0).to_string().into()), ("value-2", (.1).to_string().into())]))]
     LabAppInSiteFile(String, String),
-    #[error("lab app {0} cannot be removed: {1}")]
+    #[error("{}", analyte_i18n::message("setup-error-lab-app-in-use", [("value", (.0).to_string().into()), ("value-2", (.1).to_string().into())]))]
     LabAppInUse(String, String),
     #[error("{0}")]
     Connection(&'static str),
-    #[error("this machine model has no choice called {0}; choose only the settings step 2 shows")]
+    #[error("{}", analyte_i18n::message("setup-error-unknown-choice", [("value", (.0).to_string().into())]))]
     UnknownChoice(String),
-    #[error("choose {choice} from its list: {allowed}")]
+    #[error("{}", analyte_i18n::message("setup-error-choice-value", [("choice", (choice).to_string().into()), ("allowed", (allowed).to_string().into())]))]
     ChoiceValue { choice: String, allowed: String },
-    #[error("the form was incomplete; {0}")]
+    #[error("{}", analyte_i18n::message("setup-error-incomplete-form", [("value", (.0).to_string().into())]))]
     IncompleteForm(&'static str),
-    #[error("the {0} key is not in the expected format, so nothing was saved")]
+    #[error("{}", analyte_i18n::message("setup-error-invalid-key", [("value", (.0).to_string().into())]))]
     InvalidKey(String),
-    #[error("Analyte's main settings file cannot be read: {0}")]
+    #[error("{}", analyte_i18n::message("setup-error-program-file", [("value", (.0).to_string().into())]))]
     ProgramFile(#[source] toml::de::Error),
-    #[error("Analyte's main settings file cannot be read: {0}")]
+    #[error("{}", analyte_i18n::message("setup-error-program-file", [("value", (.0).to_string().into())]))]
     ProgramLayout(&'static str),
-    #[error("reading the machine's site file {path} failed: {source}")]
+    #[error("{}", analyte_i18n::message("setup-error-site-read", [("path", (path.display()).to_string().into()), ("source", (source).to_string().into())]))]
     SiteRead {
         path: PathBuf,
         source: Box<crate::installation::config::Error>,
     },
-    #[error("the machine's site file could not be parsed: {0}")]
+    #[error("{}", analyte_i18n::message("setup-error-site-file", [("value", (.0).to_string().into())]))]
     SiteFile(#[source] Box<analyte_config::Error>),
-    #[error(
-        "this machine's settings file cannot be read: its [destination] cannot be moved to the Lab apps page: {0}"
-    )]
+    #[error("{}", analyte_i18n::message("setup-error-site-destination", [("value", (.0).to_string().into())]))]
     SiteDestination(#[source] toml::de::Error),
-    #[error("this machine's settings file cannot be read: {0}")]
+    #[error("{}", analyte_i18n::message("setup-error-site-text", [("value", (.0).to_string().into())]))]
     SiteText(#[source] toml::ser::Error),
-    #[error("the settings are not valid: {0}")]
+    #[error("{}", analyte_i18n::message("setup-error-config", [("value", (.0).to_string().into())]))]
     Config(#[from] analyte_config::Error),
     #[error("{0}")]
     Installation(#[from] crate::installation::config::Error),
-    #[error("the saved settings did not pass the check, so the previous files were put back: {0}")]
+    #[error("{}", analyte_i18n::message("setup-error-rolled-back", [("value", (.0).to_string().into())]))]
     RolledBack(#[source] crate::installation::config::Error),
-    #[error("{operation} {path} failed: {source}")]
+    #[error("{}", analyte_i18n::message("setup-error-io", [("operation", (operation).to_string().into()), ("path", (path.display()).to_string().into()), ("source", (source).to_string().into())]))]
     Io {
         operation: &'static str,
         path: PathBuf,
@@ -321,47 +310,39 @@ pub(crate) enum SetupError {
     },
     #[error("{0}")]
     Credentials(#[from] CredentialError),
-    #[error("the settings were saved, but the keys were not stored: {0}")]
+    #[error("{}", analyte_i18n::message("setup-error-keys-not-stored", [("value", (.0).to_string().into())]))]
     KeysNotStored(CredentialError),
-    #[error(
-        "machine {0} is using this connection; the test cannot share it with the running service"
-    )]
+    #[error("{}", analyte_i18n::message("setup-error-in-use", [("value", (.0).to_string().into())]))]
     InUse(String),
-    #[error("a watched folder has no connection to listen on")]
+    #[error("{}", analyte_i18n::text("setup-error-nothing-to-listen"))]
     NothingToListen,
-    #[error("the connection test state is unavailable; restart the service")]
+    #[error("{}", analyte_i18n::text("setup-error-listen-state"))]
     ListenState,
-    #[error("the serial port settings cannot be used: {0}")]
+    #[error("{}", analyte_i18n::message("setup-error-serial-settings", [("value", (.0).to_string().into())]))]
     SerialSettings(#[source] crate::machine::protocols::Error),
     #[error("{0}")]
     Lookup(#[from] serial::Lookup),
-    #[error("the setup step stopped unexpectedly: {0}")]
+    #[error("{}", analyte_i18n::message("setup-error-join", [("value", (.0).to_string().into())]))]
     Join(#[from] tokio::task::JoinError),
-    #[error("the record of who made this change could not be written: {0}")]
+    #[error("{}", analyte_i18n::message("setup-error-audit", [("value", (.0).to_string().into())]))]
     Audit(#[source] AuditFailure),
-    #[error("the machine name is not accepted: {0}")]
+    #[error("{}", analyte_i18n::message("setup-error-invalid-name", [("value", (.0).to_string().into())]))]
     InvalidName(analyte_model::TextError),
-    #[error(
-        "a machine name uses only letters A to Z, digits, - and _, because it also names the machine's settings file"
-    )]
+    #[error("{}", analyte_i18n::text("setup-error-name-characters"))]
     NameCharacters,
-    #[error("the name {0} is one the setup page uses itself; choose another name")]
+    #[error("{}", analyte_i18n::message("setup-error-reserved-name", [("value", (.0).to_string().into())]))]
     ReservedName(String),
-    #[error("a machine called {0} is already listed; choose another name")]
+    #[error("{}", analyte_i18n::message("setup-error-name-in-use", [("value", (.0).to_string().into())]))]
     NameInUse(String),
-    #[error("the settings file {0} already belongs to machine {1}; choose another name")]
+    #[error("{}", analyte_i18n::message("setup-error-site-in-use", [("value", (.0).to_string().into()), ("value-2", (.1).to_string().into())]))]
     SiteInUse(String, String),
-    #[error(
-        "machine name {0} has stored results or history from an earlier machine. If this is the same analyzer, tick \"same analyzer\" to add it under that name; for a different analyzer choose a new name"
-    )]
+    #[error("{}", analyte_i18n::message("setup-error-history-not-confirmed", [("value", (.0).to_string().into())]))]
     HistoryNotConfirmed(String),
-    #[error(
-        "machine {0} still has unfinished work ({1}); nothing was changed. Review it on the remove page and press \"Remove anyway\" to remove the machine regardless"
-    )]
+    #[error("{}", analyte_i18n::message("setup-error-unfinished-work", [("value", (.0).to_string().into()), ("value-2", (.1).to_string().into())]))]
     UnfinishedWork(String, String),
-    #[error("Analyte's stored data could not be read: {0}")]
+    #[error("{}", analyte_i18n::message("setup-error-store", [("value", (.0).to_string().into())]))]
     Store(#[source] StoreFailure),
-    #[error("an earlier setup change failed while writing; reload the page and check the files")]
+    #[error("{}", analyte_i18n::text("setup-error-busy"))]
     Busy,
 }
 
@@ -423,9 +404,9 @@ fn machine_rows(
             let id = entry.id.get_ref();
             let running = state.setup.running(id);
             let (tone, word) = match (running, &entry.definition) {
-                (Some(_), _) => (Tone::Good, "Running"),
-                (None, None) => (Tone::Neutral, format::NOT_SET_UP),
-                (None, Some(_)) => (Tone::Attention, format::STARTS_AFTER_RESTART),
+                (Some(_), _) => (Tone::Good, tr("admin-running")),
+                (None, None) => (Tone::Neutral, format::not_set_up()),
+                (None, Some(_)) => (Tone::Attention, format::starts_after_restart()),
             };
             page::Machine {
                 id: id.clone(),
@@ -446,7 +427,7 @@ fn machine_rows(
                 id: gone.id.as_str().to_owned(),
                 links: None,
                 model: None,
-                status: status(Tone::Attention, format::STOPS_AT_RESTART),
+                status: status(Tone::Attention, format::stops_at_restart()),
                 version: settings_version(Some(gone)),
             }),
     );
@@ -483,33 +464,39 @@ fn level_and_state(definition: &Definition) -> (Hover, Status, Icon) {
     };
     match &definition.state {
         Shipped::Ready { level, .. } => (
-            hover(evidence_words(*level), format!("Evidence level: {level}")),
-            status(Tone::Good, "Ready"),
+            hover(
+                evidence_words(*level),
+                tr_args(
+                    "setup-evidence-level",
+                    [("level", (level).to_string().into())],
+                ),
+            ),
+            status(Tone::Good, tr("setup-ready")),
             Icon::Ok,
         ),
         Shipped::Blocked { record } => (
             hover(
-                "Not tested yet",
-                "Evidence level: none (blocked definition)".into(),
+                tr("setup-not-tested-yet"),
+                tr("setup-evidence-level-none-blocked-definition").into(),
             ),
             Status {
                 note: Some(if record.is_some() {
-                    "Facts or recordings are still missing; its README lists them. It can be connected to record only.".into()
+                    tr("setup-facts-or-recordings-are-still-missing-its-readme-lists").into()
                 } else {
-                    "Facts or recordings are still missing; its README lists them.".into()
+                    tr("setup-facts-or-recordings-are-still-missing-its-readme-lists-2").into()
                 }),
-                ..status(Tone::Neutral, "Not ready yet")
+                ..status(Tone::Neutral, tr("setup-not-ready-yet"))
             },
             Icon::Off,
         ),
         Shipped::Unreadable { error, .. } => (
             hover(
-                format::NOT_APPLICABLE,
-                "Evidence level unknown: the definition cannot be read".into(),
+                format::not_applicable(),
+                tr("setup-evidence-level-unknown-the-definition-cannot-be-read").into(),
             ),
             Status {
                 note: Some(format::sentence(&error.to_string())),
-                ..status(Tone::Problem, "Cannot be read")
+                ..status(Tone::Problem, tr("setup-cannot-be-read"))
             },
             Icon::Problem,
         ),
@@ -519,9 +506,9 @@ fn level_and_state(definition: &Definition) -> (Hover, Status, Icon) {
 /// How a model was checked, in words.
 fn evidence_words(level: analyte_config::EvidenceLevel) -> &'static str {
     match level {
-        analyte_config::EvidenceLevel::Documented => "Built from the manuals",
-        analyte_config::EvidenceLevel::Simulated => "Tested with a simulator",
-        analyte_config::EvidenceLevel::Proven => "Tested on the real machine",
+        analyte_config::EvidenceLevel::Documented => tr("setup-built-from-the-manuals"),
+        analyte_config::EvidenceLevel::Simulated => tr("setup-tested-with-a-simulator"),
+        analyte_config::EvidenceLevel::Proven => tr("setup-tested-on-the-real-machine"),
     }
 }
 
@@ -551,7 +538,7 @@ pub(super) async fn index(
             .collect(),
         Err(error) => vec![Notice {
             tone: Tone::Problem,
-            title: crate::admin::removed::COUNT_FAILED.into(),
+            title: crate::admin::removed::count_failed().into(),
             text: format::sentence(&error.to_string()),
         }],
     };
@@ -573,7 +560,12 @@ pub(super) async fn index(
     .await;
     let machines = listed
         .map(|(listed, models)| machine_rows(&state, &listed, models))
-        .map_err(|error| format::sentence(&format!("Analyte's settings cannot be read: {error}")));
+        .map_err(|error| {
+            format::sentence(&tr_args(
+                "setup-analyte-s-settings-cannot-be-read",
+                [("error", (error).to_string().into())],
+            ))
+        });
     let models = off_thread(&state, |state| definitions(&state.setup.seams))
         .await
         .map(|list| {
@@ -739,9 +731,7 @@ pub(crate) enum AuditFailure {
     Text(analyte_model::TextError),
     /// The admin key was sent with a session nobody signed in on, so the
     /// change would have no one to record.
-    #[error(
-        "the browser session is not signed in, so the change names no one; sign in on this page"
-    )]
+    #[error("{}", analyte_i18n::text("setup-error-not-signed-in"))]
     NotSignedIn,
     #[error(transparent)]
     Store(StoreFailure),
@@ -769,7 +759,8 @@ async fn off_thread<S: Send + Sync + 'static, T: Send + 'static>(
     work: impl FnOnce(&S) -> Result<T, SetupError> + Send + 'static,
 ) -> Result<T, SetupError> {
     let worker = state.clone();
-    tokio::task::spawn_blocking(move || work(&worker))
+    let language = analyte_i18n::Language::current();
+    tokio::task::spawn_blocking(move || language.sync_scope(|| work(&worker)))
         .await
         .map_err(SetupError::from)
         .and_then(|done| done)
@@ -789,18 +780,29 @@ fn see_other(location: &str) -> Response {
 fn copies(backups: &[PathBuf]) -> Vec<String> {
     backups
         .iter()
-        .map(|backup| format!("Copy of the old settings: {}", backup.display()))
+        .map(|backup| {
+            tr_args(
+                "setup-copy-of-the-old-settings",
+                [("backup", (backup.display()).to_string().into())],
+            )
+        })
         .collect()
 }
 
 /// What to do after a Lab app, add or remove form could not be read.
-const RELOAD: &str = "reload the page";
+fn reload_advice() -> &'static str {
+    tr("setup-reload-advice")
+}
 
 /// When saved settings start taking effect.
-const RESTART_REQUIRED: &str = "Analyte uses these settings after it restarts.";
+fn restart_required() -> &'static str {
+    tr("setup-restart-required")
+}
 
 /// Shared confirmation for a save that leaves the settings file alone.
-const SETTINGS_UNCHANGED: &str = "The settings were already the same; no file was written.";
+fn settings_unchanged() -> &'static str {
+    tr("setup-settings-unchanged")
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -832,7 +834,7 @@ pub(super) async fn restart(
         frame: Frame::new(
             &state,
             Tab::Setup,
-            RESTARTING,
+            restarting(),
             None,
             Some(&session),
             Timestamp::now(),
@@ -853,39 +855,61 @@ pub(super) async fn restart(
 }
 
 /// Confirms that setup kept a dated backup.
-pub(in crate::admin) const BACKUP_KEPT: &str = "A dated copy of the old settings was kept.";
+pub(in crate::admin) fn backup_kept() -> &'static str {
+    tr("setup-saved-backup-kept")
+}
 
 /// Explains what happens to old settings when setup removes an entry.
-pub(in crate::admin) const BACKUP_ADVICE: &str = "Analyte keeps a dated copy of the old settings.";
+pub(in crate::admin) fn backup_advice() -> &'static str {
+    tr("setup-backup-advice")
+}
 
 /// Heads the checks before a settings entry is removed.
-pub(in crate::admin) const BEFORE_REMOVAL: &str = "Before you remove it";
+pub(in crate::admin) fn before_removal() -> &'static str {
+    tr("setup-before-removal")
+}
 
 /// Explains what a reused machine name does with the earlier history.
-pub(in crate::admin) const REUSED_MACHINE_HISTORY: &str =
-    "It joins the stored history of the earlier machine with this name.";
+pub(in crate::admin) fn reused_machine_history() -> &'static str {
+    tr("setup-reused-machine-history")
+}
 
 /// Confirms that saving a machine moved its lab app into the shared list.
-pub(in crate::admin) const LAB_APP_MOVED: &str =
-    "This lab app is now kept on the Lab apps page; nothing else changed.";
+pub(in crate::admin) fn lab_app_moved() -> &'static str {
+    tr("setup-lab-app-moved")
+}
 
 /// Labels the action to remove a setup entry.
-pub(in crate::admin) const REMOVE: &str = "Remove";
+pub(in crate::admin) fn remove_label() -> &'static str {
+    tr("setup-remove")
+}
 
 /// Labels the action to save settings.
-pub(in crate::admin) const SAVE: &str = "Save";
+pub(in crate::admin) fn save_label() -> &'static str {
+    tr("setup-save")
+}
 
 /// Heads the page shown during an engine restart.
-pub(in crate::admin) const RESTARTING: &str = "Restarting";
+pub(in crate::admin) fn restarting() -> &'static str {
+    tr("setup-restarting")
+}
 
 /// Labels the action to add a lab app in Setup.
-pub(in crate::admin) const ADD_LAB_APP: &str = "Add a lab app";
+pub(in crate::admin) fn add_lab_app_label() -> &'static str {
+    tr("setup-add-lab-app")
+}
 
 /// Says the site has no lab app configured.
-pub(in crate::admin) const NO_LAB_APP: &str = "No lab app is set up yet";
+pub(in crate::admin) fn no_lab_app() -> &'static str {
+    tr("setup-no-lab-app")
+}
 
 /// Heads the warning when the lab apps file cannot be read.
-pub(in crate::admin) const LAB_APPS_UNREADABLE: &str = "The lab apps file could not be read";
+pub(in crate::admin) fn lab_apps_unreadable() -> &'static str {
+    tr("setup-lab-apps-unreadable")
+}
 
 /// Labels the action to enter lab app keys.
-pub(in crate::admin) const ADD_KEYS: &str = "Add keys";
+pub(in crate::admin) fn add_keys() -> &'static str {
+    tr("setup-add-keys")
+}

@@ -12,6 +12,7 @@ use crate::admin::view::{
     parts::ReasonDialog,
     report::{Chip, Fact, Head, Value},
 };
+use analyte_i18n::text as tr;
 
 /// A status with its own icon, such as the question mark of an order whose
 /// outcome is unknown; `note` is what was recorded, shown under it.
@@ -25,21 +26,22 @@ pub(super) struct Look {
 }
 
 /// What the Machine orders page says under its title.
-pub(super) const ORDERS_LEDE: &str = concat!(
-    "Orders from the lab app that Analyte sent to a machine, and what the machine did with ",
-    "them. Analyte never sends an order again on its own.",
-);
+pub(super) fn orders_lede() -> &'static str {
+    tr("admin-orders-lede")
+}
 
 /// The machine orders' columns.
-pub(super) const ORDER_COLUMNS: [Column; 7] = [
-    Column::text("Last change"),
-    Column::text("Order"),
-    Column::text("Sample"),
-    Column::text(crate::admin::view::format::MACHINE),
-    Column::number("Tests"),
-    Column::text("Status"),
-    Column::action("Action"),
-];
+pub(super) fn order_columns() -> [Column; 7] {
+    [
+        Column::text(tr("admin-last-change")),
+        Column::text(tr("admin-order")),
+        Column::text(tr("admin-sample")),
+        Column::text(crate::admin::view::format::machine()),
+        Column::number(tr("admin-tests")),
+        Column::text(tr("admin-status")),
+        Column::action(tr("admin-action")),
+    ]
+}
 
 /// GET /orders: the filters, then one row per order sent to a machine.
 #[derive(askama::Template)]
@@ -104,17 +106,14 @@ pub(super) struct Original {
 }
 
 /// What the order item page says about hidden notes.
-pub(super) const NOTES_HIDDEN: &str = concat!(
-    "The machine's notes are hidden because free text may contain patient data. Each time ",
-    "they are shown, Analyte first records who asked and why.",
-);
+pub(super) fn notes_hidden() -> &'static str {
+    tr("admin-notes-hidden")
+}
 
 /// What the order item page says under its title.
-pub(super) const ITEM_LEDE: &str = concat!(
-    "What the machine accepted and what it actually did are shown separately. Times keep the ",
-    "machine's own spelling and time zone; when the machine leaves a time out, the earlier one ",
-    "is kept. Messages marked as rejected were not applied.",
-);
+pub(super) fn item_lede() -> &'static str {
+    tr("admin-item-lede")
+}
 
 /// One message from the machine about the item.
 pub(super) struct Message {
@@ -137,18 +136,14 @@ pub(super) enum Notes {
 }
 
 /// What the Cancelled by machine page says under its title.
-pub(super) const CANCELLED_LEDE: &str = concat!(
-    "Order items a machine cancelled on its own. Check each one with the lab and tell the ",
-    "lab app if a sample needs running again.",
-);
+pub(super) fn cancelled_lede() -> &'static str {
+    tr("admin-cancelled-lede")
+}
 
 /// What to check about items a machine cancelled, said above them.
-pub(super) const CANCELLED_NOTICE: &str = concat!(
-    "The machine cancelled these tests on its own. That does not cancel them in the lab app, ",
-    "does not cancel the order's other tests and does not let Analyte send anything else; the ",
-    "lab app is not told automatically. If a cancel request from the lab app is pending, settle ",
-    "it with the lab app's own answer: Analyte does not count the machine's cancel as that answer.",
-);
+pub(super) fn cancelled_notice() -> &'static str {
+    tr("admin-cancelled-notice")
+}
 
 /// GET /analyzer-cancelled: one card per order item a machine cancelled.
 #[derive(askama::Template)]
@@ -176,21 +171,22 @@ pub(super) struct CancelledCard {
 }
 
 /// What the Deliveries page says under its title.
-pub(super) const DELIVERIES_LEDE: &str = concat!(
-    "Results and order messages Analyte sends to a lab app, and how each stands. Each keeps ",
-    "the same delivery number on every retry, so the lab app never files it twice.",
-);
+pub(super) fn deliveries_lede() -> &'static str {
+    tr("admin-deliveries-lede")
+}
 
 /// The deliveries' columns.
-pub(super) const DELIVERY_COLUMNS: [Column; 7] = [
-    Column::text("Queued"),
-    Column::text("Sample"),
-    Column::text("From"),
-    Column::text("To"),
-    Column::number("Results"),
-    Column::text("Outcome"),
-    Column::action("Action"),
-];
+pub(super) fn delivery_columns() -> [Column; 7] {
+    [
+        Column::text(tr("admin-queued")),
+        Column::text(tr("admin-sample")),
+        Column::text(tr("admin-from")),
+        Column::text(tr("admin-to")),
+        Column::number(tr("admin-results")),
+        Column::text(tr("admin-outcome")),
+        Column::action(tr("admin-action")),
+    ]
+}
 
 /// GET /deliveries, and the same list under the Send again dialog.
 #[derive(askama::Template)]
@@ -229,16 +225,14 @@ pub(super) struct ResendDialog {
 }
 
 /// What the Data keeping page says under its title.
-pub(super) const KEEPING_LEDE: &str = concat!(
-    "How long Analyte keeps received messages, and holds that keep chosen data until someone ",
-    "releases them.",
-);
+pub(super) fn keeping_lede() -> &'static str {
+    tr("admin-keeping-lede")
+}
 
 /// What a hold does, said above the list of holds.
-pub(super) const HOLDS_TEXT: &str = concat!(
-    "A hold keeps data from clean-up until someone releases it; it never expires. Holding an ",
-    "order also keeps its messages. When Analyte is not sure what belongs together, it keeps more.",
-);
+pub(super) fn holds_text() -> &'static str {
+    tr("admin-holds-text")
+}
 
 /// GET /retention, and the same page under the Release dialog.
 #[derive(askama::Template)]
@@ -277,16 +271,16 @@ pub(super) struct ReleaseDialog {
 }
 
 /// What the Settings page says under its title.
-pub(super) const SETTINGS_LEDE: &str = concat!(
-    "What Analyte runs with, from its program file and this PC. Read-only: machines and lab ",
-    "apps change on Setup, everything else in the program file.",
-);
+pub(super) fn settings_lede() -> &'static str {
+    tr("admin-settings-lede")
+}
 
 /// GET /settings: what Analyte runs with, read-only and never a key's value.
 #[derive(askama::Template)]
 #[template(path = "pages/more/settings.html")]
 pub(super) struct Settings {
     pub(super) frame: Frame,
+    pub(super) languages: Vec<(&'static str, bool)>,
     pub(super) engine: Vec<Fact>,
     pub(super) store: Vec<Fact>,
     pub(super) times: Vec<Fact>,

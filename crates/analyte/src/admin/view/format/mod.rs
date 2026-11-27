@@ -15,7 +15,9 @@ mod parked;
 mod time;
 mod wording;
 
-pub(in crate::admin) use activity::{FEED_UNDATED, Named, Said, events, feed_day, feed_time, said};
+use analyte_i18n::{count as tr_count, text as tr};
+
+pub(in crate::admin) use activity::{Named, Said, events, feed_day, feed_time, feed_undated, said};
 pub(in crate::admin) use history::{
     actor, arrived, outcomes, recorded, settled, settled_action, settled_line,
 };
@@ -23,41 +25,41 @@ pub(in crate::admin) use href::{
     lab_app_href, machine_href, order_item_href, parked_href, path_segment, setup_href,
 };
 pub(in crate::admin) use lab_app::{
-    LAB_APP, NOTHING_WAITING, SEND_AGAIN, WAITING_TO_SEND, failing, last_delivered, missing_keys,
-    senders, set_in_environment, set_on, waiting,
+    failing, lab_app, last_delivered, missing_keys, nothing_waiting, send_again, senders,
+    set_in_environment, set_on, waiting, waiting_to_send,
 };
 pub(in crate::admin) use look::{StateLook, attempt_look, delivery_look, execution, order_look};
 pub(in crate::admin) use machine::{
-    ACCEPTS_FROM, ADD_MACHINE, ANALYZER_SETTINGS, ANY_DEVICE, CABLE_SETTINGS, CONNECTED_BY,
-    CONNECTION, IN_ANALYTE, LAST_DATA, MACHINE, MODEL, MachineCounts, NO_MACHINE_RUNNING,
-    NO_MACHINE_SET_UP, NOT_CHOSEN, NOT_RUNNING, NOT_SET_UP, NOTHING_RECEIVED_YET, OPEN_MACHINE,
-    OPEN_TO_ANY, OPEN_TO_ANY_ADVICE, RECORDING_ONLY, REFUSED_ADVICE, SENDS_RESULTS_TO,
-    SETTINGS_UNREADABLE, STARTS_AFTER_RESTART, STOPS_AT_RESTART, accepts, connection_detail,
-    connection_kind, connection_note, control_names, deliveries, departure, driver, link_advice,
-    link_sentence, machine_lede, machines_summary, only_devices, reading, recording_counts,
-    refused, samples,
+    MachineCounts, accepts, accepts_from, add_machine, analyzer_settings, any_device,
+    cable_settings, connected_by, connection, connection_detail, connection_kind, connection_note,
+    control_names, deliveries, departure, driver, in_analyte, last_data, link_advice,
+    link_sentence, machine, machine_lede, machines_summary, model, no_machine_running,
+    no_machine_set_up, not_chosen, not_running, not_set_up, nothing_received_yet, only_devices,
+    open_machine, open_to_any, open_to_any_advice, reading, recording_counts, recording_only,
+    refused, refused_advice, samples, sends_results_to, settings_unreadable, starts_after_restart,
+    stops_at_restart,
 };
 pub(in crate::admin) use parked::{
-    AS_ARRIVED, COMPARE_MEASUREMENTS, HOW_READ, LINKED_RECORD, MARK_RESOLVED, MARKED_RESOLVED,
-    OPEN_ITEM, ORIGINAL_MESSAGE, POLL_TITLE, PROCESS_AGAIN, PROCESSED_AGAIN, SHOW_ORIGINAL,
-    explain, reason_words,
+    as_arrived, compare_measurements, explain, how_read, linked_record, mark_resolved,
+    marked_resolved, open_item, original_message, poll_title, process_again, processed_again,
+    reason_words, show_original,
 };
 pub(in crate::admin) use time::{
     Line, Moment, Part, ago, clock, countdown, duration, exact_time, limit, live_clock, local_time,
     moment, moment_unix, page_loaded, time_zone, today, today_span,
 };
 pub(in crate::admin) use wording::{
-    FAILING_ADVICE, FIRST_PAGE, KEY_NEEDED, KEY_UNCHECKED, KEYS_ADVICE, KEYS_APPLY, NOT_APPLICABLE,
-    NOT_RECORDED, NOTHING_CHANGED, NOTHING_YET, PATIENT_DATA, PATIENT_DATA_TEXT, REMOVED_ADVICE,
-    RESTART_ADVICE, RESTART_NOW, RESTORE_ADVICE, RESTORE_PAUSED, SET_UP_ADVICE, SLOW_READ, STOPPED,
-    STOPPED_SENTENCE, SUPPORT,
+    failing_advice, first_page, key_needed, key_unchecked, keys_advice, keys_apply, not_applicable,
+    not_recorded, nothing_changed, nothing_yet, patient_data, patient_data_text, removed_advice,
+    restart_advice, restart_now, restore_advice, restore_paused, set_up_advice, slow_read, stopped,
+    stopped_sentence, support,
 };
 
 /// A size such as "477 GB" or "1.5 MB"; under 1 KB it counts bytes.
 pub(in crate::admin) fn bytes(count: u64) -> String {
     const UNITS: [&str; 6] = ["KB", "MB", "GB", "TB", "PB", "EB"];
     if count < 1024 {
-        return amount(count, "byte", "bytes");
+        return tr_count("admin-count-bytes", count);
     }
     let value = u128::from(count);
     let mut unit: u128 = 1024;
@@ -91,8 +93,8 @@ pub(in crate::admin) fn machines_and_lab_apps(machines: usize, lab_apps: usize) 
     let count = |n: usize| u64::try_from(n).unwrap_or(u64::MAX);
     format!(
         "{} · {}",
-        amount(count(machines), "machine", "machines"),
-        amount(count(lab_apps), "lab app", "lab apps")
+        tr_count("admin-count-machines", count(machines)),
+        tr_count("admin-count-lab-apps", count(lab_apps))
     )
 }
 
@@ -121,19 +123,25 @@ pub(in crate::admin) fn sentence(words: &str) -> String {
 }
 
 /// "Yes" or "No".
-pub(in crate::admin) const fn yes_no(value: bool) -> &'static str {
-    if value { "Yes" } else { "No" }
+pub(in crate::admin) fn yes_no(value: bool) -> &'static str {
+    if value {
+        tr("setup-yes")
+    } else {
+        tr("setup-no")
+    }
 }
 
 /// How many tests an order or item covers: "1 test", "4 tests"; never which.
 pub(in crate::admin) fn test_count(count: usize) -> String {
-    amount(u64::try_from(count).unwrap_or(u64::MAX), "test", "tests")
+    tr_count(
+        "admin-count-tests",
+        u64::try_from(count).unwrap_or(u64::MAX),
+    )
 }
 
-/// A count with the right word: "0 results", "1 result", "2 results".
-pub(in crate::admin) fn amount(count: impl Into<u64>, one: &str, many: &str) -> String {
-    let count = count.into();
-    format!("{count} {}", if count == 1 { one } else { many })
+/// Describes a count when there is something to list.
+pub(in crate::admin) fn nonzero_count(id: &str, count: u64) -> Option<String> {
+    (count > 0).then(|| tr_count(id, count))
 }
 
 #[cfg(test)]
@@ -173,11 +181,11 @@ mod tests {
 
     #[test]
     fn counts_agree_with_their_word() {
-        assert_eq!(amount(0u64, "result", "results"), "0 results");
-        assert_eq!(amount(1u64, "result", "results"), "1 result");
-        assert_eq!(amount(2u64, "result", "results"), "2 results");
+        assert_eq!(tr_count("admin-count-results", 0u64), "0 results");
+        assert_eq!(tr_count("admin-count-results", 1u64), "1 result");
+        assert_eq!(tr_count("admin-count-results", 2u64), "2 results");
         assert_eq!(
-            amount(u64::MAX, "order", "orders"),
+            tr_count("admin-count-orders", u64::MAX),
             "18446744073709551615 orders"
         );
         assert_eq!(yes_no(true), "Yes");

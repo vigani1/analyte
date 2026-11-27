@@ -5,6 +5,7 @@
 //! change) the service. The app never runs the engine itself. `sc.exe`
 //! answers with fixed English state names and Windows error numbers, which
 //! is what is read here.
+use analyte_i18n::{message as tr_args, text as tr};
 use std::time::Duration;
 
 /// The service's name, as `install.ps1` registers it.
@@ -41,15 +42,16 @@ impl Service {
     #[must_use]
     pub fn words(&self) -> String {
         match self {
-            Self::Stopped => "The Analyte service is stopped.".into(),
-            Self::Starting => "The Analyte service is starting.".into(),
-            Self::Running => "The Analyte service runs, but its admin pages do not answer.".into(),
-            Self::Stopping => "The Analyte service is stopping.".into(),
-            Self::Other => "The Analyte service is neither running nor stopped.".into(),
-            Self::Missing => "No Analyte service is installed on this computer.".into(),
-            Self::Unreadable(why) => {
-                format!("The app could not ask Windows about the Analyte service: {why}")
-            }
+            Self::Stopped => tr("desktop-the-analyte-service-is-stopped").into(),
+            Self::Starting => tr("desktop-the-analyte-service-is-starting").into(),
+            Self::Running => tr("desktop-the-analyte-service-runs-but-its-admin-pages-do").into(),
+            Self::Stopping => tr("desktop-the-analyte-service-is-stopping").into(),
+            Self::Other => tr("desktop-the-analyte-service-is-neither-running-nor-stopped").into(),
+            Self::Missing => tr("desktop-no-analyte-service-is-installed-on-this-computer").into(),
+            Self::Unreadable(why) => tr_args(
+                "desktop-the-app-could-not-ask-windows-about-the-analyte",
+                [("why", (why).to_string().into())],
+            ),
         }
     }
 }
@@ -75,17 +77,17 @@ impl Started {
     pub fn words(&self) -> String {
         match self {
             Self::Requested => {
-                "Windows was asked to start the engine. This screen changes once it answers.".into()
+                tr("desktop-windows-was-asked-to-start-the-engine-this-screen").into()
             }
-            Self::AlreadyRunning => "Windows says the engine is already running.".into(),
-            Self::NotAllowed => concat!(
-                "Your Windows account may not start the engine. Ask an administrator ",
-                "to start the Analyte service, or to install Analyte again, which lets ",
-                "signed-in users start it."
-            )
-            .into(),
-            Self::Missing => "No Analyte service is installed on this computer.".into(),
-            Self::Failed(why) => format!("The engine could not be started: {why}"),
+            Self::AlreadyRunning => tr("desktop-windows-says-the-engine-is-already-running").into(),
+            Self::NotAllowed => {
+                tr("desktop-your-windows-account-may-not-start-the-engine-ask").into()
+            }
+            Self::Missing => tr("desktop-no-analyte-service-is-installed-on-this-computer").into(),
+            Self::Failed(why) => tr_args(
+                "desktop-the-engine-could-not-be-started",
+                [("why", (why).to_string().into())],
+            ),
         }
     }
 }
@@ -130,7 +132,7 @@ fn read_query(code: Option<i32>, text: &str) -> Service {
             "PAUSED" | "PAUSE_PENDING" | "CONTINUE_PENDING" => Some(Service::Other),
             _ => None,
         });
-    state.unwrap_or_else(|| Service::Unreadable("sc.exe named no state".into()))
+    state.unwrap_or_else(|| Service::Unreadable(tr("desktop-sc-exe-named-no-state").into()))
 }
 
 fn read_start(code: Option<i32>, text: &str) -> Started {
@@ -151,8 +153,17 @@ fn summary(code: Option<i32>, text: &str) -> String {
         .rfind(|line| !line.is_empty())
         .unwrap_or("no output");
     match code {
-        Some(code) => format!("sc.exe exit code {code}: {last}"),
-        None => format!("sc.exe stopped without an exit code: {last}"),
+        Some(code) => tr_args(
+            "desktop-sc-exe-exit-code",
+            [
+                ("code", (code).to_string().into()),
+                ("last", (last).to_string().into()),
+            ],
+        ),
+        None => tr_args(
+            "desktop-sc-exe-stopped-without-an-exit-code",
+            [("last", (last).to_string().into())],
+        ),
     }
 }
 
@@ -160,8 +171,10 @@ fn summary(code: Option<i32>, text: &str) -> String {
 /// [`LIMIT`]; gives its exit code and output. A run past the limit is
 /// stopped, and the error says so.
 async fn sc(arguments: &[&str]) -> Result<(Option<i32>, String), String> {
-    let root = std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into());
-    let program = std::path::Path::new(&root).join("System32").join("sc.exe");
+    let root = std::env::var_os(tr("desktop-systemroot")).unwrap_or_else(|| r"C:\Windows".into());
+    let program = std::path::Path::new(&root)
+        .join(tr("desktop-system32"))
+        .join(tr("desktop-sc-exe"));
     let mut command = tokio::process::Command::new(program);
     command
         .args(arguments)
@@ -175,8 +188,18 @@ async fn sc(arguments: &[&str]) -> Result<(Option<i32>, String), String> {
     }
     let output = match tokio::time::timeout(LIMIT, command.output()).await {
         Ok(Ok(output)) => output,
-        Ok(Err(error)) => return Err(format!("sc.exe could not run: {error}")),
-        Err(_) => return Err(format!("sc.exe took longer than {} s", LIMIT.as_secs())),
+        Ok(Err(error)) => {
+            return Err(tr_args(
+                "desktop-sc-exe-could-not-run",
+                [("error", (error).to_string().into())],
+            ));
+        }
+        Err(_) => {
+            return Err(tr_args(
+                "desktop-sc-exe-took-longer-than-s",
+                [("as-secs", (LIMIT.as_secs()).to_string().into())],
+            ));
+        }
     };
     let shown = output.stdout.get(..OUTPUT_LIMIT).unwrap_or(&output.stdout);
     Ok((

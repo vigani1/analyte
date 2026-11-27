@@ -8,7 +8,7 @@
 {% call layout::detail_head(head) %}{% endcall %}
 <div class="split">
 <div class="stack stack--lg grow">
-{% call layout::label_card("rd-why", "Why it’s here") %}
+{% call layout::label_card("rd-why", analyte_i18n::text("admin-why-it-s-here")) %}
 <p class="text">{{ why.lead }}{% call display::hover(why.text.shown, why.text.exact) %}{% endcall %}</p>
 {%- if let Some(todo) = todo %}
 {% call feedback::whattodo_with(todo.guidance) %}
@@ -16,7 +16,7 @@
 {% endcall %}
 {%- endif %}
 {% endcall %}
-{% call layout::titled_card("rd-linked", "Everything linked to it", "", "stack") %}
+{% call layout::titled_card("rd-linked", analyte_i18n::text("admin-everything-linked-to-it"), "", "stack") %}
 {% call display::kv() %}
 {%- for pair in linked %}
 {% call display::pair(pair.term, "") %}{% call display::words(pair.value) %}{% endcall %}{% endcall %}
@@ -30,22 +30,22 @@
 {%- endif %}
 </div>
 <div class="card__foot">
-{% call layout::disclosure(crate::admin::view::format::SHOW_ORIGINAL) %}
-<p class="muted note">The original bytes are hidden because they may contain patient data. Each time they are shown, Analyte first records who asked and why.</p>
+{% call layout::disclosure(crate::admin::view::format::show_original()) %}
+<p class="muted note">{{ analyte_i18n::text("admin-the-original-bytes-are-hidden-because-they-may-contain") }}</p>
 {%- if original.signed_in %}
 {%- for target in original.targets %}
 <div class="stack">
-<p class="text">{% call display::words(target.title) %}{% endcall %}{% if let Some(href) = target.departures %} · <a class="link" href="{{ href }}">{{ crate::admin::view::format::HOW_READ }}</a>{% endif %}</p>
+<p class="text">{% call display::words(target.title) %}{% endcall %}{% if let Some(href) = target.departures %} · <a class="link" href="{{ href }}">{{ crate::admin::view::format::how_read() }}</a>{% endif %}</p>
 {% call forms::raw_request(target.form) %}{% endcall %}
 </div>
 {%- endfor %}
 {%- else %}
-<p class="text"><a class="link" href="/login">{{ crate::admin::server::SIGN_IN }}</a> to show the original message.</p>
+<p class="text"><a class="link" href="/login">{{ crate::admin::server::sign_in() }}</a> {{ analyte_i18n::text("admin-to-show-the-original-message") }}</p>
 {%- endif %}
 {% endcall %}
 {% endcall %}
 </div>
-{% call layout::label_card("rd-hist", "History") %}
+{% call layout::label_card("rd-hist", analyte_i18n::text("admin-history")) %}
 {%- if !history.is_empty() %}
 {% call display::timeline(history) %}{% endcall %}
 {%- endif %}
@@ -54,7 +54,7 @@
 {%- endfor %}
 {% endcall %}
 </div>
-{% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::support(), support) %}{% endcall %}
 {%- if let Some(dialog) = dialog %}
 {% call forms::reason_dialog(dialog) %}{% endcall %}
 {%- endif %}

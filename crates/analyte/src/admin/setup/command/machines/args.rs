@@ -6,6 +6,7 @@ use crate::admin::setup::{
     wizard::Draft,
 };
 use analyte_config::{SerialSetting, TransportKind, recording::SiteDocument};
+use analyte_i18n::{message as tr_args, text as tr};
 
 /// A serial machine's cable settings, as step 2 chooses them (ADR 0031):
 /// match the analyzer's LIS/host settings screen. A setting not given keeps
@@ -14,18 +15,23 @@ use analyte_config::{SerialSetting, TransportKind, recording::SiteDocument};
 pub struct Cable {
     /// Serial cable: the baud rate: 300, 600, 1200, 2400, 4800, 9600, 19200,
     /// 38400, 57600 or 115200.
+    #[arg(help = tr("cli-help-args-cable-baud"))]
     #[arg(long, value_name = "RATE")]
     baud: Option<String>,
     /// Serial cable: data bits, 5 to 8.
+    #[arg(help = tr("cli-help-args-cable-data-bits"))]
     #[arg(long, value_name = "BITS")]
     data_bits: Option<String>,
     /// Serial cable: parity: none, odd or even.
+    #[arg(help = tr("cli-help-args-cable-parity"))]
     #[arg(long, value_name = "PARITY")]
     parity: Option<String>,
     /// Serial cable: stop bits, 1 or 2.
+    #[arg(help = tr("cli-help-args-cable-stop-bits"))]
     #[arg(long, value_name = "BITS")]
     stop_bits: Option<String>,
     /// Serial cable: flow control: none, hardware (RTS/CTS) or software (XON/XOFF).
+    #[arg(help = tr("cli-help-args-cable-flow-control"))]
     #[arg(long, value_name = "FLOW")]
     flow_control: Option<String>,
 }
@@ -63,30 +69,38 @@ impl Cable {
 pub struct Choice {
     /// The machine model: its key as `machines models` lists it, or
     /// `installed` to keep the current one.
+    #[arg(help = tr("cli-help-args-choice-model"))]
     #[arg(long)]
     model: Option<String>,
     /// A serial port by name, such as COM3.
+    #[arg(help = tr("cli-help-args-choice-serial-port"))]
     #[arg(long, group = "connection")]
     serial_port: Option<String>,
     /// A USB serial adapter by its serial number, so it is found in any USB socket.
+    #[arg(help = tr("cli-help-args-choice-usb-serial"))]
     #[arg(long, group = "connection")]
     usb_serial: Option<String>,
     /// The IP address of a network link (this PC's when the machine connects
     /// to Analyte, the machine's when Analyte connects to it), with --port.
+    #[arg(help = tr("cli-help-args-choice-address"))]
     #[arg(long, group = "connection", requires = "port")]
     address: Option<String>,
     /// The network port number, with --address.
+    #[arg(help = tr("cli-help-args-choice-port"))]
     #[arg(long, requires = "address")]
     port: Option<String>,
     /// The folder Analyte reads results from.
+    #[arg(help = tr("cli-help-args-choice-folder"))]
     #[arg(long, group = "connection")]
     folder: Option<String>,
     /// The lab app this machine sends results to.
+    #[arg(help = tr("cli-help-args-choice-lab-app"))]
     #[arg(long)]
     lab_app: Option<String>,
     /// For a machine that connects to Analyte: accept connections only from
     /// this device, the analyzer's own IP address; repeat for several. Any
     /// other device is refused (ADR 0026).
+    #[arg(help = tr("cli-help-args-choice-allowed-peer"))]
     #[arg(
         long = "allowed-peer",
         value_name = "IP",
@@ -95,43 +109,53 @@ pub struct Choice {
     allowed_peer: Vec<String>,
     /// For a machine that connects to Analyte: accept connections from any
     /// device again, removing its allowed devices.
+    #[arg(help = tr("cli-help-args-choice-any-device"))]
     #[arg(long)]
     any_device: bool,
     /// The serial cable settings.
+
     #[command(flatten)]
     cable: Cable,
     /// One of the model's own settings, as step 2 lists them under Analyzer
     /// settings and `machines models` names them; repeat for several. A
     /// setting not given keeps its saved value, else the model's suggestion.
+    #[arg(help = tr("cli-help-args-choice-choice"))]
     #[arg(long = "choice", value_name = "NAME=VALUE", value_parser = choice_pair)]
     choice: Vec<(String, String)>,
     /// Record only (ADR 0034): keep the analyzer talking and record every
     /// byte, for writing its definition; nothing is sent to a lab app, so no
     /// --lab-app. Also for a model not ready yet. Recordings contain patient
     /// data: export them with `analyte captures export`.
+    #[arg(help = tr("cli-help-args-choice-record-only"))]
     #[arg(long, conflicts_with_all = ["lab_app", "connect_normally"])]
     record_only: bool,
     /// Leaves record only: connect the machine normally again (needs a ready
     /// model and --lab-app). Recorded messages are never delivered.
+    #[arg(help = tr("cli-help-args-choice-connect-normally"))]
     #[arg(long)]
     connect_normally: bool,
     /// Autolyser: seconds between report polls, when the model or capture profile asks.
+    #[arg(help = tr("cli-help-args-choice-poll-seconds"))]
     #[arg(long, value_name = "SECONDS")]
     poll_seconds: Option<String>,
     /// Record only, Autolyser: whether its reports carry controls: yes or no.
+    #[arg(help = tr("cli-help-args-choice-reports-carry-controls"))]
     #[arg(long, value_name = "YES_OR_NO")]
     reports_carry_controls: Option<String>,
     /// Record only, VIDAS: the VIDAS PC acknowledgment: literal or alternate.
+    #[arg(help = tr("cli-help-args-choice-vidas-acknowledgment"))]
     #[arg(long, value_name = "MODE")]
     vidas_acknowledgment: Option<String>,
     /// Record only, for a model that asks it (cobas e 411: elecsys or cobas):
     /// the mode the analyzer's own settings show; `machines models` lists it.
+    #[arg(help = tr("cli-help-args-choice-analyzer-mode"))]
     #[arg(long, value_name = "VALUE")]
     analyzer_mode: Option<String>,
     /// Repeated results, for a normal connection: `automatic` (recommended;
     /// a resend is kept once, a correction becomes a new revision) or
     /// `always_ask` (every repeat waits in Needs review). Not given keeps the
     /// saved choice, else automatic (ADR 0035).
+    #[arg(help = tr("cli-help-args-choice-repeated-results"))]
     #[arg(long, value_name = "CHOICE")]
     repeated_results: Option<String>,
 }
@@ -189,7 +213,10 @@ impl Choice {
         }
         draft.port_name = self.serial_port.or(draft.port_name);
         if let Some(number) = self.usb_serial {
-            draft.port = Some(format!("usb:{number}"));
+            draft.port = Some(tr_args(
+                "setup-usb",
+                [("number", (number).to_string().into())],
+            ));
         }
         draft.host = self.address.or(draft.host);
         draft.tcp_port = self.port.or(draft.tcp_port);

@@ -81,13 +81,13 @@ impl KeySource {
                         Tone::Problem,
                         "Missing".into(),
                         named,
-                        Entry::Needed(format::KEY_NEEDED),
+                        Entry::Needed(format::key_needed()),
                     ),
                     Err(_) => (
                         Tone::Attention,
                         "Cannot be checked".into(),
                         named,
-                        Entry::Needed(format::KEY_UNCHECKED),
+                        Entry::Needed(format::key_unchecked()),
                     ),
                 },
             };
@@ -208,6 +208,11 @@ pub(in crate::admin::setup) fn missing_keys(
     })
     .map(|(label, _)| label)
     .collect();
-    (!missing.is_empty())
-        .then(|| format!("{} {}", format::missing_keys(&missing), format::KEYS_APPLY))
+    (!missing.is_empty()).then(|| {
+        format!(
+            "{} {}",
+            format::missing_keys(&missing),
+            format::keys_apply()
+        )
+    })
 }

@@ -24,6 +24,7 @@ use crate::admin::{
     },
 };
 use crate::machine::link::status::Link;
+use analyte_i18n::{message as tr_args, text as tr};
 use askama::Template as _;
 use axum::{
     Extension, Form,
@@ -79,22 +80,22 @@ impl Step {
         }
     }
 
-    const fn label(self) -> &'static str {
+    fn label(self) -> &'static str {
         match self {
-            Self::Machine => format::MACHINE,
-            Self::Connection => format::CONNECTION,
-            Self::Test => "Test",
-            Self::Save => crate::admin::setup::SAVE,
+            Self::Machine => format::machine(),
+            Self::Connection => format::connection(),
+            Self::Test => tr("setup-test"),
+            Self::Save => crate::admin::setup::save_label(),
         }
     }
 
     /// The button that goes back to this step to fix a refused choice.
-    const fn fix(self) -> &'static str {
+    fn fix(self) -> &'static str {
         match self {
-            Self::Machine => "Go to step 1: Machine",
-            Self::Connection => "Go to step 2: Connection",
-            Self::Test => "Go to step 3: Test",
-            Self::Save => "Go to step 4: Save",
+            Self::Machine => tr("setup-go-to-step-1-machine"),
+            Self::Connection => tr("setup-go-to-step-2-connection"),
+            Self::Test => tr("setup-go-to-step-3-test"),
+            Self::Save => tr("setup-go-to-step-4-save"),
         }
     }
 
@@ -199,7 +200,11 @@ fn wizard(id: &str, model: Option<String>, current: Option<Step>) -> Wizard {
 
 /// The frame of a step about machine `id`.
 fn frame(state: &Context, session: &Session, id: &str) -> Frame {
-    Section::Setup(Some(id)).frame(state, format!("Set up {id}"), Some(session))
+    Section::Setup(Some(id)).frame(
+        state,
+        tr_args("setup-set-up-2", [("id", (id).to_string().into())]),
+        Some(session),
+    )
 }
 
 /// A refusal that names the step to fix and links back to it with every choice kept.
@@ -214,12 +219,14 @@ pub(super) fn refused_at(
         return refused(state, Some(session), Some(id), error);
     };
     let section = Section::Setup(Some(id));
-    let title = format::NOTHING_CHANGED;
+    let title = format::nothing_changed();
     let page = Report {
-        lines: vec![format!(
-            "Fix this in step {}: {}.",
-            step.number(),
-            step.label()
+        lines: vec![tr_args(
+            "setup-fix-this-in-step",
+            [
+                ("number", (step.number()).to_string().into()),
+                ("label", (step.label()).to_string().into()),
+            ],
         )],
         links: vec![
             Button {
@@ -237,7 +244,7 @@ pub(super) fn refused_at(
             section.frame(state, title, Some(session)),
             section,
             Tone::Problem,
-            crate::admin::view::report::SETUP_STOPPED,
+            crate::admin::view::report::setup_stopped(),
             format::sentence(&error.to_string()),
         )
     };
@@ -339,7 +346,7 @@ fn render_machine(
         .filter(|model| model.key.is_none())
         .map(|kept| Choice {
             value: KEEP.to_owned(),
-            title: plain("Keep the current model".into()),
+            title: plain(tr("setup-keep-the-current-model").into()),
             meta: plain(kept.path.display().to_string()),
             status: None,
             checked: selected == KEEP,
@@ -392,7 +399,7 @@ fn render_test(
                 connection_words(link, &plan.connection),
                 link == Link::TcpClient,
             ),
-            "Start the test",
+            tr("setup-start-the-test"),
         )
     });
     Ok(TestStep {
@@ -463,21 +470,30 @@ fn offer(typed: Option<&analyte_config::AllowedPeers>, seen: Option<std::net::Ip
         (Some(typed), seen) => Accepts::Offer {
             value: typed.to_string(),
             label: if typed.addresses().len() == 1 {
-                format!("Only accept this device: {typed}")
+                tr_args(
+                    "setup-only-accept-this-device",
+                    [("typed", (typed).to_string().into())],
+                )
             } else {
-                format!("Only accept these devices: {typed}")
+                tr_args(
+                    "setup-only-accept-these-devices-2",
+                    [("typed", (typed).to_string().into())],
+                )
             },
             note: seen.filter(|seen| !typed.allows(*seen)).map(|seen| {
-                format!("The connection test saw {seen}, which is not on this list.")
+                tr_args(
+                    "setup-the-connection-test-saw-which-is-not-on-this",
+                    [("seen", (seen).to_string().into())],
+                )
             }),
         },
         (None, Some(seen)) => Accepts::Offer {
             value: seen.to_string(),
-            label: format!("Only accept this device: {seen}"),
-            note: Some(
-                "The device that connected during the test. Check that this is the machine’s own address in its network settings."
-                    .into(),
+            label: tr_args(
+                "setup-only-accept-this-device-2",
+                [("seen", (seen).to_string().into())],
             ),
+            note: Some(tr("setup-the-device-that-connected-during-the-test-check-that").into()),
         },
         (None, None) => Accepts::Any,
     }
@@ -572,10 +588,10 @@ pub(in crate::admin) async fn save(
     tracing::info!(machine = id.as_str(), "setup page saved a site file");
     let mut lines = Vec::new();
     if saved.moved {
-        lines.push(crate::admin::setup::LAB_APP_MOVED.to_owned());
+        lines.push(crate::admin::setup::lab_app_moved().to_owned());
     }
     if !saved.backups.is_empty() {
-        lines.push(crate::admin::setup::BACKUP_KEPT.into());
+        lines.push(crate::admin::setup::backup_kept().into());
     }
     let page = SaveStep {
         frame: frame(&state, &session, &id),
@@ -589,7 +605,7 @@ pub(in crate::admin) async fn save(
                     saved
                         .peers
                         .as_ref()
-                        .map_or_else(|| format::OPEN_TO_ANY.into(), format::only_devices),
+                        .map_or_else(|| format::open_to_any().into(), format::only_devices),
                     saved.peers.is_none(),
                 )
             }),
@@ -630,26 +646,39 @@ pub(in crate::admin) async fn save(
 }
 
 /// Labels the wizard’s connection test report.
-pub(in crate::admin) const CONNECTION_TEST: &str = "Connection test";
+pub(in crate::admin) fn connection_test() -> &'static str {
+    tr("setup-connection-test")
+}
 
 /// Heads the connection test step.
-pub(in crate::admin) const TEST_CONNECTION: &str = "Test the connection";
+pub(in crate::admin) fn test_connection() -> &'static str {
+    tr("setup-test-connection")
+}
 
 /// Says how the test works when Analyte connects.
-pub(in crate::admin) const CONNECTS_TO_READ: &str =
-    "Analyte connects to the machine and only reads.";
+pub(in crate::admin) fn connects_to_read() -> &'static str {
+    tr("setup-connects-to-read")
+}
 
 /// Says how the test works when the machine connects.
-pub(in crate::admin) const ONLY_LISTENS: &str = "Analyte only listens.";
+pub(in crate::admin) fn only_listens() -> &'static str {
+    tr("setup-only-listens")
+}
 
 /// Explains why a watched folder skips the connection test.
-pub(in crate::admin) const FOLDER_NOT_TESTED: &str = "Nothing to test for a watched folder";
+pub(in crate::admin) fn folder_not_tested() -> &'static str {
+    tr("setup-folder-not-tested")
+}
 
 /// Labels the PC’s address in the connection step.
-pub(in crate::admin) const PC_ADDRESS: &str = "This PC’s address";
+pub(in crate::admin) fn pc_address() -> &'static str {
+    tr("setup-pc-address")
+}
 
 /// Labels where the wizard asks for a destination.
-pub(in crate::admin) const SEND_RESULTS_TO: &str = "Send results to";
+pub(in crate::admin) fn send_results_to() -> &'static str {
+    tr("setup-send-results-to")
+}
 
 #[cfg(test)]
 mod tests {

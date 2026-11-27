@@ -1,9 +1,11 @@
 //! Holds Activity's view structs: the filters, today's counts and the lines grouped by day, as the template shows them.
 use crate::admin::view::{Tone, format::Moment, frame::Frame, icon::Icon, list::Empty};
+use analyte_i18n::text as tr;
 
 /// What the Activity page says under its title.
-pub(super) const ACTIVITY_LEDE: &str =
-    "Sample IDs and counts only. Patient names and result values never appear here.";
+pub(super) fn activity_lede() -> &'static str {
+    tr("admin-activity-lede")
+}
 
 /// GET /activity: the machine and type filters, today's count, the lines
 /// grouped by day, newest first, and the link to earlier lines.

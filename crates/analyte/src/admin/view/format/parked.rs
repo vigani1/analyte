@@ -2,6 +2,7 @@
 use crate::machine::{astm, autolyser, hl7, interpretation, law, poct, vidas};
 use analyte_config::ValueKind;
 use analyte_contract::ReplyProblem;
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_mapping::{Finding, Position, Problem, ReasonPiece, Unidentified};
 use analyte_store::{
     CANCEL_CONFLICT_REASON, MODEL_UNKNOWN_REASON, NO_RESULTS_REASON, OrderRefusal, ParkedKind,
@@ -72,24 +73,27 @@ impl Explained {
 pub(in crate::admin) fn explain(kind: ParkedKind, stored: &str) -> Explained {
     match kind {
         ParkedKind::MappingFinding => mapping_finding(stored),
-        ParkedKind::InterpretationFailure => fixed(stored, &READING_REASONS),
+        ParkedKind::InterpretationFailure => fixed(stored, &reading_reasons()),
         ParkedKind::ResultReconciliation => reconciliation(stored),
-        ParkedKind::IncompleteTransfer => fixed(stored, &TRANSFER_REASONS),
+        ParkedKind::IncompleteTransfer => fixed(stored, &transfer_reasons()),
         ParkedKind::DeliveryRejected => rejected_delivery(stored),
         // Only HTTP 409 parks a delivery as a conflict (ADR 0008).
         ParkedKind::DeliveryConflict => {
-            fixed(stored, &CONFLICT_REASONS).with_support(lab_app_answer("409"))
+            fixed(stored, &conflict_reasons()).with_support(lab_app_answer("409"))
         }
         ParkedKind::OrderVersionRefused => refused_order(stored),
-        ParkedKind::CancelConflict => fixed(stored, &CANCEL_REASONS),
-        ParkedKind::PollIntent => fixed(stored, &POLL_REASONS),
-        ParkedKind::OrderEventModelUnknown => fixed(stored, &MODEL_REASONS),
+        ParkedKind::CancelConflict => fixed(stored, &cancel_reasons()),
+        ParkedKind::PollIntent => fixed(stored, &poll_reasons()),
+        ParkedKind::OrderEventModelUnknown => fixed(stored, &model_reasons()),
     }
 }
 
 /// How the lab app answered, under "Details for support": "Lab app answer: HTTP 409".
 fn lab_app_answer(status: &str) -> String {
-    format!("Lab app answer: HTTP {status}")
+    tr_args(
+        "admin-lab-app-answer-http",
+        [("status", (status).to_string().into())],
+    )
 }
 
 /// A fixed reason the code writes, its title and its sentence.
@@ -108,129 +112,140 @@ fn fixed(stored: &str, known: &[Fixed]) -> Explained {
 /// field zero means the whole record.
 fn place(position: Position) -> String {
     match position {
-        Position { record, field: 0 } => format!("record {record}"),
-        Position { record, field } => format!("record {record}, field {field}"),
+        Position { record, field: 0 } => {
+            tr_args("admin-record", [("record", (record).to_string().into())])
+        }
+        Position { record, field } => tr_args(
+            "admin-record-field-2",
+            [
+                ("record", (record).to_string().into()),
+                ("field", (field).to_string().into()),
+            ],
+        ),
     }
 }
 
 /// The title and sentence of a mapping problem found at `at`.
 fn problem_words(problem: &Problem, at: Position) -> (&'static str, String) {
     let at = place(at);
+    let location = || [("at", at.as_str().into())];
     match problem {
         Problem::MissingTest => (
-            "Test code missing",
-            format!("The machine sent no test code in {at}."),
+            tr("admin-test-code-missing"),
+            tr_args("admin-the-machine-sent-no-test-code-in", location()),
         ),
         Problem::MissingSample => (
-            "Sample ID missing",
-            format!("The message has no sample ID in {at}."),
+            tr("admin-sample-id-missing"),
+            tr_args("admin-the-message-has-no-sample-id-in", location()),
         ),
         Problem::MissingIdentity { .. } => (
-            IDENTITY_MISSING,
-            format!(
-                "The value this machine’s settings use to tell results apart is missing in {at}."
+            tr("admin-identity-missing"),
+            tr_args(
+                "admin-the-value-this-machine-s-settings-use-to-tell",
+                location(),
             ),
         ),
         Problem::ValueKindMismatch { expected } => (
-            "Value is not the expected kind",
-            match expected {
-                ValueKind::Numeric => format!(
-                    "The value in {at} is not a number, but this machine’s definition \
-                     expects a number for this test code."
-                ),
-                ValueKind::Coded => format!(
-                    "The value in {at} is not a code, but this machine’s definition \
-                     expects a code for this test code."
-                ),
-                ValueKind::Either => format!(
-                    "The value in {at} is neither a number nor a code, but this machine’s \
-                     definition expects one of the two for this test code."
-                ),
-            },
+            tr("admin-value-is-not-the-expected-kind"),
+            kind_mismatch(*expected, &at),
         ),
         Problem::ComponentParts => (
-            "Test code parts do not match",
-            format!(
-                "The test code in {at} does not split into the parts this machine’s \
-                 definition names."
-            ),
+            tr("admin-test-code-parts-do-not-match"),
+            tr_args("admin-the-test-code-in-does-not-split-into-the", location()),
         ),
         Problem::UnsupportedValue => (
-            "Value cannot be read",
-            format!("The value in {at} is of a kind Analyte cannot read safely."),
+            tr("admin-value-cannot-be-read"),
+            tr_args("admin-the-value-in-is-of-a-kind-analyte-cannot", location()),
         ),
         Problem::UnsupportedFormatting => (
-            "Text with formatting codes",
-            format!(
-                "The text in {at} carries formatting codes; Analyte keeps them as sent and \
-                 does not turn them into plain text."
+            tr("admin-text-with-formatting-codes"),
+            tr_args(
+                "admin-the-text-in-carries-formatting-codes-analyte-keeps-them",
+                location(),
             ),
         ),
         Problem::UnsupportedEscape => (
-            "Escape code not agreed",
-            format!(
-                "The text in {at} uses an escape code that this machine’s settings do not \
-                 say how to read."
+            tr("admin-escape-code-not-agreed"),
+            tr_args(
+                "admin-the-text-in-uses-an-escape-code-that-this",
+                location(),
             ),
         ),
         Problem::UnknownProcessing => (
-            "Processing mode unknown",
-            format!("The processing mode in {at} is missing or not one Analyte knows."),
-        ),
-        Problem::ConflictingClassification => (
-            "Result classified more than one way",
-            format!(
-                "This machine’s quality control rules give the result in {at} more than one \
-                 classification."
+            tr("admin-processing-mode-unknown"),
+            tr_args(
+                "admin-the-processing-mode-in-is-missing-or-not-one",
+                location(),
             ),
         ),
-        Problem::NoObservations => ("No results in the message", NO_RESULTS.to_owned()),
+        Problem::ConflictingClassification => (
+            tr("admin-result-classified-more-than-one-way"),
+            tr_args(
+                "admin-this-machine-s-quality-control-rules-give-the-result",
+                location(),
+            ),
+        ),
+        Problem::NoObservations => (
+            tr("admin-no-results-in-the-message"),
+            tr("admin-message-holds-no-results").to_owned(),
+        ),
         Problem::UnsupportedLawStatusOnly => (
-            "Status-only update",
-            format!(
-                "The message in {at} only changes a result’s status, and Analyte cannot \
-                 record such updates yet."
+            tr("admin-status-only-update"),
+            tr_args(
+                "admin-the-message-in-only-changes-a-result-s-status",
+                location(),
             ),
         ),
         Problem::InvalidTime => (
-            "Time cannot be read",
-            format!("The time in {at} could not be read; the text as sent is kept."),
+            tr("admin-time-cannot-be-read"),
+            tr_args("admin-the-time-in-could-not-be-read-the-text", location()),
         ),
         Problem::UnqualifiedHl7Report => (
-            "Result report incomplete",
-            format!(
-                "The result report in {at} lacks a field, or a result status, that a report \
-                 must have."
-            ),
+            tr("admin-result-report-incomplete"),
+            tr_args("admin-the-result-report-in-lacks-a-field-or-a", location()),
         ),
         Problem::DepartureConflict => departure_conflict(&at),
         Problem::IncompleteAstmReport => (
-            "Incomplete ASTM report",
-            "The analyzer did not report normal completion.".to_owned(),
+            tr("admin-incomplete-astm-report"),
+            tr("admin-the-analyzer-did-not-report-normal-completion").to_owned(),
         ),
-        Problem::DerivedStatusContract => (DERIVED_STATUS.0, DERIVED_STATUS.1.to_owned()),
+        Problem::DerivedStatusContract => (derived_status().0, derived_status().1.to_owned()),
     }
 }
 
-const NO_RESULTS: &str = "The message holds no results.";
+fn kind_mismatch(expected: ValueKind, at: &str) -> String {
+    match expected {
+        ValueKind::Numeric => tr_args(
+            "admin-the-value-in-is-not-a-number-but-this",
+            [("at", (at).to_string().into())],
+        ),
+        ValueKind::Coded => tr_args(
+            "admin-the-value-in-is-not-a-code-but-this",
+            [("at", (at).to_string().into())],
+        ),
+        ValueKind::Either => tr_args(
+            "admin-the-value-in-is-neither-a-number-nor-a",
+            [("at", (at).to_string().into())],
+        ),
+    }
+}
 
 fn departure_conflict(at: &str) -> (&'static str, String) {
     (
-        "Result status not final",
-        format!(
-            "The result status in {at} is not final, but this machine is set up as sending \
-             final results only."
+        tr("admin-result-status-not-final"),
+        tr_args(
+            "admin-the-result-status-in-is-not-final-but-this",
+            [("at", (at).to_string().into())],
         ),
     )
 }
 
-const DERIVED_STATUS: (&str, &str) = (
-    "Final status cannot be sent",
-    concat!(
-        "The result’s final status comes from what this machine is documented to send, not ",
-        "from the message, and the lab app contract in use cannot say so.",
-    ),
-);
+fn derived_status() -> (&'static str, &'static str) {
+    (
+        tr("admin-final-status-cannot-be-sent"),
+        tr("admin-the-result-s-final-status-comes-from-what-this"),
+    )
+}
 
 fn mapping_finding(stored: &str) -> Explained {
     if let Some(finding) = Finding::from_stored(stored) {
@@ -242,227 +257,211 @@ fn mapping_finding(stored: &str) -> Explained {
         return Explained::said(title, sentence);
     }
     if stored == interpretation::DERIVED_STATUS_REASON {
-        return Explained::said(DERIVED_STATUS.0, DERIVED_STATUS.1);
+        return Explained::said(derived_status().0, derived_status().1);
     }
     Unidentified::from_stored(stored).map_or_else(Explained::as_stored, unidentified)
 }
 
 /// Why a result has no identity, in words.
 fn unidentified(reason: Unidentified) -> Explained {
-    const MISSING: &str = IDENTITY_MISSING;
+    let missing = tr("admin-identity-missing");
     match reason {
         Unidentified::Missing { setting, position } => {
             let (title, sentence) = problem_words(&Problem::MissingIdentity { setting }, position);
             Explained::said(title, sentence)
         }
         Unidentified::AutolyserRun => Explained::said(
-            MISSING,
-            "This machine sends no run number that stays the same, and its patient code is not \
-             a trusted sample ID, so Analyte cannot tell this result apart from others.",
+            missing,
+            tr("admin-this-machine-sends-no-run-number-that-stays-the"),
         ),
         Unidentified::PoctRepeated => Explained::said(
-            "Result identity repeated",
-            "Two results in this message would have the same identity, and no sub-ID tells them \
-             apart.",
+            tr("admin-result-identity-repeated"),
+            tr("admin-two-results-in-this-message-would-have-the-same"),
         ),
         Unidentified::PoctEvidence => Explained::said(
-            MISSING,
-            "The device, time or sequence number that this machine’s settings use to tell \
-             results apart is missing.",
+            missing,
+            tr("admin-the-device-time-or-sequence-number-that-this-machine"),
         ),
         Unidentified::PoctSequence => Explained::said(
-            "Result identity not trusted",
-            "This machine’s sequence numbers can start over, so they cannot tell results apart \
-             without a trusted run and revision.",
+            tr("admin-result-identity-not-trusted"),
+            tr("admin-this-machine-s-sequence-numbers-can-start-over-so"),
         ),
         Unidentified::VidasLiteral => Explained::said(
-            MISSING,
-            "This machine’s messages carry no trusted result or run identity, and do not say \
-             whether a result is a patient or a quality control result.",
+            missing,
+            tr("admin-this-machine-s-messages-carry-no-trusted-result-or"),
         ),
     }
 }
 
 /// The fixed reasons a message that could not be read is parked with.
-const READING_REASONS: [Fixed; 15] = [
-    (
-        NO_RESULTS_REASON,
-        "Processing again produced no results",
-        "Processing the message again with the current settings produced no results.",
-    ),
-    (
-        astm::CONFLICT_REASON,
-        "Piece resent with other content",
-        "The machine sent the same numbered piece of a message twice, with different content.",
-    ),
-    (
-        astm::UNSOLICITED_REASON,
-        "Piece arrived out of turn",
-        "A piece of a message arrived when no transfer from the machine was open.",
-    ),
-    (
-        hl7::UNSOLICITED_REASON,
-        "Message not expected",
-        "A message arrived that Analyte did not expect, or while too many messages were waiting.",
-    ),
-    (
-        law::INTERRUPTED_REASON,
-        "Processing interrupted",
-        "Processing of this message stopped before it was confirmed as complete.",
-    ),
-    (
-        law::policy::WORK_CONFLICT_REASON,
-        "Returned work differs from the order sent",
-        "The work the machine returned differs from the order Analyte sent it.",
-    ),
-    (
-        law::policy::MAPPING_REFUSAL,
-        "Results held back for review",
-        concat!(
-            "Part of this message needs review, and this machine’s results are recorded all ",
-            "together or not at all, so none of them were recorded.",
+fn reading_reasons() -> [Fixed; 15] {
+    [
+        (
+            NO_RESULTS_REASON,
+            tr("admin-processing-again-produced-no-results"),
+            tr("admin-processing-the-message-again-with-the-current-settings-produced"),
         ),
-    ),
-    (
-        law::policy::BATCH_CONFLICT_REASON,
-        "Results conflict with earlier ones",
-        concat!(
-            "Results in this message conflict with results this machine sent earlier, so none ",
-            "of them were recorded.",
+        (
+            astm::CONFLICT_REASON,
+            tr("admin-piece-resent-with-other-content"),
+            tr("admin-the-machine-sent-the-same-numbered-piece-of-a"),
         ),
-    ),
-    (
-        poct::LIMIT_REASON,
-        "Message too large",
-        "The message was larger than the size limit for this machine.",
-    ),
-    (
-        poct::CANCELLED_REASON,
-        MESSAGE_CUT_OFF,
-        "The connection was stopped while the message was arriving; the part that arrived is kept.",
-    ),
-    (
-        poct::DEADLINE_REASON,
-        "Message not finished in time",
-        "The machine did not finish sending the message in time; the part that arrived is kept.",
-    ),
-    (
-        poct::INCOMPLETE_REASON,
-        MESSAGE_CUT_OFF,
-        concat!(
-            "The connection timed out or closed before the message was complete; the part that ",
-            "arrived is kept.",
+        (
+            astm::UNSOLICITED_REASON,
+            tr("admin-piece-arrived-out-of-turn"),
+            tr("admin-a-piece-of-a-message-arrived-when-no-transfer"),
         ),
-    ),
-    (
-        poct::DEFERRED_REASON,
-        "Message arrived while busy",
-        concat!(
-            "The message arrived while too many messages were waiting to be stored, so Analyte ",
-            "kept it here without reading it.",
+        (
+            hl7::UNSOLICITED_REASON,
+            tr("admin-message-not-expected"),
+            tr("admin-a-message-arrived-that-analyte-did-not-expect-or"),
         ),
-    ),
-    (
-        vidas::SUFFIX_REASON,
-        "Check characters do not match",
-        "The check characters at the end of the message do not match its content.",
-    ),
-    (
-        vidas::INCOMPLETE_REASON,
-        "Transfer cut off or refused",
-        "The transfer from the machine did not finish, or was refused; what arrived is kept.",
-    ),
-];
+        (
+            law::INTERRUPTED_REASON,
+            tr("admin-processing-interrupted"),
+            tr("admin-processing-of-this-message-stopped-before-it-was-confirmed"),
+        ),
+        (
+            law::policy::WORK_CONFLICT_REASON,
+            tr("admin-returned-work-differs-from-the-order-sent"),
+            tr("admin-the-work-the-machine-returned-differs-from-the-order"),
+        ),
+        (
+            law::policy::MAPPING_REFUSAL,
+            tr("admin-results-held-back-for-review"),
+            tr("admin-part-of-this-message-needs-review-and-this-machine"),
+        ),
+        (
+            law::policy::BATCH_CONFLICT_REASON,
+            tr("admin-results-conflict-with-earlier-ones"),
+            tr("admin-results-in-this-message-conflict-with-results-this-machine"),
+        ),
+        (
+            poct::LIMIT_REASON,
+            tr("admin-message-too-large"),
+            tr("admin-the-message-was-larger-than-the-size-limit-for"),
+        ),
+        (
+            poct::CANCELLED_REASON,
+            tr("admin-message-cut-off"),
+            tr("admin-the-connection-was-stopped-while-the-message-was-arriving"),
+        ),
+        (
+            poct::DEADLINE_REASON,
+            tr("admin-message-not-finished-in-time"),
+            tr("admin-the-machine-did-not-finish-sending-the-message-in"),
+        ),
+        (
+            poct::INCOMPLETE_REASON,
+            tr("admin-message-cut-off"),
+            tr("admin-the-connection-timed-out-or-closed-before-the-message"),
+        ),
+        (
+            poct::DEFERRED_REASON,
+            tr("admin-message-arrived-while-busy"),
+            tr("admin-the-message-arrived-while-too-many-messages-were-waiting"),
+        ),
+        (
+            vidas::SUFFIX_REASON,
+            tr("admin-check-characters-do-not-match"),
+            tr("admin-the-check-characters-at-the-end-of-the-message"),
+        ),
+        (
+            vidas::INCOMPLETE_REASON,
+            tr("admin-transfer-cut-off-or-refused"),
+            tr("admin-the-transfer-from-the-machine-did-not-finish-or"),
+        ),
+    ]
+}
 
 /// The fixed reason an edited result is parked with when nothing shows what changed.
-const EDITED_REASONS: [Fixed; 1] = [(
-    poct::EDIT_GUARD_REASON,
-    "Edited result kept for review",
-    concat!(
-        "The machine sent an edited result whose content looks unchanged, so Analyte cannot ",
-        "tell what was edited.",
-    ),
-)];
+fn edited_reasons() -> [Fixed; 1] {
+    [(
+        poct::EDIT_GUARD_REASON,
+        tr("admin-edited-result-kept-for-review"),
+        tr("admin-the-machine-sent-an-edited-result-whose-content-looks"),
+    )]
+}
 
 /// The fixed reasons an unfinished transfer is parked with.
-const TRANSFER_REASONS: [Fixed; 2] = [
-    (
-        astm::CUT_OFF_REASON,
-        "Transfer cut off",
-        "The machine stopped sending before the message was complete; the pieces that arrived are kept.",
-    ),
-    (
-        astm::STOPPED_REASON,
-        "Transfer cut off by a stop",
-        "Analyte stopped while the machine was sending; the pieces it had confirmed are kept.",
-    ),
-];
+fn transfer_reasons() -> [Fixed; 2] {
+    [
+        (
+            astm::CUT_OFF_REASON,
+            tr("admin-transfer-cut-off"),
+            tr("admin-the-machine-stopped-sending-before-the-message-was-complete"),
+        ),
+        (
+            astm::STOPPED_REASON,
+            tr("admin-transfer-cut-off-by-a-stop"),
+            tr("admin-analyte-stopped-while-the-machine-was-sending-the-pieces"),
+        ),
+    ]
+}
 
 /// The fixed reason a conflicting delivery is parked with when the lab app gave no detail.
-const CONFLICT_REASONS: [Fixed; 1] = [(
-    analyte_sink::CONFLICT_REASON,
-    "Lab app already has different content",
-    "The lab app already holds different content under this delivery’s ID.",
-)];
+fn conflict_reasons() -> [Fixed; 1] {
+    [(
+        analyte_sink::CONFLICT_REASON,
+        tr("admin-lab-app-already-has-different-content"),
+        tr("admin-the-lab-app-already-holds-different-content-under-this"),
+    )]
+}
 
-const CANCEL_REASONS: [Fixed; 1] = [(
-    CANCEL_CONFLICT_REASON,
-    "Machine’s cancel answers disagree",
-    concat!(
-        "The machine answered that it could not cancel a test that it had earlier reported ",
-        "as cancelled on its own.",
-    ),
-)];
+fn cancel_reasons() -> [Fixed; 1] {
+    [(
+        CANCEL_CONFLICT_REASON,
+        tr("admin-machine-s-cancel-answers-disagree"),
+        tr("admin-the-machine-answered-that-it-could-not-cancel-a"),
+    )]
+}
 
-const MODEL_REASONS: [Fixed; 1] = [(
-    MODEL_UNKNOWN_REASON,
-    "Order event not sent",
-    concat!(
-        "This order was stored before Analyte kept each order's machine model, so its ",
-        "event to the lab app cannot name the model. The order's state on this page is ",
-        "kept; tell the lab app that state.",
-    ),
-)];
+fn model_reasons() -> [Fixed; 1] {
+    [(
+        MODEL_UNKNOWN_REASON,
+        tr("admin-order-event-not-sent"),
+        tr("admin-this-order-was-stored-before-analyte-kept-each-order"),
+    )]
+}
 
 /// What an open request for a machine's next results is called, as its category and its title.
-pub(in crate::admin) const POLL_TITLE: &str = "Request for results not settled";
+pub(in crate::admin) fn poll_title() -> &'static str {
+    tr("admin-poll-title")
+}
 
-const POLL_REASONS: [Fixed; 1] = [(
-    autolyser::POLL_REASON,
-    POLL_TITLE,
-    concat!(
-        "Analyte asked this machine for its next results, and the machine may count them as ",
-        "sent before their answer was safely stored.",
-    ),
-)];
+fn poll_reasons() -> [Fixed; 1] {
+    [(
+        autolyser::POLL_REASON,
+        poll_title(),
+        tr("admin-analyte-asked-this-machine-for-its-next-results-and"),
+    )]
+}
 
 fn reconciliation(stored: &str) -> Explained {
     if stored == poct::EDIT_GUARD_REASON {
-        return fixed(stored, &EDITED_REASONS);
+        return fixed(stored, &edited_reasons());
     }
     let kept = |what: &str| {
         Explained::said(
-            "Result kept for review",
-            format!(
-                "The result was recorded as {what}, but kept for review: it has no sample ID, \
-                 or it holds a value Analyte cannot read safely."
+            tr("admin-result-kept-for-review"),
+            tr_args(
+                "admin-the-result-was-recorded-as-but-kept-for-review",
+                [("what", (what).to_string().into())],
             ),
         )
     };
     match reconciled_outcome(stored) {
         Some(RevisionOutcome::Conflict) => Explained::said(
-            "Result differs from an earlier one",
-            "A result came with other content under the same identity as an earlier result, \
-             and nothing marks it as a correction.",
+            tr("admin-result-differs-from-an-earlier-one"),
+            tr("admin-a-result-came-with-other-content-under-the-same"),
         ),
         Some(RevisionOutcome::Unresolved) => Explained::said(
-            IDENTITY_MISSING,
-            "The message does not give this result an identity, so Analyte cannot tell whether \
-             it is new, repeated or a correction.",
+            tr("admin-identity-missing"),
+            tr("admin-the-message-does-not-give-this-result-an-identity"),
         ),
         Some(RevisionOutcome::New(_)) => kept("new"),
         Some(RevisionOutcome::Correction(_)) => kept("a correction"),
-        Some(RevisionOutcome::Retransmission(_)) => kept("already received"),
+        Some(RevisionOutcome::Retransmission(_)) => kept(tr("admin-already-received")),
         None => Explained::as_stored(),
     }
 }
@@ -471,28 +470,24 @@ fn rejected_delivery(stored: &str) -> Explained {
     const UNREADABLE: &str = "Lab app’s answer could not be read";
     if stored == analyte_sink::UNSUPPORTED_CONTRACT_REASON {
         return Explained::said(
-            "Delivery stored for another contract",
-            "The delivery was stored for a lab app contract version that this version of \
-             Analyte cannot send.",
+            tr("admin-delivery-stored-for-another-contract"),
+            tr("admin-the-delivery-was-stored-for-a-lab-app-contract"),
         );
     }
     match ReplyProblem::from_stored(stored) {
         Some(ReplyProblem::InvalidSuccess) => Explained::said(
             UNREADABLE,
-            "The lab app answered that it took the delivery, but its answer does not follow \
-             the lab app contract, so Analyte does not count it as delivered.",
+            tr("admin-the-lab-app-answered-that-it-took-the-delivery"),
         )
         .with_support(lab_app_answer("200")),
         Some(ReplyProblem::InvalidError) => Explained::said(
             UNREADABLE,
-            "The lab app refused the delivery, but its answer does not follow the lab app \
-             contract, so its reason is not known.",
+            tr("admin-the-lab-app-refused-the-delivery-but-its-answer"),
         )
         .with_support(lab_app_answer("400 or 422")),
         Some(ReplyProblem::UnexpectedStatus(status)) => Explained::said(
-            "Unexpected answer from the lab app",
-            "The lab app gave an answer that the lab app contract does not define for a \
-             delivery.",
+            tr("admin-unexpected-answer-from-the-lab-app"),
+            tr("admin-the-lab-app-gave-an-answer-that-the-lab"),
         )
         .with_support(lab_app_answer(&status.to_string())),
         None => Explained::as_stored(),
@@ -502,17 +497,20 @@ fn rejected_delivery(stored: &str) -> Explained {
 fn refused_order(stored: &str) -> Explained {
     match OrderRefusal::from_stored(stored) {
         Some(OrderRefusal::Older { offered, kept }) => Explained::said(
-            "Older order version refused",
-            format!(
-                "The lab app sent version {offered} of an order after Analyte already had \
-                 version {kept}; Analyte kept version {kept}."
+            tr("admin-older-order-version-refused"),
+            tr_args(
+                "admin-the-lab-app-sent-version-of-an-order-after",
+                [
+                    ("offered", (offered).to_string().into()),
+                    ("kept", (kept).to_string().into()),
+                ],
             ),
         ),
         Some(OrderRefusal::ChangedContent { kept }) => Explained::said(
-            "Changed order refused",
-            format!(
-                "The lab app sent other content under version {kept} of an order that Analyte \
-                 already had; Analyte kept its copy."
+            tr("admin-changed-order-refused"),
+            tr_args(
+                "admin-the-lab-app-sent-other-content-under-version-of",
+                [("kept", (kept).to_string().into())],
             ),
         ),
         None => Explained::as_stored(),
@@ -520,43 +518,59 @@ fn refused_order(stored: &str) -> Explained {
 }
 
 /// Heads the details of how a stored message was read.
-pub(in crate::admin) const HOW_READ: &str = "How this message was read";
+pub(in crate::admin) fn how_read() -> &'static str {
+    tr("admin-how-read")
+}
 
 /// Labels the screen for comparing related measurements.
-pub(in crate::admin) const COMPARE_MEASUREMENTS: &str = "Compare measurements";
+pub(in crate::admin) fn compare_measurements() -> &'static str {
+    tr("admin-compare-measurements")
+}
 
 /// Labels the action to mark a review item resolved.
-pub(in crate::admin) const MARK_RESOLVED: &str = "Mark resolved";
+pub(in crate::admin) fn mark_resolved() -> &'static str {
+    tr("admin-mark-resolved")
+}
 
 /// Labels the action to reprocess a review item.
-pub(in crate::admin) const PROCESS_AGAIN: &str = "Process again";
+pub(in crate::admin) fn process_again() -> &'static str {
+    tr("admin-process-again")
+}
 
 /// The recorded action of marking a review item resolved.
-pub(in crate::admin) const MARKED_RESOLVED: &str = "Marked resolved";
+pub(in crate::admin) fn marked_resolved() -> &'static str {
+    tr("admin-marked-resolved")
+}
 
 /// The recorded action of reprocessing a review item.
-pub(in crate::admin) const PROCESSED_AGAIN: &str = "Processed again";
+pub(in crate::admin) fn processed_again() -> &'static str {
+    tr("admin-processed-again")
+}
 
 /// Labels the link to a stored item.
-pub(in crate::admin) const OPEN_ITEM: &str = "Open the item";
+pub(in crate::admin) fn open_item() -> &'static str {
+    tr("admin-open-item")
+}
 
 /// Labels a linked record in a review item.
-pub(in crate::admin) const LINKED_RECORD: &str = "Linked record";
+pub(in crate::admin) fn linked_record() -> &'static str {
+    tr("admin-linked-record")
+}
 
 /// Labels the action to show the original pieces.
-pub(in crate::admin) const AS_ARRIVED: &str = "Show the pieces as they arrived";
+pub(in crate::admin) fn as_arrived() -> &'static str {
+    tr("admin-as-arrived")
+}
 
 /// Labels the original bytes of a stored message.
-pub(in crate::admin) const ORIGINAL_MESSAGE: &str = "Original message";
+pub(in crate::admin) fn original_message() -> &'static str {
+    tr("admin-original-message")
+}
 
 /// Labels the action to show a stored message.
-pub(in crate::admin) const SHOW_ORIGINAL: &str = "Show the original message";
-
-/// Heads reports of missing result identity.
-const IDENTITY_MISSING: &str = "Result identity missing";
-
-/// Heads reports of incomplete messages.
-const MESSAGE_CUT_OFF: &str = "Message cut off";
+pub(in crate::admin) fn show_original() -> &'static str {
+    tr("admin-show-original")
+}
 
 #[cfg(test)]
 mod tests {

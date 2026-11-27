@@ -1,6 +1,7 @@
 //! Restarts exhausted notification attempts with an explicit audited operator decision.
 use crate::operator::Error;
 use crate::{deadline, installation::config::Program};
+use analyte_i18n::text as tr;
 use analyte_model::{Identifier, Reason};
 
 /// Retries retained exhausted alerts for a configured endpoint, preserving all bytes.
@@ -35,6 +36,8 @@ pub async fn retry(
         .await;
     store.shutdown(deadline()?).await?;
     result?;
-    super::display::line("Exhausted alert events queued with original identities.")?;
+    super::display::line(tr(
+        "cli-exhausted-alert-events-queued-with-original-identities",
+    ))?;
     Ok(())
 }

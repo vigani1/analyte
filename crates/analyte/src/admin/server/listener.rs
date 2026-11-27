@@ -1,4 +1,5 @@
 //! Caps concurrent HTTP connections and their entire wire lifetime.
+use analyte_i18n::text as tr;
 use std::{
     future::Future as _,
     io,
@@ -146,7 +147,7 @@ impl AsyncRead for Stream {
         if self.expired(cx) {
             return Poll::Ready(Err(io::Error::new(
                 io::ErrorKind::TimedOut,
-                "admin connection lifetime exceeded",
+                tr("admin-admin-connection-lifetime-exceeded"),
             )));
         }
         Pin::new(&mut self.socket).poll_read(cx, buffer)
@@ -162,7 +163,7 @@ impl AsyncWrite for Stream {
         if self.expired(cx) {
             return Poll::Ready(Err(io::Error::new(
                 io::ErrorKind::TimedOut,
-                "admin connection lifetime exceeded",
+                tr("admin-admin-connection-lifetime-exceeded"),
             )));
         }
         Pin::new(&mut self.socket).poll_write(cx, bytes)

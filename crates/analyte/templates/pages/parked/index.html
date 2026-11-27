@@ -5,8 +5,8 @@
 {%- import "components/forms.html" as forms %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("", "Needs review", LEDE) %}
-<nav class="chips" aria-label="Show">
+{% call layout::intro_head("", "Needs review", crate::admin::parked::page::lede()) %}
+<nav class="chips" aria-label="{{ analyte_i18n::text("admin-show") }}">
 {%- for chip in chips %}{% call forms::chip(chip) %}{% endcall %}{% endfor -%}
 </nav>
 {% endcall %}
@@ -27,11 +27,11 @@
 {% call display::status_exact(card.category.tone, card.category.shown, card.category.stored) %}{% endcall %}
 <span class="spacer"></span>
 {%- if let Some(arrived) = card.arrived %}
-<span class="subtle review__meta">Arrived {% call display::time(arrived) %}{% endcall %}</span>
+<span class="subtle review__meta">{{ analyte_i18n::text("admin-arrived") }} {% call display::time(arrived) %}{% endcall %}</span>
 {%- endif %}
 </div>
 <div class="card__body stack">
-<h2 id="rv-{{ card.id }}" class="review__title">Item <span class="mono">{{ card.id }}</span>{% if let Some(machine) = card.machine %} · {{ machine }}{% endif %}</h2>
+<h2 id="rv-{{ card.id }}" class="review__title">{{ analyte_i18n::text("admin-item") }} <span class="mono">{{ card.id }}</span>{% if let Some(machine) = card.machine %} · {{ machine }}{% endif %}</h2>
 <p class="muted text">{{ card.category.why.lead }}{% call display::hover(card.category.why.text.shown, card.category.why.text.exact) %}{% endcall %}</p>
 {% call feedback::whattodo_with(card.category.guidance) %}
 {%- for button in card.actions %}{% call forms::link_button(button.href, button.label, button.class) %}{% endcall %}{% endfor -%}
@@ -46,7 +46,7 @@
 {%- endif %}
 {% call display::rows() %}
 {%- for row in resolved.rows %}
-{% call display::row_with(RESOLVED.0, RESOLVED.1, row.href, "History") %}<b class="row__title">{{ row.category }}</b> <span class="muted">· Item <span class="mono">{{ row.id }}</span>{% if let Some(machine) = row.machine %} · {{ machine }}{% endif %}</span><br><span class="subtle row__sub">{% call display::words(row.settled) %}{% endcall %}</span>{% endcall %}
+{% call display::row_with(RESOLVED.0, RESOLVED.1, row.href, analyte_i18n::text("admin-history")) %}<b class="row__title">{{ row.category }}</b> <span class="muted">{{ analyte_i18n::text("admin-item-2") }} <span class="mono">{{ row.id }}</span>{% if let Some(machine) = row.machine %} · {{ machine }}{% endif %}</span><br><span class="subtle row__sub">{% call display::words(row.settled) %}{% endcall %}</span>{% endcall %}
 {%- endfor %}
 {% endcall %}
 {%- if resolved.heading.is_some() %}

@@ -24,6 +24,7 @@ use crate::admin::view::{Tab, Tone, format, frame::Frame, icon::Icon};
 use crate::admin::{Error, error::CommandError};
 use crate::deadline;
 use crate::machine::link::status::Light;
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_model::Identifier;
 use analyte_store::{RecentOutcome, RecentReceipt};
 use askama::Template as _;
@@ -75,9 +76,9 @@ impl Entry<'_> {
     fn status(&self, now: Timestamp, detail: bool) -> Status {
         let Self::Running { machine, settings } = self else {
             let (tone, word) = match self {
-                Self::Waiting { set_up: false, .. } => (Tone::Neutral, format::NOT_SET_UP),
+                Self::Waiting { set_up: false, .. } => (Tone::Neutral, format::not_set_up()),
                 Self::Waiting { set_up: true, .. } | Self::Running { .. } => {
-                    (Tone::Attention, format::STARTS_AFTER_RESTART)
+                    (Tone::Attention, format::starts_after_restart())
                 }
             };
             return Status {
@@ -100,14 +101,14 @@ impl Entry<'_> {
         let observed = if running {
             sentence
         } else {
-            format::STOPPED_SENTENCE.to_owned()
+            format::stopped_sentence().to_owned()
         };
         let exact = format!("{}: {}", link.link().as_str(), link.state());
         let (tone, word, note) = match (settings, running, light) {
             (InSettings::Removed, ..) => {
-                (Tone::Attention, format::STOPS_AT_RESTART, Some(observed))
+                (Tone::Attention, format::stops_at_restart(), Some(observed))
             }
-            (_, false, _) => (Tone::Problem, format::STOPPED, Some(observed)),
+            (_, false, _) => (Tone::Problem, format::stopped(), Some(observed)),
             (_, true, Light::Live) => (Tone::Good, link.state(), detail.then_some(observed)),
             (_, true, Light::Waiting) => (Tone::Neutral, link.state(), Some(observed)),
             (_, true, Light::Off) => (
@@ -240,8 +241,8 @@ fn list_page(
     if let Err(error) = &read.listed {
         problems.push(Notice {
             tone: Tone::Problem,
-            title: format::SETTINGS_UNREADABLE.into(),
-            text: "Machines set up or removed since Analyte started may be missing here.".into(),
+            title: format::settings_unreadable().into(),
+            text: tr("admin-machines-set-up-or-removed-since-analyte-started-may").into(),
         });
         support.push(error.clone());
     }
@@ -255,7 +256,7 @@ fn list_page(
         Err(error) => {
             problems.push(Notice {
                 tone: Tone::Problem,
-                title: crate::admin::removed::COUNT_FAILED.into(),
+                title: crate::admin::removed::count_failed().into(),
                 text: String::new(),
             });
             support.push(error);
@@ -264,8 +265,8 @@ fn list_page(
     if read.restore_paused {
         notices.push(Notice {
             tone: Tone::Attention,
-            title: format::RESTORE_PAUSED.into(),
-            text: format::RESTORE_ADVICE.into(),
+            title: format::restore_paused().into(),
+            text: format::restore_advice().into(),
         });
     }
     let entries = roster(state, read.listed.as_deref().ok());
@@ -299,15 +300,15 @@ fn list_page(
         empty: if entries.is_empty() {
             Some(Empty {
                 good: false,
-                title: "No machine is set up yet",
-                text: "Add one, then set it up step by step: its model, its connection, a listen-only test and the save.",
-                link: Some(("/setup/add", format::ADD_MACHINE.into())),
+                title: tr("admin-no-machine-is-set-up-yet"),
+                text: tr("admin-add-one-then-set-it-up-step-by-step"),
+                link: Some(("/setup/add", format::add_machine().into())),
             })
         } else if rows.is_empty() {
             Some(Empty {
                 good: false,
-                title: "No more machines",
-                text: "This page is past the end of the list.",
+                title: tr("admin-no-more-machines"),
+                text: tr("admin-this-page-is-past-the-end-of-the-list"),
                 link: None,
             })
         } else {
@@ -560,15 +561,19 @@ async fn page(
     };
     let detail = Detail {
         software,
-        recent_note: more
-            .then(|| format!("The newest {RECENT} messages are listed; older ones stay stored.")),
+        recent_note: more.then(|| {
+            tr_args(
+                "admin-the-newest-messages-are-listed-older-ones-stay-stored",
+                [("RECENT", (RECENT).to_string().into())],
+            )
+        }),
         notices: listed
             .as_ref()
             .err()
             .map(|_| Notice {
                 tone: Tone::Problem,
-                title: format::SETTINGS_UNREADABLE.into(),
-                text: "Whether this machine is still set up is not known just now.".into(),
+                title: format::settings_unreadable().into(),
+                text: tr("admin-whether-this-machine-is-still-set-up-is-not").into(),
             })
             .into_iter()
             .chain(detail.notices)
@@ -596,15 +601,18 @@ fn detail_page(
 ) -> Detail {
     let id = entry.id();
     let status = entry.status(now, true);
-    let mut support = vec![format!("Machine: {id}")];
+    let mut support = vec![tr_args(
+        "admin-machine-2",
+        [("id", (id).to_string().into())],
+    )];
     let (facts, rules, lede, notices) = match entry {
         Entry::Running { machine, settings } => {
             let (facts, lede) = running_facts(entry, machine, recent, now, &mut support);
             let mut notices: Vec<Notice> = (*settings == InSettings::Removed)
                 .then(|| Notice {
                     tone: Tone::Attention,
-                    title: "Removed from Analyte’s settings".into(),
-                    text: format::REMOVED_ADVICE.into(),
+                    title: tr("admin-removed-from-analyte-s-settings").into(),
+                    text: format::removed_advice().into(),
                 })
                 .into_iter()
                 .collect();
@@ -614,29 +622,39 @@ fn detail_page(
         Entry::Waiting { set_up, .. } => {
             let facts = vec![
                 Fact {
-                    term: format::MODEL,
+                    term: format::model(),
                     value: Value::Text(
                         if *set_up {
-                            "Shown after Analyte restarts"
+                            tr("admin-shown-after-analyte-restarts")
                         } else {
-                            format::NOT_CHOSEN
+                            format::not_chosen()
                         }
                         .into(),
                     ),
                 },
                 Fact {
-                    term: format::IN_ANALYTE,
-                    value: Value::Text(format::NOT_RUNNING.into()),
+                    term: format::in_analyte(),
+                    value: Value::Text(format::not_running().into()),
                 },
             ];
             (facts, None, None, Vec::new())
         }
     };
     support.extend(recent.iter().map(|message| {
-        format!(
-            "Message {} received {}",
-            uuid::Uuid::from(message.metadata.id),
-            format::exact_time(message.metadata.received_at)
+        tr_args(
+            "admin-message-received",
+            [
+                (
+                    "id",
+                    (uuid::Uuid::from(message.metadata.id)).to_string().into(),
+                ),
+                (
+                    "received-at",
+                    (format::exact_time(message.metadata.received_at))
+                        .to_string()
+                        .into(),
+                ),
+            ],
         )
     }));
     Detail {
@@ -657,9 +675,9 @@ fn detail_page(
         notices,
         software: None,
         todo: matches!(entry, Entry::Waiting { set_up: false, .. }).then(|| Todo {
-            text: format::SET_UP_ADVICE,
+            text: format::set_up_advice(),
             href: format::setup_href(id, ""),
-            label: "Set it up",
+            label: tr("admin-set-it-up"),
         }),
         facts,
         declarations: rules
@@ -692,90 +710,89 @@ fn running_facts(
         .last_data()
         .max(recent.first().map(|newest| newest.metadata.received_at));
     support.push(format!("Link: {}", observed.link().as_str()));
-    support.push(format!(
-        "Settings version: {}",
-        format::digest_hex(&machine.digest)
+    support.push(tr_args(
+        "admin-settings-version",
+        [(
+            "digest",
+            (format::digest_hex(&machine.digest)).to_string().into(),
+        )],
     ));
     let running = machine.running.load(Ordering::Acquire);
     let mut facts = vec![
         Fact {
-            term: format::MODEL,
+            term: format::model(),
             value: Value::Text(
                 machine
                     .model
                     .clone()
-                    .unwrap_or_else(|| "Not named in its definition".into()),
+                    .unwrap_or_else(|| tr("admin-not-named-in-its-definition").into()),
             ),
         },
         Fact {
-            term: format::CONNECTED_BY,
+            term: format::connected_by(),
             value: Value::Link(link(machine)),
         },
         Fact {
-            term: format::CONNECTION,
+            term: format::connection(),
             value: Value::Status(entry.status(now, true)),
         },
     ];
     if let Some(accepts) = format::accepts(&machine.connection, machine.allowed_peers.as_ref()) {
         facts.push(Fact {
-            term: format::ACCEPTS_FROM,
+            term: format::accepts_from(),
             value: Value::Text(accepts),
         });
     }
-    if let Some(cable) = &machine.cable {
+    if let Some((cable, suggested)) = &machine.cable {
         facts.push(Fact {
-            term: format::CABLE_SETTINGS,
-            value: Value::Text(cable.clone()),
+            term: format::cable_settings(),
+            value: Value::Text(super::setup::cable::summary(cable, suggested.as_ref())),
         });
     }
-    if let Some(choices) = &machine.choices {
+    if let Some(choices) = super::setup::choices::summary(&machine.choices) {
         facts.push(Fact {
-            term: format::ANALYZER_SETTINGS,
-            value: Value::Text(choices.clone()),
+            term: format::analyzer_settings(),
+            value: Value::Text(choices),
         });
     }
     if let Some(repeats) = machine.repeated_results {
-        facts.push(Fact {
-            term: "Repeated results",
-            value: Value::Text(match repeats {
-                analyte_config::RepeatedResults::Automatic => {
-                    "Handled automatically: a resend is kept once, a correction is a new revision"
-                }
-                analyte_config::RepeatedResults::AlwaysAsk => {
-                    "Always ask me: every repeat waits in Needs review"
-                }
-            }
-            .into()),
-        });
+        facts.push(repeated_results(repeats));
     }
     facts.extend([
         Fact {
-            term: format::LAST_DATA,
+            term: format::last_data(),
             value: Value::Time(last.map(|at| format::moment(at, now))),
         },
         Fact {
-            term: format::SENDS_RESULTS_TO,
+            term: format::sends_results_to(),
             value: match &machine.lab_app {
                 Some(lab_app) => Value::Page {
                     href: Tab::LabApps.href().to_owned(),
                     label: lab_app.as_str().to_owned(),
                 },
-                None => Value::Text(format::RECORDING_ONLY.into()),
+                None => Value::Text(format::recording_only().into()),
             },
         },
         Fact {
-            term: "Recorded",
+            term: tr("admin-recorded"),
             value: Value::Text(observed.recording().map_or_else(
-                || "Only when its program entry has capture = true".to_owned(),
+                || tr("admin-only-when-its-program-entry-has-capture-true").to_owned(),
                 format::recording_counts,
             )),
         },
         Fact {
-            term: format::IN_ANALYTE,
-            value: Value::Text(if running { "Running" } else { "Stopped" }.into()),
+            term: format::in_analyte(),
+            value: Value::Text(
+                if running {
+                    tr("admin-running")
+                } else {
+                    tr("admin-stopped-2")
+                }
+                .into(),
+            ),
         },
         Fact {
-            term: "Settings version",
+            term: tr("admin-settings-version-2"),
             value: Value::Code {
                 shown: format::digest_short(&machine.digest),
                 exact: format::digest_hex(&machine.digest),
@@ -787,6 +804,23 @@ fn running_facts(
         last.map(|at| format::moment(at, now)),
     );
     (facts, lede)
+}
+
+fn repeated_results(repeats: analyte_config::RepeatedResults) -> Fact {
+    Fact {
+        term: tr("admin-repeated-results"),
+        value: Value::Text(
+            match repeats {
+                analyte_config::RepeatedResults::Automatic => {
+                    tr("admin-handled-automatically-a-resend-is-kept-once-a-correction")
+                }
+                analyte_config::RepeatedResults::AlwaysAsk => {
+                    tr("admin-always-ask-me-every-repeat-waits-in-needs-review")
+                }
+            }
+            .into(),
+        ),
+    }
 }
 
 /// What a listening machine's page says about the devices that may connect
@@ -805,8 +839,8 @@ fn peer_notices(machine: &Machine, now: Timestamp, all: bool) -> Vec<Notice> {
     if machine.accepts_any_device() {
         notices.push(Notice {
             tone: Tone::Attention,
-            title: named(format::OPEN_TO_ANY.into()),
-            text: format::OPEN_TO_ANY_ADVICE.into(),
+            title: named(format::open_to_any().into()),
+            text: format::open_to_any_advice().into(),
         });
     }
     let status = machine.status.borrow().clone();
@@ -814,7 +848,7 @@ fn peer_notices(machine: &Machine, now: Timestamp, all: bool) -> Vec<Notice> {
     notices.extend(status.refused().iter().take(shown).map(|refusal| Notice {
         tone: Tone::Attention,
         title: named(format::refused(refusal, &format::clock(refusal.at, now))),
-        text: format::REFUSED_ADVICE.into(),
+        text: format::refused_advice().into(),
     }));
     notices
 }
@@ -838,18 +872,18 @@ fn actions(entry: &Entry<'_>) -> Vec<Button> {
     if set_up {
         actions.push(Button {
             href: format::setup_href(id, "test"),
-            label: "Test connection",
+            label: tr("admin-test-connection"),
             class: "btn--outline",
         });
         actions.push(Button {
             href: format::setup_href(id, ""),
-            label: "Edit setup",
+            label: tr("admin-edit-setup"),
             class: "btn--outline",
         });
     }
     actions.push(Button {
         href: format::setup_href(id, "remove"),
-        label: crate::admin::setup::REMOVE,
+        label: crate::admin::setup::remove_label(),
         class: "btn--danger-quiet",
     });
     actions
@@ -859,7 +893,7 @@ fn actions(entry: &Entry<'_>) -> Vec<Button> {
 fn recent_message(message: &RecentReceipt, now: Timestamp) -> Message {
     let outcome = message.reading.as_ref().map(|reading| &reading.outcome);
     let (tone, exact) = match &message.reading {
-        None => (Tone::Neutral, "no reading stored".to_owned()),
+        None => (Tone::Neutral, tr("admin-no-reading-stored").to_owned()),
         Some(reading) => (
             match reading.outcome {
                 RecentOutcome::Results { .. } => Tone::Good,
@@ -883,7 +917,7 @@ fn recent_message(message: &RecentReceipt, now: Timestamp) -> Message {
         },
         review: message.review.map(|item| Button {
             href: format!("{}/{item}", Tab::NeedsReview.href()),
-            label: "In Needs review",
+            label: tr("admin-in-needs-review"),
             class: "link",
         }),
         delivery: format::deliveries(&message.deliveries).map(|(worst, words, exact)| Delivery {
@@ -892,9 +926,9 @@ fn recent_message(message: &RecentReceipt, now: Timestamp) -> Message {
             exact,
         }),
         no_delivery: if message.reading.is_some() {
-            format::NOT_APPLICABLE
+            format::not_applicable()
         } else {
-            format::NOTHING_YET
+            format::nothing_yet()
         },
         href: message.reading.as_ref().map(|reading| {
             format!(
@@ -914,7 +948,7 @@ pub(in crate::admin) fn removed(
     id: &str,
     removed: Removed,
 ) -> Response {
-    let title = "Machine removed";
+    let title = tr("admin-machine-removed");
     // A machine that still runs keeps its page until the restart; one that did
     // not run has none any more.
     let page_left = state
@@ -925,7 +959,7 @@ pub(in crate::admin) fn removed(
     let mut links: Vec<Button> = page_left
         .then(|| Button {
             href: format::machine_href(id),
-            label: format::OPEN_MACHINE,
+            label: format::open_machine(),
             class: "btn--outline",
         })
         .into_iter()
@@ -945,8 +979,11 @@ pub(in crate::admin) fn removed(
             section.frame(state, title, Some(session)),
             section,
             Tone::Good,
-            format!("{id} is removed from Analyte’s settings"),
-            format::REMOVED_ADVICE,
+            tr_args(
+                "admin-is-removed-from-analyte-s-settings",
+                [("id", (id).to_string().into())],
+            ),
+            format::removed_advice(),
         )
     };
     respond(

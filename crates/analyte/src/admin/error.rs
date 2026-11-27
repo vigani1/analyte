@@ -13,43 +13,46 @@ pub enum Error {
     MachineConfig(#[from] analyte_config::Error),
     /// The AWOS history page names an item index that the retained machine order does not
     /// hold, so there is no execution history to show for it.
-    #[error("AWOS item not retained")]
+    #[error("{}", analyte_i18n::text("admin-error-awos-item-not-retained"))]
     AwosItemNotRetained,
     /// A new admin session was refused because all 128 slots hold authenticated sessions
     /// that have not yet expired; unauthenticated ones are evicted first.
-    #[error("admin session capacity reached; restart or wait for expiry")]
+    #[error("{}", analyte_i18n::text("admin-error-session-capacity"))]
     SessionCapacity,
     /// A thread panicked while holding the in-memory session table, so no session can be
     /// looked up or issued until the program restarts.
-    #[error("admin session lock poisoned")]
+    #[error("{}", analyte_i18n::text("admin-error-admin-session-lock-poisoned"))]
     AdminSessionLockPoisoned,
     /// The setup page asked for a restart; the server drained and stopped so the
     /// service manager starts the program again with the saved settings.
-    #[error("restart requested on the setup page to apply saved settings")]
+    #[error(
+        "{}",
+        analyte_i18n::text("setup-restart-requested-on-the-setup-page-to-apply-saved")
+    )]
     RestartRequested,
     /// A hold form asked for an operation other than placing or releasing a hold.
-    #[error("choose place or release")]
+    #[error("{}", analyte_i18n::text("admin-error-choose-place-or-release"))]
     ChoosePlaceOrRelease,
     /// A hold form named a scope other than a receipt or an order.
-    #[error("choose receipt or order")]
+    #[error("{}", analyte_i18n::text("admin-error-choose-receipt-or-order"))]
     ChooseReceiptOrOrder,
     /// Reprocessing was refused because the configuration file on disk now names a data
     /// directory other than the store this admin server has open.
-    #[error("current configuration points to a different store")]
+    #[error("{}", analyte_i18n::text("admin-error-store-mismatch"))]
     StoreMismatch,
     /// The machines page could not compute the cursor of its next page without integer
     /// overflow.
-    #[error("machine cursor overflow")]
+    #[error("{}", analyte_i18n::text("admin-error-machine-cursor-overflow"))]
     MachineCursorOverflow,
     /// No software version selector applies to the named machine.
-    #[error("this machine has no software version check")]
+    #[error("{}", analyte_i18n::text("admin-error-no-software-check"))]
     NoSoftwareCheck,
     /// An operator tried to confirm when there was no active software warning.
-    #[error("this machine has no active software warning")]
+    #[error("{}", analyte_i18n::text("admin-error-no-software-warning"))]
     NoSoftwareWarning,
     /// A parked item's page could not compute the cursor of its next page of targets without
     /// integer overflow.
-    #[error("parked target cursor overflow")]
+    #[error("{}", analyte_i18n::text("admin-error-parked-target-cursor-overflow"))]
     ParkedTargetCursorOverflow,
     /// An audited operator action failed.
     #[error(transparent)]

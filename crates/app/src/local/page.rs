@@ -4,6 +4,7 @@
 //! which only the signed-in pages know.
 use crate::engine::service::{Service, Started};
 use crate::engine::status::{Health, Reply};
+use analyte_i18n::{message as tr_args, text as tr};
 use askama::Template as _;
 use jiff::{Timestamp, Zoned, tz::TimeZone};
 
@@ -52,28 +53,37 @@ struct Page {
 pub(super) fn render(off: &Off, zone: &TimeZone, now: Timestamp) -> Result<String, askama::Error> {
     let stopped = matches!(off.service, Some(Service::Stopped));
     let (engine_title, title) = if off.settings.is_some() {
-        ("Engine unknown", "The app cannot find the engine")
+        (
+            tr("desktop-engine-unknown"),
+            tr("desktop-the-app-cannot-find-the-engine"),
+        )
     } else {
         match off.service {
-            Some(Service::Stopped) => ("Engine stopped", "The Analyte engine isn’t running"),
-            Some(Service::Starting) => ("Engine starting", "The Analyte engine is starting"),
-            _ => ("Not answering", "The Analyte engine isn’t answering"),
+            Some(Service::Stopped) => (
+                tr("desktop-engine-stopped"),
+                tr("desktop-the-analyte-engine-isn-t-running"),
+            ),
+            Some(Service::Starting) => (
+                tr("desktop-engine-starting"),
+                tr("desktop-the-analyte-engine-is-starting"),
+            ),
+            _ => (
+                tr("desktop-not-answering"),
+                tr("desktop-the-analyte-engine-isn-t-answering"),
+            ),
         }
     };
     let lead = if let Some(why) = &off.settings {
-        format!("The app’s settings file could not be used, so it asks no address. {why}")
-    } else if stopped {
-        concat!(
-            "Machines aren’t being listened to and nothing is being sent to the lab apps. ",
-            "Results Analyte already stored stay in its store."
+        tr_args(
+            "desktop-the-app-s-settings-file-could-not-be-used",
+            [("why", (why).to_string().into())],
         )
-        .to_owned()
+    } else if stopped {
+        tr("desktop-machines-aren-t-being-listened-to-and-nothing-is").to_owned()
     } else {
-        format!(
-            "The app gets no answer from the engine’s pages at {}. If the engine has stopped, \
-             machines aren’t listened to and nothing is sent to the lab apps. Results Analyte \
-             already stored stay in its store.",
-            off.origin
+        tr_args(
+            "desktop-engine-no-answer",
+            [("address", off.origin.as_str().into())],
         )
     };
     let offer = off.settings.is_none()
@@ -105,9 +115,9 @@ fn facts(off: &Off, zone: &TimeZone, now: Timestamp) -> Vec<(&'static str, Strin
             ),
         ),
         (
-            "Last known state",
+            tr("desktop-last-known-state"),
             off.last_answer.map_or_else(
-                || "Nothing yet".to_owned(),
+                || tr("admin-nothing-yet").to_owned(),
                 |(_, health)| health.words().to_owned(),
             ),
         ),
@@ -115,8 +125,9 @@ fn facts(off: &Off, zone: &TimeZone, now: Timestamp) -> Vec<(&'static str, Strin
     let mut saw = Vec::new();
     match &off.reply {
         Some(Reply::Silent(silence)) => saw.push(silence.words().to_owned()),
-        Some(Reply::Unrecognised(why)) => saw.push(format!(
-            "Another program answers at the engine’s address. {why}"
+        Some(Reply::Unrecognised(why)) => saw.push(tr_args(
+            "desktop-another-program-answers-at-the-engine-s-address",
+            [("why", (why).to_string().into())],
         )),
         Some(Reply::Answered(..)) | None => {}
     }
@@ -124,15 +135,15 @@ fn facts(off: &Off, zone: &TimeZone, now: Timestamp) -> Vec<(&'static str, Strin
         saw.push(service.words());
     }
     if !saw.is_empty() {
-        rows.push(("What the app saw", saw.join(" ")));
+        rows.push((tr("desktop-what-the-app-saw"), saw.join(" ")));
     }
     if off.starting {
         rows.push((
-            "Start engine",
-            "Asking Windows to start the engine…".to_owned(),
+            tr("desktop-start-engine"),
+            tr("desktop-asking-windows-to-start-the-engine").to_owned(),
         ));
     } else if let Some(started) = &off.started {
-        rows.push(("Start engine", started.words()));
+        rows.push((tr("desktop-start-engine"), started.words()));
     }
     rows
 }
@@ -147,7 +158,10 @@ fn moment(at: Timestamp, zone: &TimeZone, now: Timestamp) -> String {
     let then = Zoned::new(at, zone.clone());
     let today = Zoned::new(now, zone.clone());
     if then.date() == today.date() {
-        then.strftime("%H:%M today").to_string()
+        tr_args(
+            "desktop-clock-today",
+            [("time", then.strftime("%H:%M").to_string().into())],
+        )
     } else {
         then.strftime("%-d %b %H:%M").to_string()
     }

@@ -24,7 +24,7 @@
 
 {#- One plain sentence of what to do; the caller writes the actions, the main one first. -#}
 {%- macro whattodo_with(text) -%}
-<div class="whattodo"><p class="whattodo__text"><strong>What to do:</strong> {{ text }}</p><div class="whattodo__actions">{{ caller() }}</div></div>
+<div class="whattodo"><p class="whattodo__text"><strong>{{ analyte_i18n::text("admin-what-to-do") }}</strong> {{ text }}</p><div class="whattodo__actions">{{ caller() }}</div></div>
 {%- endmacro %}
 
 {#- A place with nothing to show: a title, a sentence and, from the caller, what to do. It has no check mark, because an empty list is not good news by itself. -#}

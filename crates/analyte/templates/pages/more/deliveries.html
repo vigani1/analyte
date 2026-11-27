@@ -5,8 +5,8 @@
 {%- import "components/forms.html" as forms %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("", "Deliveries", DELIVERIES_LEDE) %}
-<nav class="chips" aria-label="Show">
+{% call layout::intro_head("", "Deliveries", crate::admin::more::page::deliveries_lede()) %}
+<nav class="chips" aria-label="{{ analyte_i18n::text("admin-show") }}">
 {%- for chip in chips %}{% call forms::chip(chip) %}{% endcall %}{% endfor -%}
 </nav>
 {% endcall %}
@@ -14,15 +14,15 @@
 {% call feedback::empty_card(empty.title, empty.text) %}{% if let Some((href, words)) = empty.link %}<a class="link" href="{{ href }}">{{ words }}</a>{% endif %}{% endcall %}
 {%- endif %}
 {%- if !rows.is_empty() %}
-{% call display::table(DELIVERY_COLUMNS) %}
+{% call display::table(crate::admin::more::page::delivery_columns()) %}
 {%- for row in rows %}
-<tr>{% if let Some(queued) = row.queued %}{% call display::cell("num") %}{% call display::time(queued) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("subtle") %}{{ crate::admin::view::format::NOT_RECORDED }}{% endcall %}{% endif %}
+<tr>{% if let Some(queued) = row.queued %}{% call display::cell("num") %}{% call display::time(queued) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("subtle") %}{{ crate::admin::view::format::not_recorded() }}{% endcall %}{% endif %}
 {%- if let Some((shown, all)) = row.sample %}{% call display::cell("num") %}{% call display::hover(shown, all) %}{% endcall %}{% endcall %}{% else if let Some(kind) = row.kind %}{% call display::cell("subtle more-nowrap") %}{{ kind }}{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}
 {%- if let Some(from) = row.from %}{% call display::cell("more-nowrap") %}{{ from }}{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}
 {%- call display::cell("more-nowrap") %}{{ row.to }}{% endcall %}
 {%- if let Some(results) = row.results %}{% call display::cell("num right") %}{{ results }}{% endcall %}{% else %}{% call display::cell("right subtle") %}—{% endcall %}{% endif %}
 {%- call display::cell("") %}{% call display::status_with(row.outcome.tone, row.outcome.icon, row.outcome.word, row.outcome.exact) %}{% endcall %}{% endcall %}
-{%- if let Some(href) = row.resend %}{% call display::cell("right more-nowrap") %}<a class="link" href="{{ href }}">{{ crate::admin::view::format::SEND_AGAIN }}</a>{% endcall %}{% else %}{% call display::cell("") %}{% endcall %}{% endif %}</tr>
+{%- if let Some(href) = row.resend %}{% call display::cell("right more-nowrap") %}<a class="link" href="{{ href }}">{{ crate::admin::view::format::send_again() }}</a>{% endcall %}{% else %}{% call display::cell("") %}{% endcall %}{% endif %}</tr>
 {%- endfor %}
 {% endcall %}
 {%- endif %}
@@ -31,8 +31,8 @@
 {%- endif %}
 {%- if let Some(resend) = dialog %}
 {% call forms::reason_dialog(resend.form) %}
-<label class="check"><input type="checkbox" name="acknowledge_superseded" value="true"{% if resend.superseded %} checked{% endif %}>Send it even if a newer correction of this result exists</label>
-{% call feedback::support(crate::admin::view::format::SUPPORT, resend.support.as_slice()) %}{% endcall %}
+<label class="check"><input type="checkbox" name="acknowledge_superseded" value="true"{% if resend.superseded %} checked{% endif %}>{{ analyte_i18n::text("admin-send-it-even-if-a-newer-correction-of-this") }}</label>
+{% call feedback::support(crate::admin::view::format::support(), resend.support.as_slice()) %}{% endcall %}
 {%- endcall %}
 {%- endif %}
 {%- endblock %}

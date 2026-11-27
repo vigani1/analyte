@@ -1,6 +1,6 @@
 {#- The plain frame of sign-in and of the refusals that have no page of their own: the shared head and one centred panel, with no sidebar, so a page shown before sign-in names no machine, lab app or count. -#}
 <!doctype html>
-<html lang="en">
+<html lang="{{ analyte_i18n::Language::current().tag() }}">
 <head>
 {% include "layout/head.html" %}
 {%- block head %}{% endblock %}

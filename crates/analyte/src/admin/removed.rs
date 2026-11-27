@@ -11,6 +11,7 @@
 use super::server::Context;
 use crate::admin::Error;
 use crate::admin::view::Tone;
+use analyte_i18n::{count as tr_count, message as tr_args, text as tr};
 use analyte_model::Identifier;
 use analyte_store::{Undeliverable, Undelivered};
 use std::{
@@ -125,23 +126,27 @@ pub(super) async fn lines(state: &Context) -> Result<Vec<Line>, Error> {
 
 fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
     let count = open.waiting();
-    let what = if count == 1 {
-        "result or order message"
-    } else {
-        "results or order messages"
-    };
     let destination = open.destination.as_str();
     let from = match (open.machines.len(), from_running) {
-        (0, _) => format!("Lab app {destination}"),
-        (1, false) => format!("Removed machine {}", names(&open.machines)),
-        (_, false) => format!("Removed machines {}", names(&open.machines)),
+        (0, _) => tr_args(
+            "admin-lab-app-2",
+            [("destination", (destination).to_string().into())],
+        ),
+        (1, false) => tr_args(
+            "admin-removed-machine",
+            [("machines", (names(&open.machines)).to_string().into())],
+        ),
+        (_, false) => tr_args(
+            "admin-removed-machines",
+            [("machines", (names(&open.machines)).to_string().into())],
+        ),
         (1, true) => format!("Machine {}", names(&open.machines)),
         (_, true) => format!("Machines {}", names(&open.machines)),
     };
     let held = if open.held > 0 {
-        format!(
-            " {} of them need someone to act on the Deliveries page (paused, rejected or in conflict).",
-            open.held
+        tr_args(
+            "admin-of-them-need-someone-to-act-on-the-deliveries",
+            [("held", (open.held).to_string().into())],
         )
     } else {
         String::new()
@@ -150,52 +155,31 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
         kept.is_some(),
         kept.is_some_and(|kept| kept.keys_missing),
     );
-    let are = if count == 1 { "is" } else { "are" };
-    let stays = format!("{from}: {count} {what} {are} kept and never deleted.{held}");
-    let text = match blocked {
-        // The worker runs, but without keys nothing is sent (ADR 0014 alert text).
-        Some(Undeliverable::CredentialsMissing) => format!(
-            concat!(
-                "Cannot send to lab app {destination}: its API key or signing key is ",
-                "missing. Enter them on the Lab apps page (or in the service environment), ",
-                "then restart. {stays}"
-            ),
-            destination = destination,
-            stays = stays,
-        ),
-        Some(Undeliverable::NotConfigured) => format!(
-            concat!(
-                "Cannot send to lab app {destination}: it is not set up any more. {from}: ",
-                "{count} {what} {are} kept and never deleted. Add lab app {destination} on the ",
-                "Lab apps page, then restart, to send them."
-            ),
-            destination = destination,
-            from = from,
-            count = count,
-            what = what,
-            are = are
-        ),
-        None if kept.is_some_and(|kept| kept.delivering.load(Ordering::Acquire)) => {
-            format!("{from}: {count} {what} still being delivered to lab app {destination}.{held}")
-        }
-        None => format!(
-            concat!(
-                "{from}: {count} {what} wait for lab app {destination}; they are sent after ",
-                "the next restart.{held}"
-            ),
-            from = from,
-            count = count,
-            what = what,
-            destination = destination,
-            held = held
-        ),
+    let status = match blocked {
+        Some(Undeliverable::CredentialsMissing) => "missing-keys",
+        Some(Undeliverable::NotConfigured) => "not-configured",
+        None if kept.is_some_and(|kept| kept.delivering.load(Ordering::Acquire)) => "delivering",
+        None => "waiting",
     };
+    let args = [
+        ("status", status.into()),
+        ("from", from.into()),
+        ("destination", destination.into()),
+        ("count", count.into()),
+        (
+            "items",
+            tr_count("admin-count-results-or-order-messages", count).into(),
+        ),
+        ("held", held.into()),
+    ];
+    let stays = matches!(blocked, Some(Undeliverable::CredentialsMissing))
+        .then(|| tr_args("admin-kept-and-never-deleted", args.clone()));
     Line {
-        text,
+        text: tr_args("admin-retained-deliveries", args),
         destination: open.destination.clone(),
         waiting: count,
         blocked,
-        kept: matches!(blocked, Some(Undeliverable::CredentialsMissing)).then_some(stays),
+        kept: stays,
     }
 }
 
@@ -206,14 +190,15 @@ fn names(machines: &[Identifier]) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     if machines.len() >= analyte_store::UNDELIVERED_MACHINES {
-        text.push_str(" and possibly more");
+        text.push_str(tr("admin-and-possibly-more"));
     }
     text
 }
 
 /// Heads the warning when the count for removed machines is unavailable.
-pub(in crate::admin) const COUNT_FAILED: &str =
-    "Results still waiting from removed machines could not be counted";
+pub(in crate::admin) fn count_failed() -> &'static str {
+    tr("admin-count-failed")
+}
 
 #[cfg(test)]
 mod tests {

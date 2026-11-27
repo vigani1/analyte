@@ -35,6 +35,7 @@
   var busy = false;
   var again = false;
   var said = '';
+  var actions;
 
   function setLive(on) {
     var pill = document.querySelector('[data-live-pill]');
@@ -44,7 +45,7 @@
     if (pause) {
       pause.hidden = !on;
       pause.setAttribute('aria-pressed', paused ? 'true' : 'false');
-      pause.textContent = paused ? 'Resume updates' : 'Pause updates';
+      if (actions) pause.textContent = paused ? actions.resume : actions.pause;
     }
   }
 
@@ -131,11 +132,12 @@
     source.addEventListener('live', function (event) {
       var news = JSON.parse(event.data);
       wait = 1000;
-      meta.textContent = 'Live · ' + news.at;
+      actions = news;
+      meta.textContent = news.line;
       setLive(true);
       // Every signed-in page's sidebar shows the Needs review count.
       var mine = news.changed.filter(function (area) { return area === 'count' || shows.indexOf(area) >= 0; });
-      if (mine.length) said = 'Updated at ' + news.at;
+      if (mine.length) said = news.updated;
       // After a drop, read the page once: changes made meanwhile were not sent.
       if (mine.length || dropped) { dropped = false; refresh(); }
     });

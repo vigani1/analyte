@@ -1,6 +1,6 @@
 //! Serves what a machine did with orders, kept apart from the order's own state: Cancelled by machine (GET /analyzer-cancelled) and one order item's page with its history (GET /awos/{order}/{item}), whose machine notes show only after the audited "Show the original message" (POST /awos/{order}/{item}/raw).
 use super::orders::{look, tests};
-use super::page::{Cancelled, CancelledCard, ITEM_LEDE, Message, Notes, OrderItem, Original};
+use super::page::{Cancelled, CancelledCard, Message, Notes, OrderItem, Original, item_lede};
 use super::{next_href, show};
 use crate::admin::error::CommandError;
 use crate::admin::parked::{RAW_VIEW, RawRequest};
@@ -14,6 +14,7 @@ use crate::admin::view::{
 };
 use crate::admin::{Error, server::Context};
 use crate::deadline;
+use analyte_i18n::{count as tr_count, message as tr_args, text as tr};
 use analyte_model::{AwosExecutionProjection, Identifier, Reason};
 use analyte_store::{Audit, CachedOrder, MachineOrder, MachineOrderItem, Store, law::WorkEvidence};
 use askama::Template as _;
@@ -120,14 +121,17 @@ fn card(
     let mut lines = Vec::new();
     if let Some(execution) = &item.execution {
         lines.push(
-            Line::text("Cancelled by the machine · recorded ")
+            Line::text(tr("admin-cancelled-by-the-machine-recorded"))
                 .time(format::moment_unix(execution.recorded_at, now)),
         );
     }
     lines.push(Line::text(match cached.map(lab_app_state) {
-        Some(Some(state)) => format!("The lab app's copy says: {state}"),
-        Some(None) => "The lab app's copy cannot be read.".to_owned(),
-        None => "No copy of this order from the lab app is kept.".to_owned(),
+        Some(Some(state)) => tr_args(
+            "admin-the-lab-app-s-copy-says",
+            [("state", (state).to_string().into())],
+        ),
+        Some(None) => tr("admin-the-lab-app-s-copy-cannot-be-read").to_owned(),
+        None => tr("admin-no-copy-of-this-order-from-the-lab-app").to_owned(),
     }));
     CancelledCard {
         sample: cached.map(|cached| cached.sample.as_str().to_owned()),
@@ -201,7 +205,7 @@ fn lab_app_state(cached: &CachedOrder) -> Option<String> {
         document
             .get("state")
             .and_then(serde_json::Value::as_str)
-            .unwrap_or("not known")
+            .unwrap_or(tr("admin-not-known"))
             .to_owned(),
     )
 }
@@ -209,12 +213,17 @@ fn lab_app_state(cached: &CachedOrder) -> Option<String> {
 /// An order item's identity for the hover: its lab app, the version sent and
 /// Analyte's own numbers.
 fn identity(order: &MachineOrder, item: &MachineOrderItem) -> String {
-    format!(
-        "Lab app {} · order version {} sent · machine order {}, item {}",
-        order.key.destination.as_str(),
-        order.version,
-        order.id,
-        item.index
+    tr_args(
+        "admin-lab-app-order-version-sent-machine-order-item",
+        [
+            (
+                "destination",
+                (order.key.destination.as_str()).to_string().into(),
+            ),
+            ("version", (order.version).to_string().into()),
+            ("id", (order.id).to_string().into()),
+            ("index", (item.index).to_string().into()),
+        ],
     )
 }
 
@@ -285,11 +294,8 @@ pub(in crate::admin) async fn notes(
         || form.source != NOTES
         || form.offset != 0
     {
-        return Problem::Refused(
-            "This form is not one Analyte sent for this page. Open the order again and repeat what you did."
-                .into(),
-        )
-        .page(&state, Some(&session), section);
+        return Problem::Refused(tr("admin-this-form-is-not-one-analyte-sent-for-this").into())
+            .page(&state, Some(&session), section);
     }
     let after = form.after;
     let read = async {
@@ -297,9 +303,18 @@ pub(in crate::admin) async fn notes(
             actor,
             action: Identifier::new(RAW_VIEW)?,
             targets: vec![
-                Identifier::new(&format!("awos:{order}:{item}"))?,
+                Identifier::new(&tr_args(
+                    "admin-awos",
+                    [
+                        ("order", (order).to_string().into()),
+                        ("item", (item).to_string().into()),
+                    ],
+                ))?,
                 Identifier::new(NOTES)?,
-                Identifier::new(&format!("notes-after:{after}"))?,
+                Identifier::new(&tr_args(
+                    "admin-notes-after",
+                    [("after", (after).to_string().into())],
+                ))?,
             ],
             time: Timestamp::now().as_second(),
             reason: Reason::new(if form.reason.is_empty() {
@@ -436,9 +451,15 @@ fn detail_page(
     let index = item.index;
     let number = order.key.order.as_str();
     let title = if order.items.len() > 1 {
-        format!("Order {number}, item {index}")
+        tr_args(
+            "admin-order-item",
+            [
+                ("number", (number).to_string().into()),
+                ("index", (index).to_string().into()),
+            ],
+        )
     } else {
-        format!("Order {number}")
+        tr_args("admin-order-2", [("number", (number).to_string().into())])
     };
     let status = look(item.state, &item.source_code);
     let (copy, copy_note) = lab_app_copy(&order, cached.as_ref(), now);
@@ -448,11 +469,19 @@ fn detail_page(
         .map(|last| next_href(&format::order_item_href(order.id, index), last.cursor));
     let mut support = vec![identity(&order, &item)];
     support.extend(messages.iter().map(|message| {
-        format!(
-            "Message {} · receipt {}, reading {}",
-            message.custody.message.as_str(),
-            uuid::Uuid::from(message.receipt),
-            message.version
+        tr_args(
+            "admin-message-receipt-reading",
+            [
+                (
+                    "message",
+                    (message.custody.message.as_str()).to_string().into(),
+                ),
+                (
+                    "receipt",
+                    (uuid::Uuid::from(message.receipt)).to_string().into(),
+                ),
+                ("version", (message.version).to_string().into()),
+            ],
         )
     }));
     let messages: Vec<Message> = messages
@@ -468,7 +497,10 @@ fn detail_page(
         head: Head {
             crumbs: vec![
                 Crumb::link(Tab::MachineOrders.label(), Tab::MachineOrders.href()),
-                Crumb::here(format!("Order {number}")),
+                Crumb::here(tr_args(
+                    "admin-order-2",
+                    [("number", (number).to_string().into())],
+                )),
             ],
             title,
             status: Some(Status {
@@ -478,7 +510,7 @@ fn detail_page(
                 exact: status.exact,
                 note: None,
             }),
-            lede: Some(Line::text(ITEM_LEDE)),
+            lede: Some(Line::text(item_lede())),
         },
         order: order_facts(state, &order, cached.as_ref(), now),
         item: item_facts(&item, now),
@@ -530,7 +562,7 @@ fn original(
                     offset: 0,
                     field: "notes-reason".into(),
                     reason: String::new(),
-                    buttons: vec![(NOTES, "Show the notes")],
+                    buttons: vec![(NOTES, tr("admin-show-the-notes"))],
                 }),
         })
 }
@@ -547,7 +579,7 @@ fn order_facts(
     let order_status = look(order.state, &order.source_code);
     let mut facts = vec![
         Fact {
-            term: format::MACHINE,
+            term: format::machine(),
             value: Value::Page {
                 href: format::machine_href(machine),
                 label: match state.machine_model(machine) {
@@ -557,14 +589,14 @@ fn order_facts(
             },
         },
         Fact {
-            term: format::LAB_APP,
+            term: format::lab_app(),
             value: Value::Page {
                 href: format::lab_app_href(order.key.destination.as_str()),
                 label: order.key.destination.as_str().to_owned(),
             },
         },
         Fact {
-            term: "Order status",
+            term: tr("admin-order-status"),
             value: Value::Status(Status {
                 tone: order_status.tone,
                 icon: order_status.icon,
@@ -574,13 +606,13 @@ fn order_facts(
             }),
         },
         Fact {
-            term: "Order version sent",
+            term: tr("admin-order-version-sent"),
             value: Value::Text(order.version.to_string()),
         },
     ];
     if let Some(cached) = cached {
         facts.push(Fact {
-            term: "Sample",
+            term: tr("admin-sample"),
             value: Value::Code {
                 shown: cached.sample.as_str().to_owned(),
                 exact: cached.sample.as_str().to_owned(),
@@ -588,14 +620,14 @@ fn order_facts(
         });
     }
     facts.push(Fact {
-        term: "Tests sent",
+        term: tr("admin-tests-sent"),
         value: Value::Text(tests(order).map_or_else(
-            || "Not recorded (older data); Analyte does not guess them".to_owned(),
+            || tr("admin-not-recorded-older-data-analyte-does-not-guess-them").to_owned(),
             format::test_count,
         )),
     });
     facts.push(Fact {
-        term: "Last change",
+        term: tr("admin-last-change"),
         value: Value::Time(Some(format::moment_unix(order.updated_at, now))),
     });
     facts
@@ -607,7 +639,7 @@ fn item_facts(item: &MachineOrderItem, now: Timestamp) -> Vec<Fact> {
     let status = look(item.state, &item.source_code);
     vec![
         Fact {
-            term: "Status",
+            term: tr("admin-status"),
             value: Value::Status(Status {
                 tone: status.tone,
                 icon: status.icon,
@@ -617,29 +649,29 @@ fn item_facts(item: &MachineOrderItem, now: Timestamp) -> Vec<Fact> {
             }),
         },
         Fact {
-            term: "What the machine reports",
+            term: tr("admin-what-the-machine-reports"),
             value: execution(item.execution.as_ref(), now),
         },
         Fact {
-            term: "Tests",
+            term: tr("admin-tests"),
             value: Value::Text(if item.coverage_known {
-                format::amount(item.tests.len() as u64, "test", "tests")
+                tr_count("admin-count-tests", item.tests.len() as u64)
             } else {
-                "Not recorded (older data)".to_owned()
+                tr("admin-not-recorded-older-data").to_owned()
             }),
         },
         Fact {
-            term: "Order number on the machine",
+            term: tr("admin-order-number-on-the-machine"),
             value: Value::Code {
                 shown: item.placer.clone(),
                 exact: item.placer_namespace.as_ref().map_or_else(
-                    || "Namespace not recorded".to_owned(),
+                    || tr("admin-namespace-not-recorded").to_owned(),
                     |namespace| format!("Namespace {}", namespace.as_str()),
                 ),
             },
         },
         Fact {
-            term: "Last note",
+            term: tr("admin-last-note"),
             value: Value::Text(item.source_code.as_str().to_owned()),
         },
     ]
@@ -650,7 +682,7 @@ fn item_facts(item: &MachineOrderItem, now: Timestamp) -> Vec<Fact> {
 /// request was pending then; the message it came in stays on hover.
 fn execution(projection: Option<&AwosExecutionProjection>, now: Timestamp) -> Value {
     let Some(projection) = projection else {
-        return Value::Text(format::NOTHING_YET.into());
+        return Value::Text(format::nothing_yet().into());
     };
     let recorded = format::moment_unix(projection.recorded_at, now);
     let tone = match projection.state {
@@ -663,19 +695,34 @@ fn execution(projection: Option<&AwosExecutionProjection>, now: Timestamp) -> Va
         tone,
         icon: tone.icon(),
         word: format::execution(projection.state).to_owned(),
-        exact: format!(
-            "Receipt {}, reading {}",
-            uuid::Uuid::from(projection.receipt),
-            projection.interpretation
+        exact: tr_args(
+            "admin-receipt-reading",
+            [
+                (
+                    "receipt",
+                    (uuid::Uuid::from(projection.receipt)).to_string().into(),
+                ),
+                (
+                    "interpretation",
+                    (projection.interpretation).to_string().into(),
+                ),
+            ],
         ),
-        note: Some(format!(
-            "Recorded {}{}",
-            recorded.shown,
-            if projection.cancel_outstanding {
-                "; a cancel request was pending then"
-            } else {
-                ""
-            }
+        note: Some(tr_args(
+            "admin-recorded-2",
+            [
+                ("shown", (recorded.shown).to_string().into()),
+                (
+                    "else",
+                    (if projection.cancel_outstanding {
+                        tr("admin-a-cancel-request-was-pending-then")
+                    } else {
+                        ""
+                    })
+                    .to_string()
+                    .into(),
+                ),
+            ],
         )),
     })
 }
@@ -691,16 +738,16 @@ fn lab_app_copy(
     let Some(cached) = cached else {
         return (
             Vec::new(),
-            Some("No copy of this order from the lab app is kept.".into()),
+            Some(tr("admin-no-copy-of-this-order-from-the-lab-app").into()),
         );
     };
     let mut facts = vec![
         Fact {
-            term: "Cancelled in the lab app",
+            term: tr("admin-cancelled-in-the-lab-app"),
             value: Value::Text(format::yes_no(cached.tombstone).into()),
         },
         Fact {
-            term: "Kept until",
+            term: tr("admin-kept-until"),
             value: Value::Time(Some(format::moment_unix(cached.expiry, now))),
         },
     ];
@@ -709,19 +756,24 @@ fn lab_app_copy(
         Ok(document) => {
             let version = document.fields().version;
             facts.push(Fact {
-                    term: "Its version",
-                    value: Value::Text(if version == order.version {
-                        format!("{version}: the same version that was sent")
-                    } else {
-                        format!(
-                            "{version}: a different version from the one sent, so its tests are not the ones the machine got"
-                        )
-                    }),
-                });
+                term: tr("admin-its-version"),
+                value: Value::Text(if version == order.version {
+                    tr_args(
+                        "admin-the-same-version-that-was-sent",
+                        [("version", (version).to_string().into())],
+                    )
+                } else {
+                    tr_args(
+                        "admin-a-different-version-from-the-one-sent-so-its",
+                        [("version", (version).to_string().into())],
+                    )
+                }),
+            });
             None
         }
-        Err(error) => Some(format!(
-            "The lab app's copy cannot be read, so its version is not shown. Details for support: {error}"
+        Err(error) => Some(tr_args(
+            "admin-the-lab-app-s-copy-cannot-be-read-so",
+            [("error", (error).to_string().into())],
         )),
     };
     (facts, note)
@@ -751,11 +803,11 @@ fn message_of(
 ) -> Message {
     let mut facts = vec![
         Fact {
-            term: "Recorded by Analyte",
+            term: tr("admin-recorded-by-analyte"),
             value: Value::Time(Some(format::moment_unix(message.custody.recorded_at, now))),
         },
         Fact {
-            term: "Outcome",
+            term: tr("admin-outcome"),
             value: Value::Text(message.disposition.to_string()),
         },
     ];
@@ -767,7 +819,7 @@ fn message_of(
         .filter(|work| work.order == order && work.item == item)
     {
         facts.push(Fact {
-            term: "What the machine reports",
+            term: tr("admin-what-the-machine-reports"),
             value: Value::Text(
                 work.execution
                     .map_or("Nothing", format::execution)
@@ -775,7 +827,7 @@ fn message_of(
             ),
         });
         facts.push(Fact {
-            term: "Results came with it",
+            term: tr("admin-results-came-with-it"),
             value: Value::Text(format::yes_no(work.complete).into()),
         });
         let (times, written) = source_evidence(work.source.as_str());
@@ -784,27 +836,36 @@ fn message_of(
     }
     let notes = match reveal {
         _ if notes.is_empty() => Notes::None,
-        Reveal::Hidden { .. } => Notes::Hidden(format!(
-            "{} from the machine, hidden",
-            format::amount(
-                u64::try_from(notes.len()).unwrap_or(u64::MAX),
-                "note",
-                "notes"
-            )
+        Reveal::Hidden { .. } => Notes::Hidden(tr_args(
+            "admin-from-the-machine-hidden",
+            [(
+                "notes",
+                (tr_count(
+                    "admin-count-notes",
+                    u64::try_from(notes.len()).unwrap_or(u64::MAX),
+                ))
+                .to_string()
+                .into(),
+            )],
         )),
         Reveal::Shown => Notes::Shown(notes),
     };
     Message {
-        title: format!(
-            "Message received {}",
-            message
-                .received_at
-                .as_str()
-                .parse::<Timestamp>()
-                .map_or_else(
-                    |_| message.received_at.as_str().to_owned(),
-                    |at| format::clock(at, now)
-                )
+        title: tr_args(
+            "admin-message-received-2",
+            [(
+                "now",
+                (message
+                    .received_at
+                    .as_str()
+                    .parse::<Timestamp>()
+                    .map_or_else(
+                        |_| message.received_at.as_str().to_owned(),
+                        |at| format::clock(at, now),
+                    ))
+                .to_string()
+                .into(),
+            )],
         ),
         facts,
         notes,
@@ -826,29 +887,29 @@ fn source_evidence(source: &str) -> (Vec<Fact>, Vec<String>) {
         return unread();
     };
     let estimate = match control.estimate() {
-        "" => "Not sent; the earlier expected time is kept",
-        "\"\"" => "Sent as empty (cleared by the machine)",
+        "" => tr("admin-not-sent-the-earlier-expected-time-is-kept"),
+        "\"\"" => tr("admin-sent-as-empty-cleared-by-the-machine"),
         supplied => supplied,
     };
     let header = value
         .get("header_time")
         .and_then(serde_json::Value::as_str)
-        .unwrap_or(format::NOT_RECORDED);
+        .unwrap_or(format::not_recorded());
     let event = match control.event_time() {
-        "" => "not sent",
+        "" => tr("admin-not-sent"),
         supplied => supplied,
     };
     let facts = vec![
         Fact {
-            term: "Expected ready time, as sent",
+            term: tr("admin-expected-ready-time-as-sent"),
             value: Value::Text(estimate.to_owned()),
         },
         Fact {
-            term: "Message time and zone",
+            term: tr("admin-message-time-and-zone"),
             value: Value::Text(header.to_owned()),
         },
         Fact {
-            term: "Event time, as sent",
+            term: tr("admin-event-time-as-sent"),
             value: Value::Text(event.to_owned()),
         },
     ];

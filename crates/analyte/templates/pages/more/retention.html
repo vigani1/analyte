@@ -6,18 +6,18 @@
 {%- import "components/icon.html" as draw %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("", "Data keeping", KEEPING_LEDE) %}{% endcall %}
+{% call layout::intro_head("", "Data keeping", crate::admin::more::page::keeping_lede()) %}{% endcall %}
 <div class="stack stack--lg narrow">
-{% call layout::label_card("dk-times", "Keeping times") %}
+{% call layout::label_card("dk-times", analyte_i18n::text("admin-keeping-times")) %}
 {%- if policies.is_empty() %}
-<p class="muted text--sm">{{ crate::admin::view::format::NO_MACHINE_SET_UP }}</p>
+<p class="muted text--sm">{{ crate::admin::view::format::no_machine_set_up() }}</p>
 {%- else %}
 <dl class="kv">{% for (machine, policy) in policies %}<dt>{{ machine }}</dt><dd>{{ policy }}</dd>{% endfor %}</dl>
 {%- endif %}
 {% endcall %}
-{% call layout::label_card("dk-clean", crate::admin::more::retention::LAST_CLEAN_UP) %}
+{% call layout::label_card("dk-clean", crate::admin::more::retention::last_clean_up()) %}
 {%- if clean_up.is_none() %}
-<p class="muted text--sm">No clean-up has run yet.</p>
+<p class="muted text--sm">{{ analyte_i18n::text("admin-no-clean-up-has-run-yet") }}</p>
 {%- endif %}
 <dl class="kv">
 {%- if let Some(facts) = clean_up %}{% for fact in facts %}{% call display::fact(fact) %}{% endcall %}{% endfor %}{% endif %}
@@ -25,15 +25,15 @@
 </dl>
 {% endcall %}
 <section class="section" aria-labelledby="dk-holds">
-<div class="section__head">{% call layout::label("dk-holds", crate::admin::more::retention::HOLDS, "") %}{% endcall %}{% if form.is_some() %}{% call forms::link_button("#dk-add", crate::admin::more::retention::ADD_HOLD, "btn--outline btn--sm") %}{% endcall %}{% endif %}</div>
-<p class="muted text--sm">{{ HOLDS_TEXT }}</p>
+<div class="section__head">{% call layout::label("dk-holds", crate::admin::more::retention::holds(), "") %}{% endcall %}{% if form.is_some() %}{% call forms::link_button("#dk-add", crate::admin::more::retention::add_hold(), "btn--outline btn--sm") %}{% endcall %}{% endif %}</div>
+<p class="muted text--sm">{{ crate::admin::more::page::holds_text() }}</p>
 {%- if holds.is_empty() %}
-{% call feedback::empty_card("No holds", "Nothing is held now; clean-up follows the keeping times.") %}{% endcall %}
+{% call feedback::empty_card(analyte_i18n::text("admin-no-holds"), analyte_i18n::text("admin-nothing-is-held-now-clean-up-follows-the-keeping")) %}{% endcall %}
 {%- else %}
 <ul class="card rows">
 {%- for hold in holds %}
 <li class="row more-row" title="{{ hold.exact }}">{% call draw::icon(crate::admin::view::icon::Icon::Lock, "") %}{% endcall %}<div class="row__main"><p class="more-row__title">{% call display::words(hold.title) %}{% endcall %}</p><p class="subtle text--sm">{% call display::words(hold.sub) %}{% endcall %}</p></div>
-{%- if let Some(href) = hold.release %}{% call forms::link_button(href, crate::admin::more::retention::RELEASE, "btn--quiet btn--sm") %}{% endcall %}{% endif -%}
+{%- if let Some(href) = hold.release %}{% call forms::link_button(href, crate::admin::more::retention::release(), "btn--quiet btn--sm") %}{% endcall %}{% endif -%}
 </li>
 {%- endfor %}
 </ul>
@@ -44,21 +44,21 @@
 </section>
 {%- if let Some(csrf) = form %}
 <section class="card card--pad stack" id="dk-add" aria-labelledby="dk-add-title">
-<h2 id="dk-add-title" class="label">{{ crate::admin::more::retention::ADD_HOLD }}</h2>
+<h2 id="dk-add-title" class="label">{{ crate::admin::more::retention::add_hold() }}</h2>
 <form class="stack" method="post" action="/retention">
 <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="operation" value="place">
 <div class="form-grid">
-<div class="field"><label class="field__label" for="dk-scope">Hold a</label><select id="dk-scope" class="select" name="scope"><option value="receipt">Message</option><option value="order">Order</option></select></div>
-<div class="field"><label class="field__label" for="dk-id">Message number or lab app order number</label><input id="dk-id" class="input mono" name="id" required maxlength="256"></div>
-<div class="field"><label class="field__label" for="dk-destination">Lab app (orders only)</label><input id="dk-destination" class="input" name="destination" maxlength="256"></div>
-<div class="field"><label class="field__label" for="dk-reason">Reason</label><input id="dk-reason" class="input" name="reason" required maxlength="256"><span class="field__hint">Recorded with the hold and the time.</span></div>
+<div class="field"><label class="field__label" for="dk-scope">{{ analyte_i18n::text("admin-hold-a") }}</label><select id="dk-scope" class="select" name="scope"><option value="receipt">{{ analyte_i18n::text("admin-message") }}</option><option value="order">{{ analyte_i18n::text("admin-order") }}</option></select></div>
+<div class="field"><label class="field__label" for="dk-id">{{ analyte_i18n::text("admin-message-number-or-lab-app-order-number") }}</label><input id="dk-id" class="input mono" name="id" required maxlength="256"></div>
+<div class="field"><label class="field__label" for="dk-destination">{{ analyte_i18n::text("admin-lab-app-orders-only") }}</label><input id="dk-destination" class="input" name="destination" maxlength="256"></div>
+<div class="field"><label class="field__label" for="dk-reason">{{ analyte_i18n::text("admin-reason") }}</label><input id="dk-reason" class="input" name="reason" required maxlength="256"><span class="field__hint">{{ analyte_i18n::text("admin-recorded-with-the-hold-and-the-time") }}</span></div>
 </div>
-<label class="check"><input type="checkbox" name="confirm" value="yes" required>I confirm this hold</label>
-<div class="cluster"><button type="submit" class="btn btn--primary">Save hold</button></div>
+<label class="check"><input type="checkbox" name="confirm" value="yes" required>{{ analyte_i18n::text("admin-i-confirm-this-hold") }}</label>
+<div class="cluster"><button type="submit" class="btn btn--primary">{{ analyte_i18n::text("admin-save-hold") }}</button></div>
 </form>
 </section>
 {%- else %}
-{% call feedback::note("Sign in to add or release a hold", "Analyte records who places or releases a hold, so it needs a signed-in browser session.") %}{% endcall %}
+{% call feedback::note(analyte_i18n::text("admin-sign-in-to-add-or-release-a-hold"), analyte_i18n::text("admin-analyte-records-who-places-or-releases-a-hold-so")) %}{% endcall %}
 {%- endif %}
 </div>
 {%- if let Some(release) = dialog %}

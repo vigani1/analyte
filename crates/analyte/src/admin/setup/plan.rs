@@ -12,6 +12,8 @@ use super::{
 use crate::installation::config::{Program, connections};
 use crate::machine::link::status::Link;
 use analyte_config::{AllowedPeers, Endpoint, RepeatedResults, TransportKind};
+use analyte_i18n::message as tr_args;
+use analyte_i18n::text as tr;
 use analyte_model::Identifier;
 use analyte_transport::serial;
 use serde::Deserialize;
@@ -110,6 +112,7 @@ pub(super) fn chosen(
 pub(super) mod recording {
     use super::{SetupError, wizard};
     use analyte_config::{ProfileAnswers, VidasAcknowledgment};
+    use analyte_i18n::text as tr;
 
     /// The form value of the mode field that asks for record only.
     pub(in crate::admin::setup) const RECORD: &str = "record";
@@ -148,20 +151,22 @@ pub(super) mod recording {
             "autolyser" => {
                 settings.poll_seconds = field(&draft.poll_seconds)
                     .map(|seconds| {
-                        seconds.parse::<u32>().ok().filter(|s| analyte_config::recording::POLL_SECONDS.contains(s)).ok_or(
-                            SetupError::RecordingAnswer(
-                                "enter the seconds between asks for the next report: a whole number from 1 to 3600",
-                            ),
-                        )
+                        seconds
+                            .parse::<u32>()
+                            .ok()
+                            .filter(|s| analyte_config::recording::POLL_SECONDS.contains(s))
+                            .ok_or(SetupError::RecordingAnswer(tr(
+                                "setup-enter-the-seconds-between-asks-for-the-next-report",
+                            )))
                     })
                     .transpose()?;
                 settings.controls = field(&draft.controls)
                     .map(|value| match value {
                         "yes" => Ok(true),
                         "no" => Ok(false),
-                        _ => Err(SetupError::RecordingAnswer(
-                            "choose whether the analyzer's reports carry its controls: yes or no",
-                        )),
+                        _ => Err(SetupError::RecordingAnswer(tr(
+                            "setup-choose-whether-the-analyzer-s-reports-carry-its-controls",
+                        ))),
                     })
                     .transpose()?;
             }
@@ -170,9 +175,9 @@ pub(super) mod recording {
                     .map(|value| match value {
                         "literal" => Ok(VidasAcknowledgment::Literal),
                         "alternate" => Ok(VidasAcknowledgment::Alternate),
-                        _ => Err(SetupError::RecordingAnswer(
-                            "choose the VIDAS PC acknowledgment: Literal or Alternate",
-                        )),
+                        _ => Err(SetupError::RecordingAnswer(tr(
+                            "setup-choose-the-vidas-pc-acknowledgment-literal-or-alternate",
+                        ))),
                     })
                     .transpose()?;
             }
@@ -184,9 +189,9 @@ pub(super) mod recording {
             settings.analyzer_mode = field(&draft.analyzer_mode)
                 .map(|value| {
                     analyte_config::ChoiceName::new(value).map_err(|_| {
-                        SetupError::RecordingAnswer(
-                            "choose the analyzer mode from the values the model offers",
-                        )
+                        SetupError::RecordingAnswer(tr(
+                            "setup-choose-the-analyzer-mode-from-the-values-the-model",
+                        ))
                     })
                 })
                 .transpose()?;
@@ -278,9 +283,9 @@ fn peers_of(
         return Ok(None);
     }
     if kind != TransportKind::TcpServer {
-        return Err(SetupError::Connection(
-            "only a machine that connects to this PC can be limited to some devices",
-        ));
+        return Err(SetupError::Connection(tr(
+            "setup-only-a-machine-that-connects-to-this-pc-can",
+        )));
     }
     AllowedPeers::parse(&typed)
         .map(Some)
@@ -305,20 +310,20 @@ pub(super) fn connection_of(
                         .map_err(SetupError::Connection)?,
                 )),
                 Some(("name", name)) if !name.is_empty() => Ok(Endpoint::Fixed(name.into())),
-                _ => Err(SetupError::Connection("choose a serial port")),
+                _ => Err(SetupError::Connection(tr("setup-choose-a-serial-port"))),
             }
         }
         TransportKind::TcpServer | TransportKind::TcpClient => {
-            let host: std::net::IpAddr = field(&choice.host)
-                .parse()
-                .map_err(|_| SetupError::Connection("enter an IP address such as 192.168.1.20"))?;
+            let host: std::net::IpAddr = field(&choice.host).parse().map_err(|_| {
+                SetupError::Connection(tr("setup-enter-an-ip-address-such-as-192-168-1"))
+            })?;
             let port: u16 = field(&choice.tcp_port)
                 .parse()
                 .ok()
                 .filter(|port| *port != 0)
-                .ok_or(SetupError::Connection(
-                    "enter a port number from 1 to 65535",
-                ))?;
+                .ok_or(SetupError::Connection(tr(
+                    "setup-enter-a-port-number-from-1-to-65535",
+                )))?;
             Ok(Endpoint::Fixed(
                 std::net::SocketAddr::new(host, port).to_string(),
             ))
@@ -326,7 +331,7 @@ pub(super) fn connection_of(
         TransportKind::WatchedFolder => {
             let folder = field(&choice.folder);
             if folder.is_empty() {
-                return Err(SetupError::Connection("enter the folder path"));
+                return Err(SetupError::Connection(tr("setup-enter-the-folder-path")));
             }
             Ok(Endpoint::Fixed(folder))
         }
@@ -342,9 +347,9 @@ fn serial_of(
 ) -> Result<Option<analyte_config::SerialValues>, SetupError> {
     match definition.kind {
         TransportKind::Serial => cable::chosen(draft, definition.serial.as_ref()).map(Some),
-        _ if cable::given(draft) => Err(SetupError::Connection(
-            "only a machine on a serial cable has cable settings (baud rate, parity and the rest)",
-        )),
+        _ if cable::given(draft) => Err(SetupError::Connection(tr(
+            "setup-only-a-machine-on-a-serial-cable-has-cable",
+        ))),
         TransportKind::TcpServer | TransportKind::TcpClient | TransportKind::WatchedFolder => {
             Ok(None)
         }
@@ -382,16 +387,16 @@ pub(super) fn repeated_results_of(
         .map(str::trim)
         .filter(|value| !value.is_empty());
     let parse = |value: &str| {
-        RepeatedResults::parse(value).ok_or(SetupError::Connection(
-            "choose how repeated results are handled: automatic or always_ask",
-        ))
+        RepeatedResults::parse(value).ok_or(SetupError::Connection(tr(
+            "setup-choose-how-repeated-results-are-handled-automatic-or-always",
+        )))
     };
     if !definition.asks_repeated_results {
         return match given.map(parse).transpose()? {
             None | Some(RepeatedResults::Automatic) => Ok(RepeatedResults::Automatic),
-            Some(RepeatedResults::AlwaysAsk) => Err(SetupError::Connection(
-                "this model keeps its protocol's own rules for repeated results; it has no repeated-results choice",
-            )),
+            Some(RepeatedResults::AlwaysAsk) => Err(SetupError::Connection(tr(
+                "setup-this-model-keeps-its-protocol-s-own-rules-for",
+            ))),
         };
     }
     match given {
@@ -458,7 +463,9 @@ pub(super) fn plan(setup: &Setup, id: &str, draft: &wizard::Draft) -> Result<Pla
             .filter(|seconds| !seconds.trim().is_empty())
             .map(|seconds| {
                 seconds.trim().parse::<u32>().map_err(|_| {
-                    SetupError::Connection("enter the poll interval in seconds as a whole number")
+                    SetupError::Connection(tr(
+                        "setup-enter-the-poll-interval-in-seconds-as-a-whole",
+                    ))
                 })
             })
             .transpose()?;
@@ -732,7 +739,13 @@ pub(super) fn listen_target(
             .map_err(SetupError::SerialSettings)?;
             let words = cable::of(stack).map(cable::words).unwrap_or_default();
             Ok((
-                format!("Serial port {name}, {words}"),
+                tr_args(
+                    "setup-serial-port-2",
+                    [
+                        ("name", (name).to_string().into()),
+                        ("words", (words).to_string().into()),
+                    ],
+                ),
                 listen::Target::Serial {
                     name,
                     settings,
@@ -743,21 +756,27 @@ pub(super) fn listen_target(
         link @ (Link::TcpServer | Link::TcpClient) => {
             in_use(setup, endpoint, None)?;
             let Endpoint::Fixed(text) = endpoint else {
-                return Err(SetupError::Connection(
-                    "a network link needs an IP address and port",
-                ));
+                return Err(SetupError::Connection(tr(
+                    "setup-a-network-link-needs-an-ip-address-and-port",
+                )));
             };
-            let address = text
+            let address: std::net::SocketAddr = text
                 .parse()
-                .map_err(|_| SetupError::Connection("enter an IP address and port"))?;
+                .map_err(|_| SetupError::Connection(tr("setup-enter-an-ip-address-and-port")))?;
             Ok(if link == Link::TcpServer {
                 (
-                    format!("Listening on {address}"),
+                    tr_args(
+                        "setup-listening-on",
+                        [("address", (address).to_string().into())],
+                    ),
                     listen::Target::TcpServer(address),
                 )
             } else {
                 (
-                    format!("Connecting to {address}"),
+                    tr_args(
+                        "setup-connecting-to",
+                        [("address", (address).to_string().into())],
+                    ),
                     listen::Target::TcpClient(address),
                 )
             })

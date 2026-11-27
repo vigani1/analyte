@@ -34,12 +34,12 @@ pub enum Source {
 impl Source {
     /// Plain words for the note on standard error.
     #[must_use]
-    pub const fn describe(self) -> &'static str {
+    pub fn describe(self) -> &'static str {
         match self {
-            Self::Explicit => "named by --config",
-            Self::Environment => "named by ANALYTE_CONFIG",
-            Self::CurrentFolder => "in the current folder",
-            Self::Installed => "the installed program file",
+            Self::Explicit => analyte_i18n::text("cli-named-by-config"),
+            Self::Environment => analyte_i18n::text("cli-named-by-analyte-config"),
+            Self::CurrentFolder => analyte_i18n::text("cli-in-the-current-folder"),
+            Self::Installed => analyte_i18n::text("cli-the-installed-program-file"),
         }
     }
 }

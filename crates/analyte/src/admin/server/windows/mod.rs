@@ -1,6 +1,7 @@
 //! Windows sign-in for the Analyte app (ADR 0021): who may sign in, the pipe's two lines, the one-time codes, the account a session is signed in as and whether sign-in is on; on Windows also the pipe the engine serves them on.
 pub(super) mod codes;
 pub(super) mod line;
+use analyte_i18n::{message as tr_args, text as tr};
 #[cfg(windows)]
 mod pipe;
 pub(super) mod rule;
@@ -177,13 +178,11 @@ impl Status {
     /// The Settings page's words for it.
     pub(in crate::admin) fn line(&self) -> String {
         match self {
-            Self::On => "On".into(),
-            Self::AdministratorsOnly => concat!(
-                "Off for other users because the Analyte users group is missing, ",
-                "so only administrators can sign in with Windows"
-            )
-            .into(),
-            Self::Off(why) => format!("Off because {why}"),
+            Self::On => tr("admin-on").into(),
+            Self::AdministratorsOnly => {
+                tr("admin-off-for-other-users-because-the-analyte-users-group").into()
+            }
+            Self::Off(why) => tr_args("admin-off-because", [("why", (why).to_string().into())]),
         }
     }
 }

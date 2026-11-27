@@ -12,6 +12,7 @@ use crate::admin::view::report::{Button, Problem, Report, Section, read_within, 
 use crate::admin::view::{Tab, Tone, format, frame::Frame};
 use crate::admin::{CommandError, Error};
 use crate::operator::recovery;
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_model::{Identifier, Reason};
 use analyte_store::{InterpretationCommit, OperatorError, RevisionOutcome};
 use askama::Template as _;
@@ -44,24 +45,17 @@ impl Confirm {
         let (path, title, text, placeholder, button) = match self {
             Self::Resolve => (
                 "resolve",
-                "Mark as resolved?",
-                concat!(
-                    "The item leaves the open list and stays under Resolved with its history. ",
-                    "Nothing is deleted, and nothing is sent to a machine or the lab app.",
-                ),
-                "For example: settled with the lab app team",
-                format::MARK_RESOLVED,
+                tr("admin-mark-as-resolved"),
+                tr("admin-the-item-leaves-the-open-list-and-stays-under"),
+                tr("admin-for-example-settled-with-the-lab-app-team"),
+                format::mark_resolved(),
             ),
             Self::Reprocess => (
                 "reprocess",
-                "Process this message again?",
-                concat!(
-                    "Analyte reads the original message again with the current settings. The ",
-                    "earlier reading is kept and a new one is added; corrected results follow ",
-                    "the usual correction rules. Nothing is sent to the machine.",
-                ),
-                "For example: machine definition corrected",
-                format::PROCESS_AGAIN,
+                tr("admin-process-this-message-again"),
+                tr("admin-analyte-reads-the-original-message-again-with-the-current"),
+                tr("admin-for-example-machine-definition-corrected"),
+                format::process_again(),
             ),
         };
         ReasonDialog {
@@ -69,7 +63,7 @@ impl Confirm {
             title,
             text: text.into(),
             placeholder,
-            hint: "Required, up to 256 characters. Recorded in the history with the time.",
+            hint: tr("admin-required-up-to-256-characters-recorded-in-the-history"),
             button,
             csrf: session.csrf.form_value().to_owned(),
             cancel: format::parked_href(id),
@@ -97,10 +91,7 @@ pub(in crate::admin) async fn confirm_resolve(
     Path(id): Path<i64>,
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
-    let Some(session) = signed_in(session.as_ref()) else {
-        return Problem::SignIn.page(&state, None, Section::NeedsReview(Some(id)));
-    };
-    open(&state, session, id, Confirm::Resolve, "", None).await
+    confirm(&state, id, session.as_ref(), Confirm::Resolve).await
 }
 
 pub(in crate::admin) async fn confirm_reprocess(
@@ -108,10 +99,19 @@ pub(in crate::admin) async fn confirm_reprocess(
     Path(id): Path<i64>,
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
-    let Some(session) = signed_in(session.as_ref()) else {
-        return Problem::SignIn.page(&state, None, Section::NeedsReview(Some(id)));
-    };
-    open(&state, session, id, Confirm::Reprocess, "", None).await
+    confirm(&state, id, session.as_ref(), Confirm::Reprocess).await
+}
+
+async fn confirm(
+    state: &Context,
+    id: i64,
+    session: Option<&Extension<Arc<Session>>>,
+    action: Confirm,
+) -> Response {
+    match signed_in(session) {
+        Some(session) => open(state, session, id, action, "", None).await,
+        None => Problem::SignIn.page(state, None, Section::NeedsReview(Some(id))),
+    }
 }
 
 /// The item page under `confirm`'s dialog: OK on a first look, 400 with
@@ -274,12 +274,14 @@ impl Done {
     async fn page(self, state: &Context, session: &Session, id: i64) -> Response {
         let (title, tone, alert, text) = match self {
             Self::Resolved => (
-                format::MARKED_RESOLVED,
+                format::marked_resolved(),
                 Tone::Good,
-                format!("Item {id} is marked resolved"),
-                String::from(concat!(
-                    "It moved to Resolved and keeps its history. Nothing was sent to a ",
-                    "machine or the lab app.",
+                tr_args(
+                    "admin-item-is-marked-resolved",
+                    [("id", (id).to_string().into())],
+                ),
+                String::from(tr(
+                    "admin-it-moved-to-resolved-and-keeps-its-history-nothing",
                 )),
             ),
             Self::Reprocessed(commit) => {
@@ -290,12 +292,18 @@ impl Done {
                     )
                 });
                 (
-                    format::PROCESSED_AGAIN,
+                    format::processed_again(),
                     if review { Tone::Attention } else { Tone::Good },
-                    format!("Reading {} was recorded", commit.version),
-                    format!(
-                        "What happened: {}. The earlier reading is kept.",
-                        format::outcomes(&commit.outcomes)
+                    tr_args(
+                        "admin-reading-was-recorded",
+                        [("version", (commit.version).to_string().into())],
+                    ),
+                    tr_args(
+                        "admin-what-happened-the-earlier-reading-is-kept",
+                        [(
+                            "outcomes",
+                            (format::outcomes(&commit.outcomes)).to_string().into(),
+                        )],
                     ),
                 )
             }
@@ -310,7 +318,7 @@ impl Done {
                 },
                 Button {
                     href: format::parked_href(id),
-                    label: format::OPEN_ITEM,
+                    label: format::open_item(),
                     class: "btn--outline",
                 },
             ],

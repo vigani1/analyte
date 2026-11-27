@@ -17,12 +17,10 @@ pub(in crate::admin) const ADMIN_KEY_PREFIX: &str = "admin-session-";
 #[derive(Debug, thiserror::Error)]
 pub enum ActorError {
     /// It begins like an actor only a sign-in on the admin pages records.
-    #[error(
-        "--actor may not begin with \"{0}\": Analyte records that only for people signed in on the admin pages"
-    )]
+    #[error("{}", analyte_i18n::message("cli-error-reserved", [("value", (.0).to_string().into())]))]
     Reserved(&'static str),
     /// It is not an actor Analyte can record.
-    #[error("--actor: {0}")]
+    #[error("{}", analyte_i18n::message("cli-error-text", [("value", (.0).to_string().into())]))]
     Text(#[from] analyte_model::TextError),
 }
 

@@ -40,7 +40,22 @@ fn running(
     }
     // ADR 0032: a serial machine whose model declares a choice.
     let serial = matches!(connection, Connection::Serial(_));
-    let choices = serial.then(|| "Protocol on the host link screen: Literal".to_owned());
+    let mut choices = Vec::new();
+    if serial {
+        use analyte_config::{ChoiceKind, ChoiceLabel, ChoiceName, Chosen, VersionEvidence};
+        let literal = ChoiceName::new("literal")?;
+        let label = ChoiceLabel::try_from("Literal".to_owned())?;
+        choices.push(Chosen {
+            name: ChoiceName::new("protocol_mode")?,
+            kind: ChoiceKind::Mode,
+            label: ChoiceLabel::try_from("Protocol on the host link screen".to_owned())?,
+            value: literal.clone(),
+            value_label: label.clone(),
+            version_evidence: VersionEvidence::Checked,
+            suggested: Some((literal, label)),
+            selected: false,
+        });
+    }
     Ok(Machine {
         software: None,
         rules: Vec::new(),
@@ -1290,8 +1305,8 @@ async fn machine_pages_show_the_allowed_devices_and_refusals() -> Result<(), Err
         .find("Refused 2 connections from 192.168.1.77, the last at ")
         .ok_or("counted refusal missing")?;
     assert!(newest < older, "newest first");
-    assert!(guarded_page.contains(format::REFUSED_ADVICE));
-    assert!(!guarded_page.contains(format::OPEN_TO_ANY));
+    assert!(guarded_page.contains(format::refused_advice()));
+    assert!(!guarded_page.contains(format::open_to_any()));
     let open_page = request(&host, "/machines/wait-4", &auth, None).await?;
     assert!(
         open_page.contains("<dt>Accepts connections from</dt><dd>Any device</dd>"),
@@ -1299,15 +1314,15 @@ async fn machine_pages_show_the_allowed_devices_and_refusals() -> Result<(), Err
     );
     assert!(open_page.contains(&format!(
         "<p class=\"alert__title\">{}</p><p class=\"alert__text\">{}</p>",
-        format::OPEN_TO_ANY,
-        format::OPEN_TO_ANY_ADVICE
+        format::open_to_any(),
+        format::open_to_any_advice()
     )));
     let serial_page = request(&host, "/machines/serial-2", &auth, None).await?;
     assert!(
         !serial_page.contains("Accepts connections from"),
         "{serial_page}"
     );
-    assert!(!serial_page.contains(format::OPEN_TO_ANY));
+    assert!(!serial_page.contains(format::open_to_any()));
     let list = request(&host, "/machines", &auth, None).await?;
     assert!(
         list.contains("net-1: Refused a connection from 10.0.0.9 at "),
@@ -1317,7 +1332,7 @@ async fn machine_pages_show_the_allowed_devices_and_refusals() -> Result<(), Err
         !list.contains("192.168.1.77"),
         "the list names only the newest"
     );
-    assert!(list.contains(&format!("wait-4: {}", format::OPEN_TO_ANY)));
+    assert!(list.contains(&format!("wait-4: {}", format::open_to_any())));
     // `machines list` reads the newest refusal from GET /machines.json.
     let answer = request(&host, "/machines.json", &auth, None).await?;
     let body = answer.split("\r\n\r\n").nth(1).ok_or("no body")?;
@@ -1363,7 +1378,7 @@ async fn record_only_machine_says_nothing_goes_to_a_lab_app() -> Result<(), Erro
         connection: Connection::Listening(Some(5600)),
         allowed_peers: None,
         cable: None,
-        choices: None,
+        choices: Vec::new(),
         repeated_results: None,
         lab_app: None,
     };
@@ -1373,7 +1388,7 @@ async fn record_only_machine_says_nothing_goes_to_a_lab_app() -> Result<(), Erro
     let list = request(&host, "/machines", &auth, None).await?;
     let listed = row(&list, "net-1");
     assert!(
-        listed.contains(crate::admin::view::format::RECORDING_ONLY),
+        listed.contains(crate::admin::view::format::recording_only()),
         "{listed}"
     );
     assert!(listed.contains(counts), "{listed}");
@@ -1381,14 +1396,14 @@ async fn record_only_machine_says_nothing_goes_to_a_lab_app() -> Result<(), Erro
     assert!(
         page.contains(&format!(
             "Sends results to</dt><dd>{}",
-            crate::admin::view::format::RECORDING_ONLY
+            crate::admin::view::format::recording_only()
         )),
         "{page}"
     );
     assert!(page.contains(counts), "{page}");
     let overview = request(&host, "/", &auth, None).await?;
     assert!(
-        overview.contains(crate::admin::view::format::RECORDING_ONLY),
+        overview.contains(crate::admin::view::format::recording_only()),
         "{overview}"
     );
     let json = request(&host, "/machines.json", &auth, None).await?;

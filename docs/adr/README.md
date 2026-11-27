@@ -49,3 +49,4 @@ later one changes says "Changed by" in its status line and beside the part.
 | [0036](0036-machine-software-version-warning.md) | Warn when a machine reports unexpected software |
 | [0037](0037-de-identified-recording-copies.md)   | De-identified recording copies made on the lab PC (extends ADRs 0009, 0034) |
 | [0038](0038-needs-review-notices.md)           | Optional Needs review notices to the lab app; the decision stays in Analyte |
+| [0039](0039-fluent-for-operator-interfaces.md) | Fluent for operator interfaces |

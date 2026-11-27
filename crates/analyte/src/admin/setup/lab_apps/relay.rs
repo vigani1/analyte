@@ -9,6 +9,7 @@
 use super::change::{Change, Entered, add_blocking, reason, save_blocking, saved_lines};
 use crate::admin::server::Context;
 use crate::admin::setup::{SetupError, Via, audit_as, off_thread};
+use analyte_i18n::{message as tr_args, text as tr};
 use axum::{
     Json,
     extract::{State, rejection::JsonRejection},
@@ -117,14 +118,17 @@ pub(in crate::admin) async fn post(
             };
             return unreadable(
                 response_status,
-                &format!("the engine could not read the request ({status})"),
+                &tr_args(
+                    "setup-the-engine-could-not-read-the-request",
+                    [("status", (status).to_string().into())],
+                ),
             );
         }
     };
     let Ok(actor) = crate::admin::command_line_actor(&sent.actor) else {
         return unreadable(
             StatusCode::BAD_REQUEST,
-            "the command named no valid --actor",
+            tr("setup-the-command-named-no-valid-actor"),
         );
     };
     let change = sent.change;

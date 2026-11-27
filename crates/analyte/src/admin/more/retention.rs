@@ -13,6 +13,7 @@ use crate::admin::view::{
 };
 use crate::admin::{Error, server::Context};
 use crate::deadline;
+use analyte_i18n::{count as tr_count, message as tr_args, text as tr};
 use analyte_model::{Identifier, Reason};
 use analyte_store::{Audit, HoldTarget, PurgeRun, RetentionHold};
 use askama::Template as _;
@@ -140,7 +141,7 @@ fn page(
             .collect(),
         clean_up: read.last.as_ref().map(|run| clean_up(run, now)),
         oldest: Fact {
-            term: "Oldest message kept",
+            term: tr("admin-oldest-message-kept"),
             value: Value::Time(read.oldest.map(|time| format::moment_unix(time, now))),
         },
         holds: read
@@ -159,11 +160,14 @@ fn page(
 /// How long a machine's messages are kept, in the page's words.
 fn policy(days: Option<u16>) -> String {
     days.map_or_else(
-        || "Kept, never deleted".to_owned(),
+        || tr("admin-kept-never-deleted").to_owned(),
         |days| {
-            format!(
-                "Deleted {} after the lab app last confirmed it",
-                format::amount(days, "day", "days")
+            tr_args(
+                "admin-deleted-after-the-lab-app-last-confirmed-it",
+                [(
+                    "days",
+                    (tr_count("admin-count-days", days)).to_string().into(),
+                )],
             )
         },
     )
@@ -247,31 +251,31 @@ fn clean_up(run: &PurgeRun, now: Timestamp) -> Vec<Fact> {
     };
     vec![
         Fact {
-            term: "Ran",
+            term: tr("admin-ran"),
             value: Value::Time(Some(format::moment_unix(run.time, now))),
         },
-        number("Messages checked", run.examined),
-        number("Messages deleted", run.purged),
-        number("Orders deleted", run.orders),
+        number(tr("admin-messages-checked"), run.examined),
+        number(tr("admin-messages-deleted"), run.purged),
+        number(tr("admin-orders-deleted"), run.orders),
         Fact {
-            term: "Paused",
+            term: tr("admin-paused"),
             value: Value::Text(format::yes_no(run.paused).into()),
         },
         Fact {
-            term: "Failed",
+            term: tr("admin-failed"),
             value: Value::Status(if run.failed {
                 Status {
                     tone: Tone::Problem,
                     icon: Tone::Problem.icon(),
-                    word: "Yes".into(),
-                    exact: "Purge failed".into(),
+                    word: tr("setup-yes").into(),
+                    exact: tr("admin-purge-failed").into(),
                     note: None,
                 }
             } else {
                 Status {
                     tone: Tone::Good,
                     icon: Tone::Good.icon(),
-                    word: "No".into(),
+                    word: tr("setup-no").into(),
                     exact: String::new(),
                     note: None,
                 }
@@ -283,14 +287,18 @@ fn clean_up(run: &PurgeRun, now: Timestamp) -> Vec<Fact> {
 /// What a hold keeps, in words, with when its message arrived.
 fn held_line(held: &Held, now: Timestamp) -> Line {
     match (&held.hold.target, &held.message) {
-        (HoldTarget::Receipt(_), Some((machine, at))) => {
-            Line::text(format!("Message from {machine} · received ")).time(format::moment(*at, now))
-        }
-        (HoldTarget::Receipt(_), None) => Line::text("A message no longer listed"),
-        (HoldTarget::Order { destination, order }, _) => Line::text(format!(
-            "Order {} from lab app {}",
-            order.as_str(),
-            destination.as_str()
+        (HoldTarget::Receipt(_), Some((machine, at))) => Line::text(tr_args(
+            "admin-message-from-received",
+            [("machine", (machine).to_string().into())],
+        ))
+        .time(format::moment(*at, now)),
+        (HoldTarget::Receipt(_), None) => Line::text(tr("admin-a-message-no-longer-listed")),
+        (HoldTarget::Order { destination, order }, _) => Line::text(tr_args(
+            "admin-order-from-lab-app",
+            [
+                ("order", (order.as_str()).to_string().into()),
+                ("destination", (destination.as_str()).to_string().into()),
+            ],
         )),
     }
 }
@@ -308,11 +316,17 @@ fn hold_row(held: &Held, signed_in: bool, now: Timestamp) -> HoldRow {
 /// Who placed a hold, when and why, from the audit history; holds never expire.
 fn placed(audit: Option<&Audit>, now: Timestamp) -> Line {
     match audit {
-        Some(audit) => Line::text(format!("Set by {}", format::actor(audit.actor.as_str())))
-            .then(Line::text("").time(format::moment_unix(audit.time, now)))
-            .then(Line::text(format!("Reason: {}", audit.reason.as_str())))
-            .then(Line::text("until released")),
-        None => Line::text("Who placed it is not in the history · until released"),
+        Some(audit) => Line::text(tr_args(
+            "admin-set-by",
+            [(
+                "actor",
+                (format::actor(audit.actor.as_str())).to_string().into(),
+            )],
+        ))
+        .then(Line::text("").time(format::moment_unix(audit.time, now)))
+        .then(Line::text(format!("Reason: {}", audit.reason.as_str())))
+        .then(Line::text(tr("admin-until-released"))),
+        None => Line::text(tr("admin-who-placed-it-is-not-in-the-history-until")),
     }
 }
 
@@ -321,13 +335,13 @@ fn placed(audit: Option<&Audit>, now: Timestamp) -> Line {
 fn target(target: &HoldTarget) -> String {
     match target {
         HoldTarget::Receipt(id) => format!("Message {}", uuid::Uuid::from(*id)),
-        HoldTarget::Order { destination, order } => {
-            format!(
-                "Order {} · lab app {}",
-                order.as_str(),
-                destination.as_str()
-            )
-        }
+        HoldTarget::Order { destination, order } => tr_args(
+            "admin-order-lab-app",
+            [
+                ("order", (order.as_str()).to_string().into()),
+                ("destination", (destination.as_str()).to_string().into()),
+            ],
+        ),
     }
 }
 
@@ -343,14 +357,14 @@ fn release_dialog(session: &Session, held: &Held, now: Timestamp) -> ReleaseDial
     };
     let form = ReasonDialog {
         action: Tab::DataKeeping.href().into(),
-        title: "Release this hold?",
-        text: format!(
-            "{}: clean-up may delete it once its keeping time has passed. The hold's history is kept.",
-            held_line(held, now).plain()
+        title: tr("admin-release-this-hold"),
+        text: tr_args(
+            "admin-clean-up-may-delete-it-once-its-keeping-time",
+            [("plain", (held_line(held, now).plain()).to_string().into())],
         ),
-        placeholder: "For example: the audit is finished",
-        hint: "Required, up to 256 characters. Recorded with the time.",
-        button: RELEASE,
+        placeholder: tr("admin-for-example-the-audit-is-finished"),
+        hint: tr("admin-required-up-to-256-characters-recorded-with-the-time"),
+        button: release(),
         csrf: session.csrf.form_value().to_owned(),
         cancel: Tab::DataKeeping.href().into(),
         reason: String::new(),
@@ -396,13 +410,12 @@ pub(in crate::admin) async fn hold(
             Tab::DataKeeping,
             StatusCode::FORBIDDEN,
             Outcome {
-                title: HOLD_NOT_SAVED,
+                title: hold_not_saved(),
                 tone: Tone::Problem,
-                alert: format::NOTHING_CHANGED.into(),
-                text: "Tick the confirmation box and make sure you are signed in, then try again."
-                    .into(),
+                alert: format::nothing_changed().into(),
+                text: tr("admin-tick-the-confirmation-box-and-make-sure-you-are").into(),
             },
-            vec!["authenticated session, valid form and confirmation required".into()],
+            vec![tr("admin-authenticated-session-valid-form-and-confirmation-required").into()],
         );
     };
     let release = form.operation == "release";
@@ -414,17 +427,17 @@ pub(in crate::admin) async fn hold(
             StatusCode::OK,
             Outcome {
                 title: if release {
-                    "Hold released"
+                    tr("admin-hold-released")
                 } else {
-                    "Hold saved"
+                    tr("admin-hold-saved")
                 },
                 tone: Tone::Good,
                 alert: if release {
-                    "The hold is released".into()
+                    tr("admin-the-hold-is-released").into()
                 } else {
-                    "The hold is saved".into()
+                    tr("admin-the-hold-is-saved").into()
                 },
-                text: "Your session and reason are recorded with it.".into(),
+                text: tr("admin-your-session-and-reason-are-recorded-with-it").into(),
             },
             Vec::new(),
         ),
@@ -434,9 +447,9 @@ pub(in crate::admin) async fn hold(
             Tab::DataKeeping,
             StatusCode::CONFLICT,
             Outcome {
-                title: HOLD_NOT_SAVED,
+                title: hold_not_saved(),
                 tone: Tone::Problem,
-                alert: format::NOTHING_CHANGED.into(),
+                alert: format::nothing_changed().into(),
                 text: format::sentence(&error.to_string()),
             },
             Vec::new(),
@@ -481,16 +494,26 @@ async fn apply(state: &Context, actor: Identifier, form: HoldForm) -> Result<(),
 }
 
 /// Labels the most recent data clean-up.
-pub(in crate::admin) const LAST_CLEAN_UP: &str = "Last clean-up";
+pub(in crate::admin) fn last_clean_up() -> &'static str {
+    tr("admin-last-clean-up")
+}
 
 /// Labels the list of retention holds.
-pub(in crate::admin) const HOLDS: &str = "Holds";
+pub(in crate::admin) fn holds() -> &'static str {
+    tr("admin-holds")
+}
 
 /// Heads the report when a hold fails to save.
-pub(in crate::admin) const HOLD_NOT_SAVED: &str = "Hold not saved";
+pub(in crate::admin) fn hold_not_saved() -> &'static str {
+    tr("admin-hold-not-saved")
+}
 
 /// Labels the action to add a retention hold.
-pub(in crate::admin) const ADD_HOLD: &str = "Add a hold";
+pub(in crate::admin) fn add_hold() -> &'static str {
+    tr("admin-add-hold")
+}
 
 /// Labels the action to release a retention hold.
-pub(in crate::admin) const RELEASE: &str = "Release";
+pub(in crate::admin) fn release() -> &'static str {
+    tr("admin-release")
+}

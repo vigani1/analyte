@@ -11,6 +11,7 @@ use crate::admin::view::{
     parts::Notice,
     report::{Head, Status},
 };
+use analyte_i18n::message as tr_args;
 
 /// GET /setup/lab-apps: every lab app the settings write, how it stands and what waits for it.
 #[derive(askama::Template)]
@@ -140,4 +141,11 @@ pub(super) struct LabApp {
 pub(super) enum Name {
     New(String),
     Fixed(String),
+}
+
+pub(super) fn kept_in_settings(machines: &str) -> String {
+    tr_args(
+        "setup-still-kept-in-the-settings-of-2",
+        [("join", machines.into())],
+    )
 }

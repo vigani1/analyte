@@ -6,6 +6,7 @@ use crate::installation::config::{
     lab_apps::{self as file, Conflict, Written},
 };
 use analyte_config::{Destination, LabApps};
+use analyte_i18n::{message as tr_args, text as tr};
 
 /// One lab app as the installation writes it today, and who uses it.
 pub(in crate::admin::setup) struct Known {
@@ -44,14 +45,17 @@ pub(in crate::admin::setup) enum Place {
 /// The page's sentence for a name written differently in two places; it names
 /// the place read later.
 pub(in crate::admin::setup) fn conflict_sentence(conflict: &Conflict<Place>) -> String {
-    format!(
-        "Lab app {} has different settings in two places (one is {}). Analyte cannot start until they are the same.",
-        conflict.name.as_str(),
-        match &conflict.second {
-            Place::File => "this page".into(),
-            Place::Kept => "kept from a removed machine".into(),
-            Place::Site(id) => format!("machine {id}'s own settings"),
-        }
+    let place = match &conflict.second {
+        Place::File => tr("setup-this-page").to_owned(),
+        Place::Kept => tr("setup-kept-from-a-removed-machine").to_owned(),
+        Place::Site(id) => tr_args("setup-machine-s-own-settings", [("id", id.as_str().into())]),
+    };
+    tr_args(
+        "setup-lab-app-has-different-settings-in-two-places-one",
+        [
+            ("name", conflict.name.as_str().into()),
+            ("settings", place.into()),
+        ],
     )
 }
 
@@ -203,13 +207,13 @@ pub(in crate::admin::setup) fn where_written(known: &Known) -> Vec<(String, &'st
     let mut places = Vec::new();
     if !known.sites.is_empty() {
         places.push((
-            format!("Still kept in the settings of {}", known.sites.join(", ")),
+            tr_args("setup-still-kept-in-the-settings-of-2", [("join", (known.sites.join(", ")).to_string().into())]),
             "[destination] in the machine's site file; saving the machine moves it to lab-apps.toml",
         ));
     }
     if known.kept {
         places.push((
-            "Kept from a removed machine".to_owned(),
+            tr("setup-kept-from-a-removed-machine").to_owned(),
             "[[retired_destinations]] in the program file; saving it here moves it to lab-apps.toml",
         ));
     }

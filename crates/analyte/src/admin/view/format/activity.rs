@@ -1,11 +1,12 @@
 //! Writes Activity's lines: the day dividers, the time of each line and the sentence for each stored event.
 use super::{
-    Moment, actor, amount, attempt_look, exact_time, lab_app_href, machine_href, order_look,
-    samples, settled_action, test_count,
+    Moment, actor, attempt_look, exact_time, lab_app_href, machine_href, order_look, samples,
+    settled_action, test_count,
     time::{clock_in, not_a_date},
 };
 use crate::admin::view::{Tone, icon::Icon};
 use crate::operator::recovery;
+use analyte_i18n::{count as tr_count, message as tr_args, text as tr};
 use analyte_model::{DeliveryId, OrderState};
 use analyte_store::{Activity, AttemptOutcome, Carries, RecentOutcome, Tries};
 use jiff::{Timestamp, tz::TimeZone};
@@ -68,7 +69,9 @@ fn feed_time_in(seconds: i64, zone: &TimeZone) -> Moment {
 }
 
 /// The divider above lines whose time was not stored.
-pub(in crate::admin) const FEED_UNDATED: &str = "Time not recorded";
+pub(in crate::admin) fn feed_undated() -> &'static str {
+    tr("admin-feed-undated")
+}
 
 /// A machine as an Activity line names it: its ID, and its model when known.
 #[derive(Clone, Copy)]
@@ -121,25 +124,24 @@ pub(in crate::admin) fn said(
         Activity::Stored(reading) => stored(reading.as_ref(), machine),
         Activity::Parked { item, details } => {
             let (title, tone) = headline(details);
-            Said {
-                head: crate::admin::view::Tab::NeedsReview.label().into(),
-                rest: from(format!("– item {item} added: {}", lower_first(&title))),
-                tone,
-                icon: tone.icon(),
-                word: crate::admin::view::Tab::NeedsReview.label(),
-                link: Some((format!("/parked/{item}"), "Open")),
-            }
+            parked_line(*item, &title, tone, from)
         }
         Activity::Resolved { item, action } => Said {
             head: crate::admin::view::Tab::NeedsReview.label().into(),
-            rest: from(format!(
-                "– item {item} {}",
-                lower_first(settled_action(action))
+            rest: from(tr_args(
+                "admin-item-3",
+                [
+                    ("item", (item).to_string().into()),
+                    (
+                        "action",
+                        (lower_first(settled_action(action))).to_string().into(),
+                    ),
+                ],
             )),
             tone: Tone::Good,
             icon: Icon::Ok,
-            word: "Resolved",
-            link: Some((format!("/parked/{item}"), "Open")),
+            word: tr("admin-resolved"),
+            link: Some((format!("/parked/{item}"), tr("admin-open"))),
         },
         Activity::Attempt {
             delivery,
@@ -150,12 +152,15 @@ pub(in crate::admin) fn said(
         } => {
             let what = match carries {
                 Carries::Results(reading) => carried(reading.as_ref()),
-                Carries::OrderMessage { order } => format!("– order {order} message "),
+                Carries::OrderMessage { order } => tr_args(
+                    "admin-order-message-2",
+                    [("order", (order).to_string().into())],
+                ),
             };
             let (words, link) = match (tries, at) {
                 (Some(tries), Some(last)) => (
                     tried(lab_app, *outcome, *tries, last, &TimeZone::system()),
-                    Some((every_try_href(*delivery), "Every try")),
+                    Some((every_try_href(*delivery), tr("admin-every-try"))),
                 ),
                 (Some(_) | None, _) => attempt(lab_app, *outcome),
             };
@@ -176,9 +181,12 @@ pub(in crate::admin) fn said(
             tests,
             state,
         } => {
-            let mut rest = format!("– order {order} ");
+            let mut rest = tr_args("admin-order-3", [("order", (order).to_string().into())]);
             if let Some(sample) = sample {
-                rest.push_str(&format!("– sample {sample} "));
+                rest.push_str(&tr_args(
+                    "admin-sample-2",
+                    [("sample", (sample).to_string().into())],
+                ));
             }
             if let Some(tests) = tests {
                 rest.push_str(&format!("– {} ", test_count(*tests)));
@@ -196,28 +204,51 @@ pub(in crate::admin) fn said(
                 rest: format!("– {words}"),
                 tone: Tone::Neutral,
                 icon: Icon::Info,
-                word: "Change",
+                word: tr("admin-change"),
                 link,
             }
         }
     }
 }
 
+fn parked_line(item: i64, title: &str, tone: Tone, from: impl FnOnce(String) -> String) -> Said {
+    let review = crate::admin::view::Tab::NeedsReview.label();
+    Said {
+        head: review.into(),
+        rest: from(tr_args(
+            "admin-item-added",
+            [
+                ("item", item.to_string().into()),
+                ("title", lower_first(title).into()),
+            ],
+        )),
+        tone,
+        icon: tone.icon(),
+        word: review,
+        link: Some((format!("/parked/{item}"), tr("admin-open"))),
+    }
+}
+
 /// A stored message's line: what its latest reading produced, if it was read.
 fn stored(reading: Option<&RecentOutcome>, machine: Option<Named<'_>>) -> Said {
     let (tone, icon, word, outcome) = match reading {
-        Some(RecentOutcome::Results { .. }) => (Tone::Good, Icon::Ok, "Stored", "message stored"),
+        Some(RecentOutcome::Results { .. }) => (
+            Tone::Good,
+            Icon::Ok,
+            tr("admin-stored"),
+            tr("admin-message-stored"),
+        ),
         Some(RecentOutcome::Failed) => (
             Tone::Attention,
             Icon::Warning,
             "Warning",
-            "message stored, could not be read",
+            tr("admin-message-stored-could-not-be-read"),
         ),
         None => (
             Tone::Neutral,
             Icon::Waiting,
-            "Not read yet",
-            "message stored, not read yet",
+            tr("admin-not-read-yet"),
+            tr("admin-message-stored-not-read-yet"),
         ),
     };
     let (head, aside) = headed(machine, "A machine");
@@ -241,9 +272,13 @@ fn ordered(order: &str, state: OrderState, machine: Option<Named<'_>>) -> Said {
         rest: format!("{aside}{order}– {}", lower_first(look.word)),
         tone: look.tone,
         icon: look.icon,
-        word: "Order",
-        link: matches!(state, OrderState::Uncertain | OrderState::Rejected)
-            .then(|| (super::super::Tab::MachineOrders.href().to_owned(), "Orders")),
+        word: tr("admin-order"),
+        link: matches!(state, OrderState::Uncertain | OrderState::Rejected).then(|| {
+            (
+                super::super::Tab::MachineOrders.href().to_owned(),
+                tr("admin-orders"),
+            )
+        }),
     }
 }
 
@@ -252,15 +287,15 @@ fn ordered(order: &str, state: OrderState, machine: Option<Named<'_>>) -> Said {
 fn carried(reading: Option<&RecentOutcome>) -> String {
     match reading {
         Some(RecentOutcome::Results { results, samples }) => {
-            let sample = self::samples(samples)
-                .map_or_else(String::new, |(shown, _)| format!("– sample {shown} "));
+            let sample = self::samples(samples).map_or_else(String::new, |(shown, _)| {
+                tr_args("admin-sample-3", [("shown", (shown).to_string().into())])
+            });
             let count = if *results == 0 {
-                "no results".into()
+                tr("admin-no-results-2").into()
             } else {
-                amount(
+                tr_count(
+                    "admin-count-results",
                     u64::try_from(*results).unwrap_or(u64::MAX),
-                    "result",
-                    "results",
                 )
             };
             format!("{sample}– {count} ")
@@ -282,18 +317,48 @@ fn attempt(lab_app: &str, outcome: AttemptOutcome) -> (String, FeedLink) {
         ))
     };
     match outcome {
-        AttemptOutcome::Delivered => (format!("delivered to {lab_app}"), None),
-        AttemptOutcome::RetryAt(_) => (format!("sending to {lab_app} failed, will retry"), None),
-        AttemptOutcome::Interrupted => (
-            format!("sending to {lab_app} was cut off, will retry"),
+        AttemptOutcome::Delivered => (
+            tr_args(
+                "admin-delivered-to",
+                [("lab-app", (lab_app).to_string().into())],
+            ),
             None,
         ),
-        AttemptOutcome::Rejected => (format!("rejected by {lab_app}"), deliveries()),
-        AttemptOutcome::Paused => (
-            format!("sending to {lab_app} paused: lab app settings need repair"),
-            Some((lab_app_href(lab_app), crate::admin::view::format::LAB_APP)),
+        AttemptOutcome::RetryAt(_) => (
+            tr_args(
+                "admin-sending-to-failed-will-retry",
+                [("lab-app", (lab_app).to_string().into())],
+            ),
+            None,
         ),
-        AttemptOutcome::Conflict => (format!("{lab_app} reports a conflict"), deliveries()),
+        AttemptOutcome::Interrupted => (
+            tr_args(
+                "admin-sending-to-was-cut-off-will-retry",
+                [("lab-app", (lab_app).to_string().into())],
+            ),
+            None,
+        ),
+        AttemptOutcome::Rejected => (
+            tr_args(
+                "admin-rejected-by",
+                [("lab-app", (lab_app).to_string().into())],
+            ),
+            deliveries(),
+        ),
+        AttemptOutcome::Paused => (
+            tr_args(
+                "admin-sending-to-paused-lab-app-settings-need-repair",
+                [("lab-app", (lab_app).to_string().into())],
+            ),
+            Some((lab_app_href(lab_app), crate::admin::view::format::lab_app())),
+        ),
+        AttemptOutcome::Conflict => (
+            tr_args(
+                "admin-reports-a-conflict",
+                [("lab-app", (lab_app).to_string().into())],
+            ),
+            deliveries(),
+        ),
     }
 }
 
@@ -317,21 +382,28 @@ fn tried(
         (Err(_), _) | (_, Err(_)) => not_a_date(seconds),
     };
     let failed = match outcome {
-        AttemptOutcome::Interrupted => "was cut off",
+        AttemptOutcome::Interrupted => tr("admin-was-cut-off"),
         AttemptOutcome::RetryAt(_)
         | AttemptOutcome::Delivered
         | AttemptOutcome::Rejected
         | AttemptOutcome::Paused
         | AttemptOutcome::Conflict => "failed",
     };
-    let mut words = format!(
-        "sending to {lab_app} {failed} · tried {} times, {} – {}",
-        tries.count,
-        at(tries.first),
-        at(last)
+    let mut words = tr_args(
+        "admin-sending-to-tried-times",
+        [
+            ("lab-app", (lab_app).to_string().into()),
+            ("failed", (failed).to_string().into()),
+            ("count", (tries.count).to_string().into()),
+            ("first", (at(tries.first)).to_string().into()),
+            ("last", (at(last)).to_string().into()),
+        ],
     );
     if let (true, AttemptOutcome::RetryAt(next)) = (tries.waiting, outcome) {
-        words.push_str(&format!(" · next try after {}", at(next)));
+        words.push_str(&tr_args(
+            "admin-next-try-after",
+            [("next", (at(next)).to_string().into())],
+        ));
     }
     words
 }
@@ -349,41 +421,88 @@ fn every_try_href(delivery: DeliveryId) -> String {
 /// and the page about that thing; an action this version does not know reads
 /// as recorded.
 fn change(action: &str, target: Option<&str>) -> (String, FeedLink) {
-    let named = target.unwrap_or("(not recorded)");
-    let machine = || target.map(|id| (machine_href(id), crate::admin::view::format::MACHINE));
-    let lab_app = || target.map(|name| (lab_app_href(name), crate::admin::view::format::LAB_APP));
+    let named = target.unwrap_or(tr("admin-not-recorded-2"));
+    let machine = || target.map(|id| (machine_href(id), crate::admin::view::format::machine()));
+    let lab_app = || target.map(|name| (lab_app_href(name), crate::admin::view::format::lab_app()));
     let page = |tab: super::super::Tab| Some((tab.href().to_owned(), tab.label()));
     match action {
-        "setup-add" => (format!("added machine {named}"), machine()),
-        "setup-save" => (format!("saved the settings of {named}"), machine()),
-        "setup-remove" => (format!("removed machine {named}"), None),
-        "settings-checked-for-software-version" => (
-            format!("confirmed the settings of {named} for its reported software"),
+        "setup-add" => (
+            tr_args(
+                "admin-added-machine",
+                [("named", (named).to_string().into())],
+            ),
             machine(),
         ),
-        "setup-restart" => ("asked Analyte to restart".into(), None),
-        "lab-app-add" => (format!("added lab app {named}"), lab_app()),
-        "lab-app-save" => (format!("saved lab app {named}"), lab_app()),
-        "lab-app-remove" => (format!("removed lab app {named}"), None),
+        "setup-save" => (
+            tr_args(
+                "admin-saved-the-settings-of",
+                [("named", (named).to_string().into())],
+            ),
+            machine(),
+        ),
+        "setup-remove" => (
+            tr_args(
+                "admin-removed-machine-2",
+                [("named", (named).to_string().into())],
+            ),
+            None,
+        ),
+        "settings-checked-for-software-version" => (
+            tr_args(
+                "admin-confirmed-the-settings-of-for-its-reported-software",
+                [("named", (named).to_string().into())],
+            ),
+            machine(),
+        ),
+        "setup-restart" => (tr("admin-asked-analyte-to-restart").into(), None),
+        "lab-app-add" => (
+            tr_args(
+                "admin-added-lab-app",
+                [("named", (named).to_string().into())],
+            ),
+            lab_app(),
+        ),
+        "lab-app-save" => (
+            tr_args(
+                "admin-saved-lab-app",
+                [("named", (named).to_string().into())],
+            ),
+            lab_app(),
+        ),
+        "lab-app-remove" => (
+            tr_args(
+                "admin-removed-lab-app",
+                [("named", (named).to_string().into())],
+            ),
+            None,
+        ),
         "retention-hold-place" => (
-            "placed a hold under Data keeping".into(),
+            tr("admin-placed-a-hold-under-data-keeping").into(),
             page(super::super::Tab::DataKeeping),
         ),
         "retention-hold-release" => (
-            "released a hold under Data keeping".into(),
+            tr("admin-released-a-hold-under-data-keeping").into(),
             page(super::super::Tab::DataKeeping),
         ),
-        "retention-purge" => ("removed data past its keeping time".into(), None),
+        "retention-purge" => (tr("admin-removed-data-past-its-keeping-time").into(), None),
         "delivery-resend" => (
-            "queued a delivery to send again".into(),
+            tr("admin-queued-a-delivery-to-send-again").into(),
             page(super::super::Tab::Deliveries),
         ),
-        recovery::REPROCESS_ACTION => ("processed a message again".into(), None),
-        "recover-interrupted-delivery" => ("recovered an interrupted delivery".into(), None),
-        "store-restore" => ("restored the store from a backup".into(), None),
-        "orders-reconcile" => ("settled an order’s outcome".into(), None),
-        "alert-retry" => ("retried an alert".into(), None),
-        _ => (format!("recorded {action}"), None),
+        recovery::REPROCESS_ACTION => (tr("admin-processed-a-message-again").into(), None),
+        "recover-interrupted-delivery" => {
+            (tr("admin-recovered-an-interrupted-delivery").into(), None)
+        }
+        "store-restore" => (tr("admin-restored-the-store-from-a-backup").into(), None),
+        "orders-reconcile" => (tr("admin-settled-an-order-s-outcome").into(), None),
+        "alert-retry" => (tr("admin-retried-an-alert").into(), None),
+        _ => (
+            tr_args(
+                "admin-recorded-3",
+                [("action", (action).to_string().into())],
+            ),
+            None,
+        ),
     }
 }
 

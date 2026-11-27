@@ -2541,7 +2541,7 @@ async fn setup_page_saves_a_record_only_machine_without_a_lab_app() -> Result<()
     );
     assert!(!connection.contains("name=\"lab_app\""), "{connection}");
     assert!(
-        connection.contains(crate::admin::view::format::RECORDING_ONLY),
+        connection.contains(crate::admin::view::format::recording_only()),
         "{connection}"
     );
     let fields = [
@@ -2585,7 +2585,7 @@ async fn setup_page_saves_a_record_only_machine_without_a_lab_app() -> Result<()
     assert!(
         saved.contains(&format!(
             "<dt>Sends results to</dt><dd><span class=\"tone-warn\">{}</span></dd>",
-            crate::admin::view::format::RECORDING_ONLY
+            crate::admin::view::format::recording_only()
         )),
         "{saved}"
     );

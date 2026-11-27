@@ -9,7 +9,7 @@
 
 <section class="section" id="sending" aria-labelledby="ov-path">
 <div class="section__head">
-{% call layout::label("ov-path", "02 · Signal path", "— machines → Analyte → lab apps") %}{% endcall %}
+{% call layout::label("ov-path", analyte_i18n::text("doctor-overview-signal-path-section"), analyte_i18n::text("doctor-overview-signal-path-flow")) %}{% endcall %}
 {% call display::legend() %}{% endcall %}
 </div>
 {% call display::signal_path(machines, labs, figures) %}{% endcall %}
@@ -32,20 +32,20 @@
 </section>
 
 <section class="section grow" id="disk" aria-labelledby="ov-disk">
-{% call layout::label("ov-disk", "04 · Disk and alerts", "") %}{% endcall %}
+{% call layout::label("ov-disk", analyte_i18n::text("doctor-overview-disk-alerts-section"), "") %}{% endcall %}
 {% call layout::card() %}
 {% call display::kv() %}
-{% call display::pair("Free disk space", "") %}{% call display::exact(disk.free, disk.free_exact) %}{% endcall %}{% endcall %}
-{% call display::pair("Always kept free", "") %}{% call display::exact(disk.reserve, disk.reserve_exact) %}{% endcall %} <span class="muted">Analyte stops receiving below this</span>{% endcall %}
-{% call display::pair("Disk status", "") %}{% call display::status(disk.tone(), disk.status()) %}{% endcall %}{% endcall %}
-{% call display::pair("Active alerts", "num") %}{{ alerts.len() }}{% endcall %}
-{% call display::pair("Alert relays", "num") %}{{ relays.len() }}{% endcall %}
+{% call display::pair(analyte_i18n::text("doctor-overview-free-disk-space"), "") %}{% call display::exact(disk.free, disk.free_exact) %}{% endcall %}{% endcall %}
+{% call display::pair(analyte_i18n::text("doctor-overview-always-kept-free"), "") %}{% call display::exact(disk.reserve, disk.reserve_exact) %}{% endcall %} <span class="muted">{{ analyte_i18n::text("doctor-overview-analyte-stops-receiving-below-this") }}</span>{% endcall %}
+{% call display::pair(analyte_i18n::text("doctor-overview-disk-status"), "") %}{% call display::status(disk.tone(), disk.status()) %}{% endcall %}{% endcall %}
+{% call display::pair(analyte_i18n::text("doctor-overview-active-alerts"), "num") %}{{ alerts.len() }}{% endcall %}
+{% call display::pair(analyte_i18n::text("doctor-overview-alert-relays"), "num") %}{{ relays.len() }}{% endcall %}
 {% endcall %}
 {% endcall %}
 {%- if !alerts.is_empty() %}
-{% call display::table(ALERT_COLUMNS) %}
+{% call display::table(crate::admin::overview::page::alert_columns()) %}
 {%- for alert in alerts %}
-<tr>{% call display::cell("cell-main") %}{% call display::hover(alert.words, alert.kind) %}{% endcall %}{% endcall %}{% call display::cell("") %}{{ alert.machine }}{% endcall %}{% call display::cell("") %}{{ alert.responder }}{% endcall %}{% call display::cell("") %}{% if let Some(raised) = alert.raised %}{% call display::time(raised) %}{% endcall %}{% else %}<span class="subtle">{{ crate::admin::view::format::NOT_RECORDED }}</span>{% endif %}{% endcall %}{% call display::cell("num right") %}{{ alert.value }}{% endcall %}</tr>
+<tr>{% call display::cell("cell-main") %}{% call display::hover(alert.words, alert.kind) %}{% endcall %}{% endcall %}{% call display::cell("") %}{{ alert.machine }}{% endcall %}{% call display::cell("") %}{{ alert.responder }}{% endcall %}{% call display::cell("") %}{% if let Some(raised) = alert.raised %}{% call display::time(raised) %}{% endcall %}{% else %}<span class="subtle">{{ crate::admin::view::format::not_recorded() }}</span>{% endif %}{% endcall %}{% call display::cell("num right") %}{{ alert.value }}{% endcall %}</tr>
 {%- endfor %}
 {% endcall %}
 {%- endif %}
@@ -53,7 +53,7 @@
 {% call feedback::alert(crate::admin::view::Tone::Problem, message, "") %}{% endcall %}
 {%- endfor %}
 {%- if !relays.is_empty() %}
-{% call feedback::support("Relay status for support", relays) %}{% endcall %}
+{% call feedback::support(analyte_i18n::text("doctor-overview-relay-status-for-support"), relays) %}{% endcall %}
 {%- endif %}
 </section>
 </div>

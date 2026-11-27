@@ -6,6 +6,7 @@
 //! them is safe; they stay as protected as the data directory itself.
 use crate::admin::Error;
 use crate::installation::config::Program;
+use analyte_i18n::{message as tr_args, text as tr};
 use std::io::{Read as _, Seek as _, SeekFrom};
 use std::path::{Path, PathBuf};
 
@@ -32,10 +33,11 @@ pub(super) async fn run(program: &Program, tail: usize) -> Result<(), Error> {
             Ok(())
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            super::say(&format!("No log file at {}.", path.display()))?;
-            super::say(
-                "The Windows service writes it while it runs. On Linux the service logs to the system journal:",
-            )?;
+            super::say(&tr_args(
+                "cli-no-log-file-at",
+                [("path", (path.display()).to_string().into())],
+            ))?;
+            super::say(tr("cli-the-windows-service-writes-it-while-it-runs-on"))?;
             super::say(&format!("journalctl -u analyte -n {tail}"))?;
             Ok(())
         }

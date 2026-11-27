@@ -7,6 +7,7 @@ use crate::admin::view::list::{Empty, PAGE, cursor_value, one_page};
 use crate::admin::view::{Tab, format, frame::Frame, report::Chip};
 use crate::admin::{Error, server::Context};
 use crate::deadline;
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_model::OrderState;
 use analyte_store::{CachedOrder, MachineOrder, MachineOrderFilter};
 use askama::Template as _;
@@ -130,9 +131,9 @@ fn page(
             .sum()
     };
     let chips = [
-        (Show::All, "All"),
-        (Show::Unknown, "Unknown"),
-        (Show::Cancelled, "Cancelled"),
+        (Show::All, tr("admin-all")),
+        (Show::Unknown, tr("admin-unknown")),
+        (Show::Cancelled, tr("admin-cancelled")),
     ]
     .into_iter()
     .map(|(filter, label)| Chip {
@@ -177,29 +178,29 @@ fn empty(show: Show, shown: u64) -> Empty {
     if shown > 0 {
         return Empty {
             good: false,
-            title: "No more orders",
-            text: "This page is past the last order.",
-            link: Some((Show::All.href(), format::FIRST_PAGE.into())),
+            title: tr("admin-no-more-orders"),
+            text: tr("admin-this-page-is-past-the-last-order"),
+            link: Some((Show::All.href(), format::first_page().into())),
         };
     }
     match show {
         Show::All => Empty {
             good: false,
-            title: "No orders yet",
-            text: "Orders Analyte sends from a lab app to a machine are listed here.",
+            title: tr("admin-no-orders-yet"),
+            text: tr("admin-orders-analyte-sends-from-a-lab-app-to-a"),
             link: None,
         },
         Show::Unknown => Empty {
             good: false,
-            title: "No order with an unknown outcome",
-            text: "Every order sent to a machine has a known outcome.",
-            link: Some((Show::All.href(), "Show all orders".into())),
+            title: tr("admin-no-order-with-an-unknown-outcome"),
+            text: tr("admin-every-order-sent-to-a-machine-has-a-known"),
+            link: Some((Show::All.href(), tr("admin-show-all-orders").into())),
         },
         Show::Cancelled => Empty {
             good: false,
-            title: "No cancelled order",
-            text: "No order was cancelled by the lab app and confirmed by its machine.",
-            link: Some((Show::All.href(), "Show all orders".into())),
+            title: tr("admin-no-cancelled-order"),
+            text: tr("admin-no-order-was-cancelled-by-the-lab-app-and"),
+            link: Some((Show::All.href(), tr("admin-show-all-orders").into())),
         },
     }
 }
@@ -218,24 +219,37 @@ fn row(
         .iter()
         .any(analyte_store::MachineOrderItem::analyzer_cancelled);
     let link = if machine_cancelled {
-        Some((Tab::CancelledByMachine.href().to_owned(), "Review"))
+        Some((
+            Tab::CancelledByMachine.href().to_owned(),
+            tr("admin-review"),
+        ))
     } else {
-        first.map(|item| (format::order_item_href(order.id, item.index), "Details"))
+        first.map(|item| {
+            (
+                format::order_item_href(order.id, item.index),
+                tr("admin-details"),
+            )
+        })
     };
     let mut status = look(order.state, &order.source_code);
     // The order's own state can read "Accepted" while the machine later
     // cancelled part of it; say so beside the Review link.
     if machine_cancelled && status.note.is_none() {
-        status.note = Some("The machine cancelled part of this order".to_owned());
+        status.note = Some(tr("admin-the-machine-cancelled-part-of-this-order").to_owned());
     }
     OrderRow {
         when: format::moment_unix(order.updated_at, now),
         order: order.key.order.as_str().to_owned(),
-        order_exact: format!(
-            "Lab app {} · order version {} sent · machine order {}",
-            order.key.destination.as_str(),
-            order.version,
-            order.id
+        order_exact: tr_args(
+            "admin-lab-app-order-version-sent-machine-order",
+            [
+                (
+                    "destination",
+                    (order.key.destination.as_str()).to_string().into(),
+                ),
+                ("version", (order.version).to_string().into()),
+                ("id", (order.id).to_string().into()),
+            ],
         ),
         sample: cached.map(|cached| cached.sample.as_str().to_owned()),
         machine: order.key.machine.as_str().to_owned(),

@@ -11,6 +11,7 @@ mod overview;
 mod pages;
 
 use crate::installation::config::Program;
+use analyte_i18n::text as tr;
 use analyte_model::Identifier;
 use clap::Subcommand;
 use std::{collections::BTreeMap, path::Path, process::ExitCode};
@@ -26,29 +27,37 @@ pub enum Command {
     /// The Overview in plain words: "All good", or each thing that needs you
     /// with the page and the command that fixes it. Asks the running engine.
     /// Exit code: 0 all good, 1 needs a look, 2 a problem stops data, 3 unknown.
+    #[command(about = tr("cli-help-command-command-overview"))]
     Overview {
         /// Print the answer as JSON for scripts.
+        #[arg(help = tr("cli-help-command-command-overview-json"))]
         #[arg(long)]
         json: bool,
     },
     /// The Activity page: messages stored, delivery tries (failed tries in a
     /// row as one line), orders and changes, newest first. Lines name sample
     /// IDs and counts, never result values; each run is recorded in the audit.
+    #[command(about = tr("cli-help-command-command-activity"))]
     Activity {
         /// How many lines to print (1 to 200).
+        #[arg(help = tr("cli-help-command-command-activity-limit"))]
         #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u16).range(1..=i64::from(ACTIVITY_LIMIT)))]
         limit: u16,
         /// Only this machine's lines.
+        #[arg(help = tr("cli-help-command-command-activity-machine"))]
         #[arg(long, value_parser = Identifier::new)]
         machine: Option<Identifier>,
         /// Continue before this position, as the previous page printed it.
+        #[arg(help = tr("cli-help-command-command-activity-before"))]
         #[arg(long, value_parser = crate::admin::activity::parse_position)]
         before: Option<analyte_store::ActivityCursor>,
         /// Print the lines as JSON for scripts.
+        #[arg(help = tr("cli-help-command-command-activity-json"))]
         #[arg(long)]
         json: bool,
     },
     /// Active alerts, each with its reason and where it is fixed.
+    #[command(about = tr("cli-help-command-command-alerts"))]
     Alerts {
         #[command(subcommand)]
         /// What to do with the alerts.
@@ -56,11 +65,14 @@ pub enum Command {
     },
     /// The Data keeping page: how long each machine's messages are kept, the
     /// last clean-up, the oldest message kept and the active holds.
+    #[command(about = tr("cli-help-command-command-data-keeping"))]
     DataKeeping {
         /// Continue after this hold number, as the previous page printed it.
+        #[arg(help = tr("cli-help-command-command-data-keeping-after"))]
         #[arg(long, default_value_t = 0)]
         after: u64,
         /// Print the page as JSON for scripts.
+        #[arg(help = tr("cli-help-command-command-data-keeping-json"))]
         #[arg(long)]
         json: bool,
     },
@@ -68,24 +80,31 @@ pub enum Command {
     /// machine's connection, each lab app, disk space and Windows sign-in.
     /// Every line says OK, WARN or FAIL and what to do. It changes nothing.
     /// Exit code: 0 all OK, 1 a warning, 2 a failure.
+    #[command(about = tr("cli-help-command-command-doctor"))]
     Doctor {
         /// Print the checks as JSON for scripts.
+        #[arg(help = tr("cli-help-command-command-doctor-json"))]
         #[arg(long)]
         json: bool,
     },
     /// Confirm that the current settings were checked for the reported version.
+    #[command(about = tr("cli-help-command-command-confirm-software"))]
     ConfirmSoftware {
         /// Machine ID from the Machines page.
+        #[arg(help = tr("cli-help-command-command-confirm-software-machine"))]
         #[arg(value_parser = Identifier::new)]
         machine: Identifier,
         /// Exact software version shown in the warning.
+        #[arg(help = tr("cli-help-command-command-confirm-software-version"))]
         #[arg(value_parser = Identifier::new)]
         version: Identifier,
     },
     /// Where the engine's log is, and its last lines. The log holds no patient
     /// data: Analyte logs names, counts and IDs, never messages or values.
+    #[command(about = tr("cli-help-command-command-logs"))]
     Logs {
         /// How many of the last lines to print (1 to 1000).
+        #[arg(help = tr("cli-help-command-command-logs-tail"))]
         #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u16).range(1..=1000))]
         tail: u16,
     },
@@ -95,8 +114,10 @@ pub enum Command {
 #[derive(Subcommand)]
 pub enum Alerts {
     /// Lists every active alert.
+    #[command(about = tr("cli-help-command-alerts-list"))]
     List {
         /// Print the alerts as JSON for scripts.
+        #[arg(help = tr("cli-help-command-alerts-list-json"))]
         #[arg(long)]
         json: bool,
     },

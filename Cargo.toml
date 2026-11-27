@@ -14,6 +14,7 @@ publish = false
 # and add only the features they need. Adding an entry here is a reviewed change.
 [workspace.dependencies]
 # Analyte crates
+analyte-i18n = { path = "crates/core/i18n", version = "0.1.0" }
 analyte-model = { path = "crates/core/model", version = "0.1.0" }
 analyte-store = { path = "crates/core/store", version = "0.1.0" }
 analyte-transport = { path = "crates/steps/transport", version = "0.1.0" }
@@ -73,6 +74,12 @@ subtle = "2.6"
 # (owner-approved 2026-11-21); Apache-2.0, uses the windows-sys and libc already locked.
 rpassword = { version = "7.5.5", default-features = false }
 getrandom = { version = "=0.4.3", default-features = false } # admin token OS entropy
+
+# Human-facing text (ADR 0039)
+fluent-bundle = { version = "0.16.0", default-features = false }
+fluent-langneg = { version = "0.13.1", default-features = false }
+fluent-syntax = { version = "0.12.0", default-features = false }
+unic-langid = { version = "0.9.6", default-features = false }
 
 # Admin pages (ADR 0018): compiled HTML templates, escaping on by default
 askama = { version = "0.16.1", default-features = false, features = ["derive", "std"] }

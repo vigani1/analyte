@@ -17,6 +17,7 @@ use super::listener::Lifetime;
 use super::sessions::Session;
 use crate::admin::view::{Tab, format, refusal::Refusal};
 use crate::machine::link::status::{Light, Status};
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_store::ActivityMarks;
 use axum::{
     Extension,
@@ -173,6 +174,7 @@ impl Seen {
 /// One stream's state between its events.
 struct Watch {
     state: Arc<Context>,
+    language: analyte_i18n::Language,
     /// The browser session it serves; none for the admin key, which no
     /// sign-out ends.
     session: Option<Arc<Session>>,
@@ -236,7 +238,7 @@ impl Watch {
         if self.seen.is_none() {
             self.seen = Some(self.look().await);
             self.beat = after(self.state.live.heartbeat);
-            return Some((live(&[]), self));
+            return Some((self.event(&[]), self));
         }
         loop {
             let tick = tokio::time::sleep(self.state.live.check);
@@ -263,19 +265,30 @@ impl Watch {
             }
             if !changed.is_empty() || Instant::now() >= self.beat {
                 self.beat = after(self.state.live.heartbeat);
-                return Some((live(&changed), self));
+                return Some((self.event(&changed), self));
             }
         }
     }
-}
-
-/// A `live` event: the PC's time to the second and the areas that changed.
-fn live(changed: &[Area]) -> Event {
-    let names: Vec<&str> = changed.iter().map(|area| area.name()).collect();
-    Event::default().event("live").data(
-        serde_json::json!({ "at": format::live_clock(Timestamp::now()), "changed": names })
-            .to_string(),
-    )
+    /// A response body is polled after the request's language scope ends.
+    fn event(&self, changed: &[Area]) -> Event {
+        self.language.sync_scope(|| {
+            let names: Vec<&str> = changed.iter().map(|area| area.name()).collect();
+            let at = format::live_clock(Timestamp::now());
+            let line = tr_args("admin-live-at", [("time", at.as_str().into())]);
+            let updated = tr_args("admin-updated-at", [("time", at.as_str().into())]);
+            Event::default().event("live").data(
+                serde_json::json!({
+                    "at": at,
+                    "changed": names,
+                    "line": line,
+                    "updated": updated,
+                    "pause": tr("admin-pause-updates"),
+                    "resume": tr("admin-resume-updates"),
+                })
+                .to_string(),
+            )
+        })
+    }
 }
 
 /// `duration` from now; at the clock's end, now, so a bound never grows.
@@ -328,6 +341,7 @@ pub(in crate::admin) async fn events(
         lifetime.keep_open_for(bounds.lifetime.saturating_add(super::ANSWER_TIME));
     }
     let watch = Watch {
+        language: analyte_i18n::Language::current(),
         lights: state.machines.iter().map(|m| m.status.clone()).collect(),
         session: session.map(|Extension(session)| session),
         seen: None,

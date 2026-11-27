@@ -1,9 +1,9 @@
 {#- The app's own title bar (ADR 0019), in its own webview above the engine's pages: the Aperture mark from the hand-drawn 16 and 20 px files, "Analyte", the engine-state dot with its word on hover, the last notification's line (ADR 0023), and the window buttons at Windows 11's size. The head names its icon, so WebView2 never asks for /favicon.ico. The bar is a Windows caption through WebView2's app-region (app.css): Windows drags it, maximizes or restores on a double-click and shows the window menu on a right-click. The buttons are title-bar.js; on Windows a native window over the maximize button gives snap layouts and reports the mouse, which the app shows with data-pointer (ADR 0022). Icons: Lucide (ISC). -#}
 <!doctype html>
-<html lang="en">
+<html lang="{{ analyte_i18n::Language::current().tag() }}">
 <head>
 <meta charset="utf-8">
-<title>Analyte</title>
+<title>{{ analyte_i18n::text("admin-analyte-2") }}</title>
 <link rel="icon" type="image/svg+xml" href="/static/icons/analyte-app-icon-16.svg">
 <link rel="stylesheet" href="/static/fonts.css">
 <link rel="stylesheet" href="/static/analyte.css">
@@ -13,13 +13,13 @@
 <body>
 <header class="title-bar" data-sizing="{{ sizing }}">
 <img class="title-bar__mark" src="/static/icons/analyte-app-icon-16.svg" srcset="/static/icons/analyte-app-icon-16.svg 1x, /static/icons/analyte-app-icon-20.svg 1.25x, /static/icons/analyte-app-icon.svg 1.5x" width="16" height="16" alt="" draggable="false">
-<span class="title-bar__name">Analyte</span>
+<span class="title-bar__name">{{ analyte_i18n::text("admin-analyte-2") }}</span>
 <span class="title-bar__state" role="img" aria-label="{{ label }}" title="{{ word }}" data-bar-state><span class="{{ dot }}"></span></span>
 <span class="title-bar__note" data-bar-note{% if note.is_empty() %} hidden{% endif %}>{{ note }}</span>
 <div class="title-bar__buttons">
-<button type="button" class="title-bar__button" data-window="minimize" aria-label="Minimize" title="Minimize"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+<button type="button" class="title-bar__button" data-window="minimize" aria-label="{{ analyte_i18n::text("desktop-minimize") }}" title="{{ analyte_i18n::text("desktop-minimize") }}"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
 <button type="button" class="title-bar__button" data-window="toggle-maximize" aria-label="{{ button }}" title="{{ button }}" data-pointer="{{ pointer }}"><svg class="icon icon--md title-bar__maximize" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/></svg><svg class="icon icon--md title-bar__restore" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2Z M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>
-<button type="button" class="title-bar__button title-bar__button--close" data-window="close" aria-label="Close" title="Close"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18 M6 6l12 12"/></svg></button>
+<button type="button" class="title-bar__button title-bar__button--close" data-window="close" aria-label="{{ analyte_i18n::text("desktop-close") }}" title="{{ analyte_i18n::text("desktop-close") }}"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18 M6 6l12 12"/></svg></button>
 </div>
 </header>
 </body>

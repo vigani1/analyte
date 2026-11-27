@@ -11,6 +11,7 @@ use crate::installation::config::{
     Error as Installation, Program, folder, read, store_record_bytes, validate_machine,
 };
 use analyte_config::{Destination, Endpoint, LabApps, Validated, recording::SiteDocument};
+use analyte_i18n::text as tr;
 use analyte_model::Identifier;
 use std::{
     io::Write as _,
@@ -114,9 +115,9 @@ fn site_line(text: &str, value: usize) -> Result<usize, SetupError> {
         .map_or(0, |newline| newline.saturating_add(1));
     match text.get(start..value) {
         Some(line) if line.trim_start().starts_with("site") => Ok(start),
-        _ => Err(SetupError::ProgramLayout(
-            "write this machine's site = ... on its own line so setup can add the definition",
-        )),
+        _ => Err(SetupError::ProgramLayout(tr(
+            "setup-write-this-machine-s-site-on-its-own-line",
+        ))),
     }
 }
 
@@ -389,7 +390,9 @@ fn with_definition(
         Placement::Insert(at) => (*at..*at, true),
     };
     let (Some(before), Some(after)) = (program.get(..range.start), program.get(range.end..)) else {
-        return Err(SetupError::ProgramLayout("definition position changed"));
+        return Err(SetupError::ProgramLayout(tr(
+            "setup-definition-position-changed",
+        )));
     };
     Ok(if line {
         format!("{before}definition = {value}\n{after}")
@@ -486,7 +489,7 @@ fn backup(path: &Path, label: &str) -> Result<Option<PathBuf>, SetupError> {
     if !path.exists() {
         return Ok(None);
     }
-    let bytes = std::fs::read(path).map_err(io("read for backup", path))?;
+    let bytes = std::fs::read(path).map_err(io(tr("setup-read-for-backup"), path))?;
     let mut attempt = 0_u8;
     let (target, mut file) = loop {
         let suffix = if attempt == 0 {
@@ -504,12 +507,15 @@ fn backup(path: &Path, label: &str) -> Result<Option<PathBuf>, SetupError> {
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists && attempt < 99 => {
                 attempt = attempt.saturating_add(1);
             }
-            Err(error) => return Err(io("create backup", &target)(error)),
+            Err(error) => {
+                return Err(io(tr("setup-create-backup"), &target)(error));
+            }
         }
     };
     file.write_all(&bytes)
-        .map_err(io("write backup", &target))?;
-    file.sync_all().map_err(io("flush backup", &target))?;
+        .map_err(io(tr("setup-write-backup"), &target))?;
+    file.sync_all()
+        .map_err(io(tr("setup-flush-backup"), &target))?;
     Ok(Some(target))
 }
 
@@ -529,7 +535,7 @@ pub(super) fn retire(path: &Path) -> Result<Option<PathBuf>, SetupError> {
     let Some(kept) = backup(path, &label())? else {
         return Ok(None);
     };
-    std::fs::remove_file(path).map_err(io("move to the backup", path))?;
+    std::fs::remove_file(path).map_err(io(tr("setup-move-to-the-backup"), path))?;
     Ok(Some(kept))
 }
 

@@ -3,6 +3,7 @@ use crate::admin::Error;
 use crate::admin::engine::{self, EngineError};
 use crate::admin::overview::answer::{Answer, Severity, Verdict};
 use crate::installation::config::Program;
+use analyte_i18n::{message as tr_args, text as tr};
 use std::process::ExitCode;
 
 /// Asks the engine and prints its verdict; an engine that does not answer
@@ -17,9 +18,14 @@ pub(super) async fn run(program: &Program, json: bool) -> Result<ExitCode, Error
         (Ok(answer), false) => print(answer)?,
         (Err(error), true) => super::json(&Unreached::of(error))?,
         (Err(error), false) => {
-            super::say("Analyte cannot say how things are right now")?;
+            super::say(tr(
+                "doctor-overview-analyte-cannot-say-how-things-are-right-now",
+            ))?;
             super::say(&super::chain(error))?;
-            super::say(&format!("What to do: {}", advice(error)))?;
+            super::say(&tr_args(
+                "doctor-overview-what-to-do",
+                [("error", (advice(error)).to_string().into())],
+            ))?;
         }
     }
     Ok(ExitCode::from(verdict.exit_code()))
@@ -31,17 +37,26 @@ fn print(answer: &Answer) -> Result<(), Error> {
     super::say(&answer.sub())?;
     for (number, need) in (1u32..).zip(&answer.needs) {
         let severity = match need.severity {
-            Severity::Problem => "PROBLEM",
-            Severity::Attention => "ATTENTION",
+            Severity::Problem => tr("doctor-overview-problem"),
+            Severity::Attention => tr("doctor-overview-attention"),
         };
         super::say("")?;
         super::say(&format!("{number:02} {severity}: {}", need.text))?;
         if let Some(detail) = &need.detail {
             super::say(&format!("   {detail}"))?;
         }
-        super::say(&format!("   Fix on: {} ({})", need.page, need.href))?;
+        super::say(&tr_args(
+            "doctor-overview-fix-on",
+            [
+                ("page", (need.page).to_string().into()),
+                ("href", (need.href).to_string().into()),
+            ],
+        ))?;
         if let Some(command) = &need.command {
-            super::say(&format!("   Command: {command}"))?;
+            super::say(&tr_args(
+                "doctor-overview-command",
+                [("command", (command).to_string().into())],
+            ))?;
         }
     }
     Ok(())
@@ -50,26 +65,24 @@ fn print(answer: &Answer) -> Result<(), Error> {
 /// What to do when the engine could not be asked, in plain words.
 pub(super) fn advice(error: &EngineError) -> &'static str {
     match error {
-        EngineError::AdminOff => {
-            "add an [admin] table with a port to the program file and restart the engine (see docs/operations/operate.md)"
-        }
+        EngineError::AdminOff => tr("doctor-overview-add-an-admin-table-with-a-port-to-the"),
         EngineError::Key(_) | EngineError::KeyThread(_) => {
-            "run this from an administrator PowerShell; if the key file is missing, run analyte admin token --rotate and restart the engine"
+            tr("doctor-overview-run-this-from-an-administrator-powershell-if-the-key")
         }
         EngineError::NotRunning(_)
         | EngineError::Unreachable { .. }
         | EngineError::Silent(_)
         | EngineError::TimedOut => {
-            "start the engine (Start-Service Analyte, or systemctl start analyte on Linux), wait a few seconds and try again; if it does not start, run analyte doctor and analyte logs"
+            tr("doctor-overview-start-the-engine-start-service-analyte-or-systemctl-start")
         }
         EngineError::Unproven => {
-            "find the program holding the admin port (Get-NetTCPConnection -LocalPort <port>) and stop it, or restart the engine with Restart-Service Analyte if the admin key was rotated since it started"
+            tr("doctor-overview-find-the-program-holding-the-admin-port-get-nettcpconnection")
         }
         EngineError::Client(_)
         | EngineError::Status(_)
         | EngineError::TooLarge
         | EngineError::Unreadable(_) => {
-            "check that this command and the engine are the same Analyte version, then run analyte logs"
+            tr("doctor-overview-check-that-this-command-and-the-engine-are-the")
         }
     }
 }

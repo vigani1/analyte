@@ -8,6 +8,7 @@ use super::{
 };
 use crate::admin::server::Context;
 use crate::admin::server::sessions::Session;
+use analyte_i18n::{message as tr_args, text as tr};
 use askama::Template as _;
 use axum::{
     http::StatusCode,
@@ -110,7 +111,7 @@ impl Value {
                 None => link.kind.to_owned(),
             },
             Self::Time(moment) => moment.as_ref().map_or_else(
-                || format::NOTHING_YET.to_owned(),
+                || format::nothing_yet().to_owned(),
                 |moment| moment.shown.clone(),
             ),
             Self::Page { label, .. } => label.clone(),
@@ -215,9 +216,9 @@ impl Section<'_> {
         match self {
             Self::NeedsReview(id) => id.map(|id| {
                 (
-                    format::OPEN_ITEM,
+                    format::open_item(),
                     Crumb {
-                        label: "Item".into(),
+                        label: tr("admin-item").into(),
                         number: Some(id),
                         href: Some(format::parked_href(id)),
                     },
@@ -225,19 +226,19 @@ impl Section<'_> {
             }),
             Self::Machines(id) => id.map(|id| {
                 (
-                    format::OPEN_MACHINE,
+                    format::open_machine(),
                     Crumb::link(id, format::machine_href(id)),
                 )
             }),
             Self::LabApps(name) => name.map(|name| {
                 (
-                    "Open the lab app",
+                    tr("admin-open-the-lab-app"),
                     Crumb::link(name, format::lab_app_href(name)),
                 )
             }),
             Self::Setup(id) => id.map(|id| {
                 (
-                    "Open its setup",
+                    tr("admin-open-its-setup"),
                     Crumb::link(id, format::setup_href(id, "")),
                 )
             }),
@@ -307,43 +308,37 @@ impl Section<'_> {
 
     /// What a request for a thing that is not here says: the page's title,
     /// the alert's title, what it says and the exact reason for support.
-    const fn not_found(self) -> (&'static str, &'static str, &'static str, &'static str) {
+    fn not_found(self) -> (&'static str, &'static str, &'static str, &'static str) {
         match self {
             Self::NeedsReview(_) => (
-                "Item not found",
-                "There is no item with this number",
-                "Go back to Needs review and pick one from the list.",
-                "parked item not found",
+                tr("admin-item-not-found"),
+                tr("admin-there-is-no-item-with-this-number"),
+                tr("admin-go-back-to-needs-review-and-pick-one-from"),
+                tr("admin-parked-item-not-found"),
             ),
             Self::Overview
             | Self::Machines(_)
             | Self::LabApps(_)
             | Self::Setup(_)
             | Self::More(_) => (
-                "Machine not found",
-                "No machine is called this",
-                "Go back to Machines and pick one from the list.",
-                "machine not running and not listed",
+                tr("admin-machine-not-found"),
+                tr("admin-no-machine-is-called-this"),
+                tr("admin-go-back-to-machines-and-pick-one-from-the"),
+                tr("admin-machine-not-running-and-not-listed"),
             ),
         }
     }
 
     /// Why pages here need a signed-in browser session.
-    const fn why_sign_in(self) -> &'static str {
+    fn why_sign_in(self) -> &'static str {
         match self {
-            Self::Overview | Self::NeedsReview(_) => "This needs a signed-in browser session",
-            Self::Machines(_) => {
-                "Removing a machine changes settings, so it needs a signed-in browser session"
+            Self::Overview | Self::NeedsReview(_) => {
+                tr("admin-this-needs-a-signed-in-browser-session")
             }
-            Self::LabApps(_) => {
-                "Lab apps hold addresses and keys, so their pages need a signed-in browser session"
-            }
-            Self::Setup(_) => {
-                "Setup changes settings, so its pages need a signed-in browser session"
-            }
-            Self::More(_) => {
-                "Analyte records who sends again or changes a hold, so this needs a signed-in browser session"
-            }
+            Self::Machines(_) => tr("admin-removing-a-machine-changes-settings-so-it-needs-a"),
+            Self::LabApps(_) => tr("admin-lab-apps-hold-addresses-and-keys-so-their-pages"),
+            Self::Setup(_) => tr("admin-setup-changes-settings-so-its-pages-need-a-signed"),
+            Self::More(_) => tr("admin-analyte-records-who-sends-again-or-changes-a-hold"),
         }
     }
 
@@ -369,8 +364,11 @@ pub(in crate::admin) fn respond(
 ) -> Response {
     match html {
         Ok(html) => (status, Html(html)).into_response(),
-        Err(error) => Problem::Store(format!("page could not be written: {error}"))
-            .page(state, session, section),
+        Err(error) => Problem::Store(tr_args(
+            "admin-page-could-not-be-written",
+            [("error", (error).to_string().into())],
+        ))
+        .page(state, session, section),
     }
 }
 
@@ -416,7 +414,9 @@ pub(in crate::admin) enum Problem {
 }
 
 /// What a page that failed tells people to do.
-const RELOAD: &str = "Reload the page; if this keeps happening, give the details below to support.";
+fn reload_after(reason: &str) -> String {
+    tr_args("admin-report-reload-after", [("reason", reason.into())])
+}
 
 /// Runs a page's reads within [`view::READ_BUDGET`]: what they returned, or
 /// the problem the page shows instead, [`Problem::Time`] once the budget is
@@ -470,9 +470,9 @@ impl Problem {
     /// keeps its own name as the title and says which read failed.
     fn words(&self, section: Section<'_>) -> (&'static str, &'static str, String) {
         const FAILED: &str = "This page could not be shown";
-        const OVERVIEW: (&str, &str) = (
+        let overview = (
             Tab::Overview.label(),
-            "The overview could not be shown just now",
+            tr("admin-the-overview-could-not-be-shown-just-now"),
         );
         match self {
             Self::NotFound => {
@@ -480,87 +480,80 @@ impl Problem {
                 (title, alert, text.into())
             }
             Self::ReadingNumber => (
-                "Reading not found",
-                "Readings are numbered from 1",
-                "Open the message again from its machine’s page.".into(),
+                tr("admin-reading-not-found"),
+                tr("admin-readings-are-numbered-from-1"),
+                tr("admin-open-the-message-again-from-its-machine-s-page").into(),
             ),
             Self::ReadingNotFound => (
-                "Reading not found",
-                "This message has no reading with this number",
-                "Its machine’s page lists its messages with their latest reading.".into(),
+                tr("admin-reading-not-found"),
+                tr("admin-this-message-has-no-reading-with-this-number"),
+                tr("admin-its-machine-s-page-lists-its-messages-with-their").into(),
             ),
             Self::SignIn => (
-                "Sign in first",
+                tr("admin-sign-in-first"),
                 section.why_sign_in(),
-                "Sign in with the admin key, then open the page again.".into(),
+                tr("admin-sign-in-with-the-admin-key-then-open-the").into(),
             ),
             Self::FormExpired => (
-                format::NOTHING_CHANGED,
-                "This form is from an older or another session",
-                "Open the item again and repeat the action; if the page asks, sign in first."
-                    .into(),
+                format::nothing_changed(),
+                tr("admin-this-form-is-from-an-older-or-another-session"),
+                tr("admin-open-the-item-again-and-repeat-the-action-if").into(),
             ),
             Self::Refused(why) => (
-                format::NOTHING_CHANGED,
+                format::nothing_changed(),
                 match section {
-                    Section::Machines(_) | Section::LabApps(_) | Section::Setup(_) => SETUP_STOPPED,
+                    Section::Machines(_) | Section::LabApps(_) | Section::Setup(_) => {
+                        setup_stopped()
+                    }
                     Section::Overview | Section::NeedsReview(_) | Section::More(_) => {
-                        "That could not be done"
+                        tr("admin-that-could-not-be-done")
                     }
                 },
                 format::sentence(why),
             ),
             Self::Failed(_) => (
-                "That could not be done",
-                format::NOTHING_CHANGED,
-                concat!(
-                    "Check the item and try again; if this keeps happening, give the ",
-                    "details below to support.",
-                )
-                .into(),
+                tr("admin-that-could-not-be-done"),
+                format::nothing_changed(),
+                tr("admin-check-the-item-and-try-again-if-this-keeps").into(),
             ),
             Self::AlreadyResolved => (
-                "Already resolved",
-                "This item is already resolved",
-                "Its history on the item page says when it was resolved, how and why.".into(),
+                tr("admin-already-resolved"),
+                tr("admin-this-item-is-already-resolved"),
+                tr("admin-its-history-on-the-item-page-says-when-it").into(),
             ),
             Self::NoSingleMessage(_) => (
-                "Cannot process this item again",
-                "This item is not linked to exactly one stored message",
-                concat!(
-                    "Process again reads the item's original message, so it needs exactly ",
-                    "one. Once the item is settled, use Mark resolved.",
-                )
-                .into(),
+                tr("admin-cannot-process-this-item-again"),
+                tr("admin-this-item-is-not-linked-to-exactly-one-stored"),
+                tr("admin-process-again-reads-the-item-s-original-message-so").into(),
             ),
             Self::Purged => (
-                "The original message is no longer kept",
-                "Data keeping removed the original message",
-                "It cannot be shown or read again. The item and its history stay.".into(),
+                tr("admin-the-original-message-is-no-longer-kept"),
+                tr("admin-data-keeping-removed-the-original-message"),
+                tr("admin-it-cannot-be-shown-or-read-again-the-item").into(),
             ),
             Self::NothingMore => (
-                "Nothing more to show",
-                "There are no more original bytes for this record",
-                "Go back to the item to see its other linked records.".into(),
+                tr("admin-nothing-more-to-show"),
+                tr("admin-there-are-no-more-original-bytes-for-this-record"),
+                tr("admin-go-back-to-the-item-to-see-its-other").into(),
             ),
             Self::Settings(_) => (
                 FAILED,
-                "Analyte could not read its settings just now",
-                RELOAD.into(),
+                tr("admin-analyte-could-not-read-its-settings-just-now"),
+                tr("admin-report-reload").into(),
             ),
             Self::Store(_) => (
                 FAILED,
-                "Analyte could not read its stored data just now",
-                RELOAD.into(),
+                tr("admin-analyte-could-not-read-its-stored-data-just-now"),
+                tr("admin-report-reload").into(),
             ),
-            Self::Unread(what, _) => (OVERVIEW.0, OVERVIEW.1, format!("{what} {RELOAD}")),
+            Self::Unread(what, _) => (overview.0, overview.1, reload_after(what)),
             Self::Time => {
                 let (title, alert) = if section == Section::Overview {
-                    OVERVIEW
+                    overview
                 } else {
-                    (FAILED, "Analyte took too long")
+                    (FAILED, tr("admin-analyte-took-too-long"))
                 };
-                (title, alert, format!("{} {RELOAD}", format::SLOW_READ))
+                (title, alert, reload_after(format::slow_read()))
             }
         }
     }
@@ -569,27 +562,39 @@ impl Problem {
     fn detail(&self, section: Section<'_>) -> Option<String> {
         match self {
             Self::NotFound => Some(section.not_found().3.into()),
-            Self::ReadingNumber => Some("positive interpretation version required".into()),
-            Self::ReadingNotFound => Some("interpretation not found".into()),
-            Self::SignIn => Some("authenticated session required".into()),
-            Self::FormExpired => Some("authenticated CSRF session required".into()),
+            Self::ReadingNumber => {
+                Some(tr("admin-positive-interpretation-version-required").into())
+            }
+            Self::ReadingNotFound => Some(tr("admin-interpretation-not-found").into()),
+            Self::SignIn => Some(tr("admin-authenticated-session-required").into()),
+            Self::FormExpired => Some(tr("admin-authenticated-csrf-session-required").into()),
             Self::Refused(_) => None,
-            Self::AlreadyResolved => Some("parked item already resolved".into()),
-            Self::Purged => Some("linked receipt purged by retention".into()),
-            Self::NothingMore => Some("no linked raw evidence at this cursor".into()),
+            Self::AlreadyResolved => Some(tr("admin-parked-item-already-resolved").into()),
+            Self::Purged => Some(tr("admin-linked-receipt-purged-by-retention").into()),
+            Self::NothingMore => Some(tr("admin-no-linked-raw-evidence-at-this-cursor").into()),
             Self::Failed(detail)
             | Self::NoSingleMessage(detail)
             | Self::Settings(detail)
             | Self::Store(detail)
             | Self::Unread(_, detail) => Some(detail.clone()),
-            Self::Time => Some(format!(
-                "admin {} deadline of {} ms exceeded",
-                if section == Section::Overview {
-                    "overview"
-                } else {
-                    section.tab().label()
-                },
-                view::READ_BUDGET.as_millis()
+            Self::Time => Some(tr_args(
+                "admin-admin-deadline-of-ms-exceeded",
+                [
+                    (
+                        "label",
+                        (if section == Section::Overview {
+                            "overview"
+                        } else {
+                            section.tab().label()
+                        })
+                        .to_string()
+                        .into(),
+                    ),
+                    (
+                        "as-millis",
+                        (view::READ_BUDGET.as_millis()).to_string().into(),
+                    ),
+                ],
             )),
         }
     }
@@ -639,10 +644,18 @@ impl Problem {
         Refusal::PageFailed {
             status: self.status(),
             title,
-            text: "This page could not be shown. Give the details below to support.",
-            detail: format!(
-                "{}; the page failed too: {render}",
-                self.detail(section).unwrap_or_else(|| alert.to_owned())
+            text: tr("admin-this-page-could-not-be-shown-give-the-details"),
+            detail: tr_args(
+                "admin-the-page-failed-too",
+                [
+                    (
+                        "alert",
+                        (self.detail(section).unwrap_or_else(|| alert.to_owned()))
+                            .to_string()
+                            .into(),
+                    ),
+                    ("render", (render).to_string().into()),
+                ],
             ),
         }
         .page(assets)
@@ -650,4 +663,6 @@ impl Problem {
 }
 
 /// Heads a refusal to continue setup.
-pub(in crate::admin) const SETUP_STOPPED: &str = "Setup could not continue";
+pub(in crate::admin) fn setup_stopped() -> &'static str {
+    tr("admin-setup-stopped")
+}

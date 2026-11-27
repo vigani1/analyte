@@ -13,6 +13,9 @@ fn main() -> std::process::ExitCode {
     reason = "the only output of a program that cannot run here"
 )]
 fn main() -> std::process::ExitCode {
-    eprintln!("The Analyte desktop app runs on Windows only; open the admin pages in a browser.");
+    eprintln!(
+        "{}",
+        analyte_i18n::text("desktop-the-analyte-desktop-app-runs-on-windows-only-open")
+    );
     std::process::ExitCode::FAILURE
 }

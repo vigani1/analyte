@@ -13,6 +13,7 @@ use crate::admin::view::{
     parts::{Hover, ReasonDialog},
     report::{Button, Chip, Head},
 };
+use analyte_i18n::text as tr;
 
 /// GET /parked: the Open and Resolved filters, then the items the filter shows.
 #[derive(askama::Template)]
@@ -32,10 +33,9 @@ pub(super) struct List {
 }
 
 /// What the Needs review page says under its title.
-pub(super) const LEDE: &str = concat!(
-    "Messages and results Analyte kept but could not process on its own. Items stay ",
-    "here until someone resolves them; their history is kept.",
-);
+pub(super) fn lede() -> &'static str {
+    tr("admin-lede")
+}
 
 /// One open item on the list.
 pub(super) struct Card {

@@ -1,6 +1,7 @@
 //! Records operator order decisions and app events without issuing machine commands.
 use crate::operator::Error;
 use crate::{deadline, installation::config::Program};
+use analyte_i18n::text as tr;
 use analyte_model::{Identifier, OrderState, Reason};
 use analyte_store::{Audit, MachineOrderFilter};
 use clap::{Subcommand, ValueEnum};
@@ -26,17 +27,22 @@ pub enum CommandError {
 #[derive(Subcommand)]
 pub enum Command {
     /// Releases the restore pause after machines and app have been reconciled.
+    #[command(about = tr("cli-help-operator-command-resume-after-restore"))]
     ResumeAfterRestore {
         /// Evidence for the operator decision.
+        #[arg(help = tr("cli-help-operator-command-resume-after-restore-reason"))]
         #[arg(long)]
         reason: String,
     },
     /// Lists one bounded page of machine-order lifecycle snapshots.
+    #[command(about = tr("cli-help-operator-command-list"))]
     List {
         /// Continue after this local machine-order ID.
+        #[arg(help = tr("cli-help-operator-command-list-after"))]
         #[arg(long, default_value_t = 0)]
         after: i64,
         /// Restrict the page to one installed machine.
+        #[arg(help = tr("cli-help-operator-command-list-machine"))]
         #[arg(long,value_parser=Identifier::new)]
         machine: Option<Identifier>,
     },
@@ -44,22 +50,29 @@ pub enum Command {
     /// own, to check with the lab and the lab app. Shows each item's sample ID
     /// from the lab app's copy, as the page does, never result values; each
     /// run is recorded in the audit.
+    #[command(about = tr("cli-help-operator-command-cancelled"))]
     Cancelled {
         /// Continue after this position, as the previous page printed it.
+        #[arg(help = tr("cli-help-operator-command-cancelled-after"))]
         #[arg(long, default_value_t = 0)]
         after: u64,
         /// Print the items as JSON for scripts.
+        #[arg(help = tr("cli-help-operator-command-cancelled-json"))]
         #[arg(long)]
         json: bool,
     },
     /// Resolves an uncertain machine outcome using operator evidence.
+    #[command(about = tr("cli-help-operator-command-reconcile"))]
     Reconcile {
         /// Local machine-order ID printed by orders list.
+        #[arg(help = tr("cli-help-operator-command-reconcile-id"))]
         id: i64,
         /// Outcome verified by the operator.
+        #[arg(help = tr("cli-help-operator-command-reconcile-outcome"))]
         #[arg(long = "as", value_enum)]
         outcome: Outcome,
         /// Required explanation retained in the audit and app event.
+        #[arg(help = tr("cli-help-operator-command-reconcile-reason"))]
         #[arg(long)]
         reason: String,
     },
@@ -125,9 +138,9 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
         .request(deadline()?, |store| store.restore_unreconciled())
         .await?;
     if paused {
-        crate::operator::display::line(
-            "ORDER SENDING PAUSED: restored store requires machine/app reconciliation.",
-        )?;
+        crate::operator::display::line(tr(
+            "cli-order-sending-paused-restored-store-requires-machine-app-reconciliation",
+        ))?;
     }
     let result = store
         .request::<_, CommandError>(deadline()?, move |store| match command {

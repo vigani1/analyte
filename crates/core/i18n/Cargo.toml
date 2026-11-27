@@ -1,0 +1,19 @@
+[package]
+name = "analyte-i18n"
+description = "Embedded Fluent catalogs for Analyte's operator interfaces."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+fluent-bundle = { workspace = true }
+fluent-langneg = { workspace = true }
+fluent-syntax = { workspace = true }
+unic-langid = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
+
+[lints]
+workspace = true

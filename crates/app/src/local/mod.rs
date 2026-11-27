@@ -10,6 +10,7 @@ mod page;
 pub use page::Off;
 
 use crate::title_bar;
+use analyte_i18n::text as tr;
 
 /// Where the Engine off screen is.
 pub const ENGINE_OFF: &str = "/engine-off";
@@ -126,7 +127,7 @@ pub fn answer(
                 },
                 Err(error) => {
                     tracing::error!(%error, "the title bar could not be written");
-                    Answer::text(500, "The title bar could not be written.")
+                    Answer::text(500, tr("desktop-the-title-bar-could-not-be-written"))
                 }
             };
             (answer, None)
@@ -144,7 +145,10 @@ pub fn answer(
                 },
                 Err(error) => {
                     tracing::error!(%error, "the Engine off screen could not be written");
-                    Answer::text(500, "The Engine off screen could not be written.")
+                    Answer::text(
+                        500,
+                        tr("desktop-the-engine-off-screen-could-not-be-written"),
+                    )
                 }
             };
             (answer, None)
@@ -155,7 +159,7 @@ pub fn answer(
                 || request.origin != Some(crate::engine::Origin::Local.text().as_str())
             {
                 return (
-                    Answer::text(403, "Only the app's own screen may start the engine."),
+                    Answer::text(403, tr("desktop-only-the-app-s-own-screen-may-start-the")),
                     None,
                 );
             }
@@ -181,9 +185,9 @@ pub fn answer(
                 },
                 None,
             ),
-            None => (Answer::text(404, "Not found."), None),
+            None => (Answer::text(404, tr("desktop-not-found")), None),
         },
-        _ => (Answer::text(405, "Not allowed."), None),
+        _ => (Answer::text(405, tr("desktop-not-allowed")), None),
     }
 }
 

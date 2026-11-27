@@ -88,7 +88,7 @@
 
 {#- The key to the wires: one sample line per kind, with its word. -#}
 {%- macro legend() -%}
-<ul class="legend" aria-label="Line key">
+<ul class="legend" aria-label="{{ analyte_i18n::text("admin-line-key") }}">
 {%- for wire in Wire::ALL %}<li><span class="{{ wire.legend_class() }}"></span>{{ wire.word() }}</li>{% endfor -%}
 </ul>
 {%- endmacro %}
@@ -98,7 +98,7 @@
 <li class="path__item">
 <a class="node{% if machine.wire == Wire::Cut %} node--bad{% endif %}" href="{{ machine.href }}">
 <span class="node__head">{% call draw::icon(machine.tone.icon(), "icon--md tone-" ~ machine.tone.class()) %}{% endcall %}<span class="node__name" title="{{ machine.id }}">{{ machine.id }}</span>{% if let Some(model) = machine.model %}<span class="node__model">{{ model }}</span>{% endif %}</span>
-<span class="node__meta"><span class="node__state tone-{{ machine.tone.class() }}">{{ machine.state }}</span><span class="subtle" aria-hidden="true">·</span>{% if let Some(last) = machine.last_data %}<span class="mono"><span class="sr-only">{{ crate::admin::view::format::LAST_DATA }} </span>{% call time(last) %}{% endcall %}</span>{% else %}<span class="mono subtle">{{ crate::admin::view::format::NOTHING_YET }}</span>{% endif %}<span class="subtle" aria-hidden="true">·</span><span class="with-icon muted">{% call draw::icon(machine.kind_icon, "icon--sm") %}{% endcall %}{{ machine.kind }}</span></span>
+<span class="node__meta"><span class="node__state tone-{{ machine.tone.class() }}">{{ machine.state }}</span><span class="subtle" aria-hidden="true">·</span>{% if let Some(last) = machine.last_data %}<span class="mono"><span class="sr-only">{{ crate::admin::view::format::last_data() }} </span>{% call time(last) %}{% endcall %}</span>{% else %}<span class="mono subtle">{{ crate::admin::view::format::nothing_yet() }}</span>{% endif %}<span class="subtle" aria-hidden="true">·</span><span class="with-icon muted">{% call draw::icon(machine.kind_icon, "icon--sm") %}{% endcall %}{{ machine.kind }}</span></span>
 {%- if let Some(line) = machine.line %}<span class="node__note">{{ line }}</span>{% endif %}
 {%- if let Some(recording) = machine.recording %}<span class="node__note tone-warn">{{ recording }}</span>{% endif %}
 </a>
@@ -116,10 +116,10 @@
 <p class="node__line">{% call words(line) %}{% endcall %}</p>
 {%- endfor %}
 {%- if !lab.support.is_empty() %}
-{% call feedback::support(crate::admin::view::format::SUPPORT, lab.support.as_slice()) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::support(), lab.support.as_slice()) %}{% endcall %}
 {%- endif %}
 {%- if let Some(todo) = lab.todo %}
-{% call feedback::whattodo(todo, crate::admin::view::Tab::LabApps.href(), crate::admin::setup::ADD_KEYS) %}{% endcall %}
+{% call feedback::whattodo(todo, crate::admin::view::Tab::LabApps.href(), crate::admin::setup::add_keys()) %}{% endcall %}
 {%- endif %}
 </div>
 </li>
@@ -150,15 +150,15 @@
 {%- for machine in machines %}
 {% call machine_node(machine) %}{% endcall %}
 {%- else %}
-<li class="path__item">{% call feedback::empty(crate::admin::view::format::NO_MACHINE_RUNNING, "Add or set one up on the Setup page.") %}{% call forms::link_button(crate::admin::view::Tab::Setup.href(), crate::admin::view::Tab::Setup.label(), "btn--outline btn--sm") %}{% endcall %}{% endcall %}</li>
+<li class="path__item">{% call feedback::empty(crate::admin::view::format::no_machine_running(), analyte_i18n::text("admin-add-or-set-one-up-on-the-setup-page")) %}{% call forms::link_button(crate::admin::view::Tab::Setup.href(), crate::admin::view::Tab::Setup.label(), "btn--outline btn--sm") %}{% endcall %}{% endcall %}</li>
 {%- endfor %}
 </ul>
-<div class="bus"><span class="live-dot live-dot--accent live-dot--still"></span><span class="bus__label">Analyte · reads · keeps a copy · sends</span></div>
+<div class="bus"><span class="live-dot live-dot--accent live-dot--still"></span><span class="bus__label">{{ analyte_i18n::text("admin-analyte-reads-keeps-a-copy-sends") }}</span></div>
 <ul class="path__col path__col--out" aria-label="{{ crate::admin::view::Tab::LabApps.label() }}">
 {%- for lab in labs %}
 {% call lab_node(lab) %}{% endcall %}
 {%- else %}
-<li class="path__item">{% call feedback::empty("No lab app", "No running machine sends to a lab app.") %}{% endcall %}</li>
+<li class="path__item">{% call feedback::empty(analyte_i18n::text("admin-no-lab-app"), analyte_i18n::text("admin-no-running-machine-sends-to-a-lab-app")) %}{% endcall %}</li>
 {%- endfor %}
 </ul>
 </div>
@@ -195,7 +195,7 @@
 {%- when Value::Code { shown, exact } %}{% call code(shown, exact) %}{% endcall %}
 {%- when Value::Status(status) %}{% call status_with(status.tone, status.icon, status.word, status.exact) %}{% endcall %}{% if let Some(note) = status.note %}<span class="kv__note">{{ note }}</span>{% endif %}
 {%- when Value::Link(link) %}<span class="with-icon">{% call draw::icon(link.icon, "icon--md") %}{% endcall %}{{ link.kind }}{% if let Some(detail) = link.detail %}, <span class="mono">{{ detail }}</span>{% endif %}</span>{% if let Some(note) = link.note %}<span class="kv__note">{{ note }}</span>{% endif %}
-{%- when Value::Time(moment) %}{% if let Some(moment) = moment %}<span class="mono">{% call time(moment) %}{% endcall %}</span>{% else %}<span class="subtle">{{ crate::admin::view::format::NOTHING_YET }}</span>{% endif %}
+{%- when Value::Time(moment) %}{% if let Some(moment) = moment %}<span class="mono">{% call time(moment) %}{% endcall %}</span>{% else %}<span class="subtle">{{ crate::admin::view::format::nothing_yet() }}</span>{% endif %}
 {%- when Value::Page { href, label } %}<a class="link" href="{{ href }}">{{ label }}</a>
 {%- endmatch -%}
 </dd>
@@ -204,7 +204,7 @@
 {#- The accepted differences from the standard used for one message: each with what it means, what was received, how it was read and where, and its declaration for support; "None were used." when none were, and a note when an older version did not record them. -#}
 {%- macro departures_used(applied) -%}
 <section class="card" aria-labelledby="dp-used">
-<div class="card__head"><h2 id="dp-used" class="card__title">Differences used for this message</h2></div>
+<div class="card__head"><h2 id="dp-used" class="card__title">{{ analyte_i18n::text("admin-differences-used-for-this-message") }}</h2></div>
 <div class="card__body stack">
 {%- if let Some(applied) = applied %}
 {%- for one in applied %}
@@ -214,13 +214,13 @@
 {% call feedback::alert(note.tone, note.title, note.text) %}{% endcall %}
 {%- endif %}
 <dl class="kv">{% for item in one.facts %}{% call fact(item) %}{% endcall %}{% endfor %}</dl>
-{% call feedback::support("Where this difference comes from", one.declaration.as_slice()) %}{% endcall %}
+{% call feedback::support(analyte_i18n::text("admin-where-this-difference-comes-from"), one.declaration.as_slice()) %}{% endcall %}
 </section>
 {%- else %}
-<p class="text">None were used.</p>
+<p class="text">{{ analyte_i18n::text("admin-none-were-used") }}</p>
 {%- endfor %}
 {%- else %}
-<p class="muted text">This message was read by an older version that did not record which differences were switched on or used; that does not mean none were.</p>
+<p class="muted text">{{ analyte_i18n::text("admin-this-message-was-read-by-an-older-version-that") }}</p>
 {%- endif %}
 </div>
 </section>

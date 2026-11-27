@@ -8,14 +8,14 @@
 {%- block main %}
 {% call layout::intro_head("", "Lab apps", "The lab software that receives results and sends orders. Each machine picks one in its setup; changes apply after a restart.") %}
 {%- if add %}
-{% call forms::icon_button("/setup/lab-apps/new", crate::admin::view::icon::Icon::Plus, crate::admin::setup::ADD_LAB_APP, "btn--primary") %}{% endcall %}
+{% call forms::icon_button("/setup/lab-apps/new", crate::admin::view::icon::Icon::Plus, crate::admin::setup::add_lab_app_label(), "btn--primary") %}{% endcall %}
 {%- endif %}
 {% endcall %}
 {%- for notice in problems %}
 {% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
 {%- endfor %}
 {%- if add && cards.is_empty() %}
-{% call feedback::empty_card(crate::admin::setup::NO_LAB_APP, "Add one; machines can then send results to it.") %}{% call forms::link_button("/setup/lab-apps/new", crate::admin::setup::ADD_LAB_APP, "btn--outline btn--sm") %}{% endcall %}{% endcall %}
+{% call feedback::empty_card(crate::admin::setup::no_lab_app(), analyte_i18n::text("setup-add-one-machines-can-then-send-results-to-it")) %}{% call forms::link_button("/setup/lab-apps/new", crate::admin::setup::add_lab_app_label(), "btn--outline btn--sm") %}{% endcall %}{% endcall %}
 {%- endif %}
 {%- if !cards.is_empty() %}
 <div class="stack stack--lg">
@@ -24,20 +24,20 @@
 <div class="card__head">{% call draw::icon(crate::admin::view::icon::Icon::LabApp, "") %}{% endcall %}<h2 id="la-{{ loop.index }}" class="card__title">{{ card.name }}</h2>{% call display::status_exact(card.status.tone, card.status.word, card.status.exact) %}{% endcall %}<span class="spacer"></span><span class="mono subtle lab__aside">{% call display::words(card.delivered) %}{% endcall %}</span></div>
 <div class="card__body stack">
 <dl class="kv">
-<dt>Address</dt><dd class="mono">{{ card.address }}</dd>
-<dt>Used by</dt><dd>{% for sender in card.senders %}<a class="link" href="{{ sender.href }}">{{ sender.id }}</a>{% if !loop.last %}, {% endif %}{% else %}<span class="subtle">No machine</span>{% endfor %}</dd>
+<dt>{{ analyte_i18n::text("setup-address") }}</dt><dd class="mono">{{ card.address }}</dd>
+<dt>{{ analyte_i18n::text("setup-used-by") }}</dt><dd>{% for sender in card.senders %}<a class="link" href="{{ sender.href }}">{{ sender.id }}</a>{% if !loop.last %}, {% endif %}{% else %}<span class="subtle">{{ analyte_i18n::text("setup-no-machine") }}</span>{% endfor %}</dd>
 {%- for key in card.keys %}
 <dt>{{ key.label }}</dt><dd>{% call display::key_status(key) %}{% endcall %}</dd>
 {%- endfor %}
-<dt>{{ crate::admin::view::format::WAITING_TO_SEND }}</dt><dd>{% call display::words(card.waiting) %}{% endcall %}</dd>
+<dt>{{ crate::admin::view::format::waiting_to_send() }}</dt><dd>{% call display::words(card.waiting) %}{% endcall %}</dd>
 {%- if let Some(failing) = card.failing %}
-<dt>Tries</dt><dd>{% call display::words(failing) %}{% endcall %}</dd>
+<dt>{{ analyte_i18n::text("setup-tries") }}</dt><dd>{% call display::words(failing) %}{% endcall %}</dd>
 {%- endif %}
 {%- if let Some(orders) = card.orders %}
-<dt>Order list</dt><dd>{{ orders.word }}{% if let Some(checked) = orders.checked %} <span class="subtle">· checked <span class="mono">{% call display::time(checked) %}{% endcall %}</span></span>{% endif %}</dd>
+<dt>{{ analyte_i18n::text("setup-order-list") }}</dt><dd>{{ orders.word }}{% if let Some(checked) = orders.checked %} <span class="subtle">{{ analyte_i18n::text("setup-checked") }} <span class="mono">{% call display::time(checked) %}{% endcall %}</span></span>{% endif %}</dd>
 {%- endif %}
 {%- if !card.written.is_empty() %}
-<dt>Written in</dt><dd>{% for (shown, exact) in card.written %}{% call display::hover(shown, exact) %}{% endcall %}{% if !loop.last %}; {% endif %}{% endfor %}</dd>
+<dt>{{ analyte_i18n::text("setup-written-in") }}</dt><dd>{% for (shown, exact) in card.written %}{% call display::hover(shown, exact) %}{% endcall %}{% if !loop.last %}; {% endif %}{% endfor %}</dd>
 {%- endif %}
 </dl>
 {%- if let Some(note) = card.note %}
@@ -47,7 +47,7 @@
 {% call feedback::whattodo(todo.text, todo.href, todo.label) %}{% endcall %}
 {%- endif %}
 </div>
-<div class="card__foot">{% call forms::link_button(card.href, "Edit", "btn--quiet btn--sm") %}{% endcall %}{% call forms::link_button(card.remove, crate::admin::setup::REMOVE, "btn--danger-quiet btn--sm") %}{% endcall %}</div>
+<div class="card__foot">{% call forms::link_button(card.href, analyte_i18n::text("setup-edit"), "btn--quiet btn--sm") %}{% endcall %}{% call forms::link_button(card.remove, crate::admin::setup::remove_label(), "btn--danger-quiet btn--sm") %}{% endcall %}</div>
 </article>
 {%- endfor %}
 </div>
@@ -56,6 +56,6 @@
 {% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
 {%- endfor %}
 {%- if !support.is_empty() %}
-{% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::support(), support) %}{% endcall %}
 {%- endif %}
 {%- endblock %}

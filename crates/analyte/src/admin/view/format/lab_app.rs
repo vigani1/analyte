@@ -1,5 +1,6 @@
 //! Says how a lab app is delivering: last delivery, waiting and failing results, its senders and its keys.
-use super::{Line, amount, moment, moment_unix, time::not_a_date};
+use super::{Line, moment, moment_unix, time::not_a_date};
+use analyte_i18n::{count as tr_count, message as tr_args, text as tr};
 use analyte_store::FailingDestination;
 use jiff::{Timestamp, tz::TimeZone};
 
@@ -11,9 +12,9 @@ pub(in crate::admin) fn last_delivered(
     now: Timestamp,
 ) -> Line {
     match at {
-        Some(at) => Line::text("Last delivered ").time(moment(at, now)),
-        None if purged => Line::text("No delivery in the kept records"),
-        None => Line::text("Nothing delivered yet"),
+        Some(at) => Line::text(tr("admin-last-delivered")).time(moment(at, now)),
+        None if purged => Line::text(tr("admin-no-delivery-in-the-kept-records")),
+        None => Line::text(tr("admin-nothing-delivered-yet")),
     }
 }
 
@@ -22,12 +23,19 @@ pub(in crate::admin) fn last_delivered(
 /// results and order messages alike.
 pub(in crate::admin) fn waiting(count: u64, oldest: Option<Timestamp>, now: Timestamp) -> Line {
     if count == 0 {
-        return Line::text(NOTHING_WAITING);
+        return Line::text(nothing_waiting());
     }
-    let items = amount(count, "item waiting", "items waiting");
+    let items = tr_count("admin-count-waiting-items", count);
     match oldest {
-        Some(at) => Line::text(format!("{items} · oldest ")).time(moment(at, now)),
-        None => Line::text(format!("{items} · oldest not recorded")),
+        Some(at) => Line::text(tr_args(
+            "admin-oldest",
+            [("items", (items).to_string().into())],
+        ))
+        .time(moment(at, now)),
+        None => Line::text(tr_args(
+            "admin-oldest-not-recorded",
+            [("items", (items).to_string().into())],
+        )),
     }
 }
 
@@ -37,18 +45,20 @@ pub(in crate::admin) fn waiting(count: u64, oldest: Option<Timestamp>, now: Time
 /// has come, and "under way" while every waiting item is being tried. No cause
 /// is named: the store keeps none.
 pub(in crate::admin) fn failing(failing: &FailingDestination, now: Timestamp) -> Line {
-    let tried = Line::text("Last try ")
+    let tried = Line::text(tr("admin-last-try"))
         .time(moment_unix(failing.last, now))
         .text_part(" failed");
     let count = Line::text(format!(
         "{} since ",
-        amount(failing.tries, "failed try", "failed tries")
+        tr_count("admin-count-failed-tries", failing.tries)
     ))
     .time(moment_unix(failing.since, now));
     let next = match failing.next {
-        Some(at) if at > now.as_second() => Line::text("next try ").time(moment_unix(at, now)),
-        Some(_) => Line::text("next try due"),
-        None => Line::text("a try is under way"),
+        Some(at) if at > now.as_second() => {
+            Line::text(tr("admin-next-try")).time(moment_unix(at, now))
+        }
+        Some(_) => Line::text(tr("admin-next-try-due")),
+        None => Line::text(tr("admin-a-try-is-under-way")),
     };
     tried.then(count).then(next)
 }
@@ -56,7 +66,7 @@ pub(in crate::admin) fn failing(failing: &FailingDestination, now: Timestamp) ->
 /// Which set-up machines send to a lab app: "From cobas-e411, iflash".
 pub(in crate::admin) fn senders(machines: &[&str]) -> String {
     if machines.is_empty() {
-        "No set-up machine sends here".into()
+        tr("admin-no-set-up-machine-sends-here").into()
     } else {
         format!("From {}", machines.join(", "))
     }
@@ -67,9 +77,15 @@ pub(in crate::admin) fn senders(machines: &[&str]) -> String {
 /// were entered after Analyte started.
 pub(in crate::admin) fn missing_keys(missing: &[&str]) -> String {
     match missing {
-        [] => "Its keys are set now; Analyte uses them after it restarts.".into(),
-        [one] => format!("Key missing: {one}."),
-        [first @ .., last] => format!("Keys missing: {} and {last}.", first.join(", ")),
+        [] => tr("admin-its-keys-are-set-now-analyte-uses-them-after").into(),
+        [one] => tr_args("admin-key-missing", [("one", (one).to_string().into())]),
+        [first @ .., last] => tr_args(
+            "admin-keys-missing-and",
+            [
+                ("join", (first.join(", ")).to_string().into()),
+                ("last", (last).to_string().into()),
+            ],
+        ),
     }
 }
 
@@ -81,37 +97,51 @@ pub(in crate::admin) fn set_on(set_at: i64, now: Timestamp) -> String {
 
 fn set_on_in(set_at: i64, now: Timestamp, zone: &TimeZone) -> String {
     let Ok(at) = Timestamp::from_second(set_at) else {
-        return format!("Set at {}", not_a_date(set_at));
+        return tr_args(
+            "admin-set-at",
+            [("set-at", (not_a_date(set_at)).to_string().into())],
+        );
     };
     let at = at.to_zoned(zone.clone());
     let pattern = if at.year() == now.to_zoned(zone.clone()).year() {
-        "Set on %-d %b"
+        tr("admin-set-on-d-b")
     } else {
-        "Set on %-d %b %Y"
+        tr("admin-set-on-d-b-y")
     };
     at.strftime(pattern).to_string()
 }
 
 /// A key whose value the service environment holds, which wins over a stored one.
 pub(in crate::admin) fn set_in_environment(variable: &str) -> String {
-    format!("Set in the service environment ({variable})")
+    tr_args(
+        "admin-set-in-the-service-environment",
+        [("variable", (variable).to_string().into())],
+    )
 }
 
 /// Labels the lab app associated with the settings or data.
-pub(in crate::admin) const LAB_APP: &str = "Lab app";
+pub(in crate::admin) fn lab_app() -> &'static str {
+    tr("admin-lab-app")
+}
 
 /// Says the lab app’s delivery queue is empty.
-pub(in crate::admin) const NOTHING_WAITING: &str = "nothing waiting";
+pub(in crate::admin) fn nothing_waiting() -> &'static str {
+    tr("admin-nothing-waiting")
+}
 
 /// Labels the action to retry a delivery.
-pub(in crate::admin) const SEND_AGAIN: &str = "Send again";
+pub(in crate::admin) fn send_again() -> &'static str {
+    tr("admin-send-again")
+}
 
 /// Labels a delivery or queue waiting to be sent.
-pub(in crate::admin) const WAITING_TO_SEND: &str = "Waiting to be sent";
+pub(in crate::admin) fn waiting_to_send() -> &'static str {
+    tr("admin-waiting-to-send")
+}
 
 #[cfg(test)]
 mod tests {
-    use super::super::{KEY_NEEDED, KEYS_ADVICE, KEYS_APPLY, clock, machines_and_lab_apps};
+    use super::super::{clock, key_needed, keys_advice, keys_apply, machines_and_lab_apps};
     use super::*;
 
     // Owner request 2026-11-19 (admin restyle): lab app lines use real values
@@ -214,8 +244,8 @@ mod tests {
             set_in_environment("ANALYTE_SECRET_MAIN_LAB_API"),
             "Set in the service environment (ANALYTE_SECRET_MAIN_LAB_API)"
         );
-        assert_eq!(KEY_NEEDED, "Needed before Analyte can send results.");
-        assert!(KEYS_ADVICE.ends_with(KEYS_APPLY));
+        assert_eq!(key_needed(), "Needed before Analyte can send results.");
+        assert!(keys_advice().ends_with(keys_apply()));
         Ok(())
     }
 }

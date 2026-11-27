@@ -20,6 +20,7 @@ use crate::admin::view::{
 };
 use crate::admin::{Error, server::Context};
 use crate::deadline;
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_model::DeliveryId;
 use analyte_store::{
     DeliveryCounts, DeliveryFilter, DeliveryKind, DeliveryState, ListedDelivery, RecentOutcome,
@@ -128,8 +129,12 @@ fn list(
     now: Timestamp,
 ) -> Deliveries {
     let chips = [
-        (Show::All, "All", read.counts.all),
-        (Show::Undelivered, "Not delivered", read.counts.undelivered),
+        (Show::All, tr("admin-all"), read.counts.all),
+        (
+            Show::Undelivered,
+            tr("admin-not-delivered"),
+            read.counts.undelivered,
+        ),
     ]
     .into_iter()
     .map(|(filter, label, count)| Chip {
@@ -169,23 +174,23 @@ fn empty(show: Show, shown: u64) -> Empty {
     if shown > 0 {
         return Empty {
             good: false,
-            title: "No more deliveries",
-            text: "This page is past the last delivery.",
-            link: Some((Show::All.href(), format::FIRST_PAGE.into())),
+            title: tr("admin-no-more-deliveries"),
+            text: tr("admin-this-page-is-past-the-last-delivery"),
+            link: Some((Show::All.href(), format::first_page().into())),
         };
     }
     match show {
         Show::All => Empty {
             good: false,
-            title: "No deliveries yet",
-            text: "Results and order messages Analyte sends to a lab app are listed here.",
+            title: tr("admin-no-deliveries-yet"),
+            text: tr("admin-results-and-order-messages-analyte-sends-to-a-lab"),
             link: None,
         },
         Show::Undelivered => Empty {
             good: false,
-            title: "Nothing waits for a lab app",
-            text: "Every delivery listed was accepted by its lab app.",
-            link: Some((Show::All.href(), "Show all deliveries".into())),
+            title: tr("admin-nothing-waits-for-a-lab-app"),
+            text: tr("admin-every-delivery-listed-was-accepted-by-its-lab-app"),
+            link: Some((Show::All.href(), tr("admin-show-all-deliveries").into())),
         },
     }
 }
@@ -206,8 +211,8 @@ fn delivery_row(row: &ListedDelivery, now: Timestamp) -> DeliveryRow {
         sample,
         kind: match row.kind {
             DeliveryKind::Result => None,
-            DeliveryKind::OrderEvent => Some("Order message"),
-            DeliveryKind::ReviewNotice => Some("Needs review notice"),
+            DeliveryKind::OrderEvent => Some(tr("admin-order-message")),
+            DeliveryKind::ReviewNotice => Some(tr("admin-needs-review-notice")),
         },
         from: (!row.machines.is_empty()).then(|| {
             row.machines
@@ -231,10 +236,12 @@ fn outcome(delivery: &StoredDelivery) -> Look {
         tone: look.tone,
         icon: look.icon,
         word: look.word,
-        exact: format!(
-            "Delivery {} · {}",
-            uuid::Uuid::from(delivery.id),
-            delivery.state
+        exact: tr_args(
+            "admin-delivery",
+            [
+                ("id", (uuid::Uuid::from(delivery.id)).to_string().into()),
+                ("state", (delivery.state).to_string().into()),
+            ],
         ),
         note: None,
     }
@@ -321,15 +328,25 @@ async fn open(
     };
     let form = ReasonDialog {
         action: resend_href(uuid::Uuid::from(id)),
-        title: "Send this delivery again?",
-        text: format!(
-            "Analyte sends it to lab app {} again, unchanged and with the same delivery number. Its status now: {}. If the lab app already has it, it treats the repeat as done. Analyte checks again that it may be sent when you confirm.",
-            delivery.destination.as_str(),
-            format::delivery_look(delivery.state).word
+        title: tr("admin-send-this-delivery-again"),
+        text: tr_args(
+            "admin-analyte-sends-it-to-lab-app-again-unchanged-and",
+            [
+                (
+                    "destination",
+                    (delivery.destination.as_str()).to_string().into(),
+                ),
+                (
+                    "word",
+                    (format::delivery_look(delivery.state).word)
+                        .to_string()
+                        .into(),
+                ),
+            ],
         ),
-        placeholder: "For example: the lab app team asked for it again",
-        hint: "Required, up to 256 characters. Recorded with the action and the time.",
-        button: format::SEND_AGAIN,
+        placeholder: tr("admin-for-example-the-lab-app-team-asked-for-it"),
+        hint: tr("admin-required-up-to-256-characters-recorded-with-the-action"),
+        button: format::send_again(),
         csrf: session.csrf.form_value().to_owned(),
         cancel: Tab::Deliveries.href().into(),
         reason: typed.to_owned(),
@@ -406,14 +423,10 @@ pub(in crate::admin) async fn resend(
             Tab::Deliveries,
             StatusCode::OK,
             Outcome {
-                title: "Queued to send again",
+                title: tr("admin-queued-to-send-again"),
                 tone: Tone::Good,
-                alert: "The delivery is queued to send again".into(),
-                text: concat!(
-                    "It goes to the lab app unchanged, with the same delivery number, so the ",
-                    "lab app treats a repeat as done.",
-                )
-                .into(),
+                alert: tr("admin-the-delivery-is-queued-to-send-again").into(),
+                text: tr("admin-it-goes-to-the-lab-app-unchanged-with-the").into(),
             },
             vec![format!("Delivery {}", uuid::Uuid::from(id))],
         ),

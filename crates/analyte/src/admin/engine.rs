@@ -27,48 +27,44 @@ const WRITE_TIMEOUT: Duration = Duration::from_secs(20);
 #[derive(Debug, thiserror::Error)]
 pub(in crate::admin) enum EngineError {
     /// The program file has no `[admin]` table, so the engine serves no admin address.
-    #[error(
-        "the admin pages are switched off in the settings (no [admin] table), so the running engine cannot be asked"
-    )]
+    #[error("{}", analyte_i18n::text("doctor-overview-error-admin-off"))]
     AdminOff,
     /// Nothing listens on the admin address: the engine does not run.
-    #[error("nothing answers on the admin address {0}: the engine is not running")]
+    #[error("{}", analyte_i18n::message("doctor-overview-error-not-running", [("value", (.0).to_string().into())]))]
     NotRunning(SocketAddrV4),
     /// The admin address could not be reached for another reason.
-    #[error("the admin address {address} cannot be reached: {source}")]
+    #[error("{}", analyte_i18n::message("doctor-overview-error-unreachable", [("address", (address).to_string().into()), ("source", (source).to_string().into())]))]
     Unreachable {
         address: SocketAddrV4,
         #[source]
         source: std::io::Error,
     },
     /// The engine took longer than [`TIMEOUT`].
-    #[error("the engine did not answer within {} seconds", TIMEOUT.as_secs())]
+    #[error("{}", analyte_i18n::message("doctor-overview-error-timed-out", [("as-secs", (TIMEOUT.as_secs()).to_string().into())]))]
     TimedOut,
     /// The admin key file could not be read; its value is never shown.
-    #[error("the admin key cannot be read as this user ({0}); run the command as an administrator")]
+    #[error("{}", analyte_i18n::message("doctor-overview-error-key", [("value", (.0).to_string().into())]))]
     Key(#[source] TokenError),
     /// The thread reading the admin key stopped before it finished.
-    #[error("the admin key read stopped: {0}")]
+    #[error("{}", analyte_i18n::message("doctor-overview-error-key-thread", [("value", (.0).to_string().into())]))]
     KeyThread(#[source] tokio::task::JoinError),
     /// The HTTP client could not be set up on this system.
-    #[error("the request could not be prepared: {0}")]
+    #[error("{}", analyte_i18n::message("doctor-overview-error-client", [("value", (.0).to_string().into())]))]
     Client(#[source] reqwest::Error),
     /// The listener could not prove it holds the admin key, so the key was not sent.
-    #[error(
-        "something else answers on the admin address: it could not prove it is this Analyte engine, so the admin key was not sent"
-    )]
+    #[error("{}", analyte_i18n::text("doctor-overview-error-unproven"))]
     Unproven,
     /// The exchange broke off.
-    #[error("the engine did not answer: {0}")]
+    #[error("{}", analyte_i18n::message("doctor-overview-error-silent", [("value", (.0).to_string().into())]))]
     Silent(#[source] reqwest::Error),
     /// The engine answered with a status this request does not expect.
-    #[error("the engine answered HTTP {0}")]
+    #[error("{}", analyte_i18n::message("doctor-overview-error-status", [("value", (.0).to_string().into())]))]
     Status(u16),
     /// The answer was longer than its limit.
-    #[error("the engine's answer was too large")]
+    #[error("{}", analyte_i18n::text("doctor-overview-error-too-large"))]
     TooLarge,
     /// The answer is not what this version of Analyte expects.
-    #[error("the engine's answer could not be read: {0}")]
+    #[error("{}", analyte_i18n::message("doctor-overview-error-unreadable", [("value", (.0).to_string().into())]))]
     Unreadable(#[source] serde_json::Error),
 }
 
@@ -76,14 +72,14 @@ pub(in crate::admin) enum EngineError {
 #[derive(Debug, thiserror::Error)]
 pub(in crate::admin) enum PostError {
     /// The change could not be put into a request; nothing was sent.
-    #[error("the request could not be written: {0}")]
+    #[error("{}", analyte_i18n::message("doctor-overview-error-request", [("value", (.0).to_string().into())]))]
     Request(#[source] serde_json::Error),
     /// Nothing reached the engine, so nothing was changed.
-    #[error("the engine could not be reached: {0}")]
+    #[error("{}", analyte_i18n::message("doctor-overview-error-not-sent", [("value", (.0).to_string().into())]))]
     NotSent(#[source] reqwest::Error),
     /// It may have reached the engine: whether it changed anything is
     /// unknown, never "not done".
-    #[error("the engine did not answer the change within {} seconds", WRITE_TIMEOUT.as_secs())]
+    #[error("{}", analyte_i18n::message("doctor-overview-error-timed-out-2", [("as-secs", (WRITE_TIMEOUT.as_secs()).to_string().into())]))]
     TimedOut,
     /// It may have reached the engine, but the answer broke off or was too
     /// large: whether it changed anything is unknown.
@@ -178,7 +174,10 @@ impl Engine {
         let exchange = async {
             let mut request = self.client.get(format!("http://{}{path}", self.address));
             if keyed {
-                request = request.bearer_auth(self.key.form_value());
+                request = request.bearer_auth(self.key.form_value()).header(
+                    reqwest::header::ACCEPT_LANGUAGE,
+                    analyte_i18n::Language::current().tag(),
+                );
             }
             let mut response = request.send().await.map_err(|error| {
                 if error.is_timeout() {
@@ -226,6 +225,10 @@ impl Engine {
                 .client
                 .post(format!("http://{}{path}", self.address))
                 .bearer_auth(self.key.form_value())
+                .header(
+                    reqwest::header::ACCEPT_LANGUAGE,
+                    analyte_i18n::Language::current().tag(),
+                )
                 .header(reqwest::header::CONTENT_TYPE, "application/json")
                 .timeout(WRITE_TIMEOUT)
                 .body(bytes)

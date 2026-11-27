@@ -7,6 +7,7 @@
 //! without any name or count (ADR 0023).
 use crate::admin::view::{Tab, Tone, format};
 use crate::machine::software_version::UNCHECKED_WARNING;
+use analyte_i18n::{count as tr_count, message as tr_args, text as tr};
 use analyte_model::Identifier;
 use analyte_store::{AlertKey, AlertState, Undeliverable};
 
@@ -70,11 +71,11 @@ impl Section {
         }
     }
 
-    pub(super) const fn label(self) -> &'static str {
+    pub(super) fn label(self) -> &'static str {
         match self {
-            Self::Sending => "Sending",
-            Self::Orders => "Orders",
-            Self::Disk => "Disk",
+            Self::Sending => tr("doctor-overview-sending"),
+            Self::Orders => tr("admin-orders"),
+            Self::Disk => tr("doctor-overview-disk"),
         }
     }
 }
@@ -96,7 +97,7 @@ impl Fix {
         }
     }
 
-    pub(super) const fn label(self) -> &'static str {
+    pub(super) fn label(self) -> &'static str {
         match self {
             Self::Page(tab) => tab.label(),
             Self::Section(section) => section.label(),
@@ -106,23 +107,27 @@ impl Fix {
     /// The command that shows or fixes the same thing from the command line,
     /// for `analyte overview` and `analyte alerts list`; none where only the
     /// page does it. Recovery commands still ask for `--actor` and `--reason`.
-    pub(super) const fn command(self) -> Option<&'static str> {
+    pub(super) fn command(self) -> Option<&'static str> {
         match self {
-            Self::Page(Tab::NeedsReview) => Some("analyte review list"),
-            Self::Page(Tab::Deliveries) | Self::Section(Section::Sending) => {
-                Some("analyte --actor <you> deliveries list --reason \"<why>\"")
+            Self::Page(Tab::NeedsReview) => Some(tr("doctor-overview-analyte-review-list")),
+            Self::Page(Tab::Deliveries) | Self::Section(Section::Sending) => Some(tr(
+                "doctor-overview-analyte-actor-you-deliveries-list-reason-why",
+            )),
+            Self::Page(Tab::MachineOrders) => Some(tr("doctor-overview-analyte-orders-list")),
+            Self::Page(Tab::CancelledByMachine) => {
+                Some(tr("doctor-overview-analyte-orders-cancelled"))
             }
-            Self::Page(Tab::MachineOrders) => Some("analyte orders list"),
-            Self::Page(Tab::CancelledByMachine) => Some("analyte orders cancelled"),
             Self::Page(Tab::DataKeeping) | Self::Section(Section::Disk) => {
-                Some("analyte data-keeping")
+                Some(tr("doctor-overview-analyte-data-keeping"))
             }
-            Self::Section(Section::Orders) => {
-                Some("analyte --actor <you> orders resume-after-restore --reason \"<why>\"")
+            Self::Section(Section::Orders) => Some(tr(
+                "doctor-overview-analyte-actor-you-orders-resume-after-restore-reason-why",
+            )),
+            Self::Page(Tab::Activity) => Some(tr("doctor-overview-analyte-activity")),
+            Self::Page(Tab::Machines | Tab::Setup) => {
+                Some(tr("doctor-overview-analyte-machines-list"))
             }
-            Self::Page(Tab::Activity) => Some("analyte activity"),
-            Self::Page(Tab::Machines | Tab::Setup) => Some("analyte machines list"),
-            Self::Page(Tab::LabApps) => Some("analyte lab-apps list"),
+            Self::Page(Tab::LabApps) => Some(tr("doctor-overview-analyte-lab-apps-list")),
             Self::Page(Tab::Overview | Tab::Settings) => None,
         }
     }
@@ -447,7 +452,7 @@ fn measured_things(facts: &Facts) -> Vec<Thing> {
     if facts.disk_full {
         list.push(Thing::new(
             Subject::Disk,
-            "Disk almost full: Analyte refuses new data from machines".into(),
+            tr("doctor-overview-disk-almost-full-analyte-refuses-new-data-from-machines").into(),
             Fix::Section(Section::Disk),
         ));
     }
@@ -459,12 +464,15 @@ fn measured_things(facts: &Facts) -> Vec<Thing> {
     }
     for (destination, waiting, observed) in &facts.failing {
         list.push(Thing {
-            detail: Some(format!("{observed}. {}", format::FAILING_ADVICE)),
+            detail: Some(format!("{observed}. {}", format::failing_advice())),
             ..Thing::new(
                 Subject::Failing(destination.clone()),
-                format!(
-                    "Sending to lab app {} is failing: {waiting} waiting",
-                    destination.as_str()
+                tr_args(
+                    "doctor-overview-sending-to-lab-app-is-failing-waiting",
+                    [
+                        ("destination", (destination.as_str()).to_string().into()),
+                        ("waiting", (waiting).to_string().into()),
+                    ],
                 ),
                 Fix::Page(Tab::Deliveries),
             )
@@ -473,9 +481,12 @@ fn measured_things(facts: &Facts) -> Vec<Thing> {
     for (destination, waiting) in &facts.paused {
         list.push(Thing::new(
             Subject::Paused(destination.clone()),
-            format!(
-                "Sending to lab app {} is paused: {waiting} waiting",
-                destination.as_str()
+            tr_args(
+                "doctor-overview-sending-to-lab-app-is-paused-waiting",
+                [
+                    ("destination", (destination.as_str()).to_string().into()),
+                    ("waiting", (waiting).to_string().into()),
+                ],
             ),
             Fix::Page(Tab::LabApps),
         ));
@@ -483,7 +494,10 @@ fn measured_things(facts: &Facts) -> Vec<Thing> {
     for machine in &facts.stopped {
         list.push(Thing::new(
             Subject::Stopped(machine.clone()),
-            format!("Analyte stopped working with {}", machine.as_str()),
+            tr_args(
+                "doctor-overview-analyte-stopped-working-with",
+                [("machine", (machine.as_str()).to_string().into())],
+            ),
             Fix::Page(Tab::Machines),
         ));
     }
@@ -514,7 +528,10 @@ fn measured_things(facts: &Facts) -> Vec<Thing> {
     if facts.cancelled > 0 {
         list.push(Thing::new(
             Subject::Cancelled,
-            format!("Orders cancelled by a machine: {}", facts.cancelled),
+            tr_args(
+                "doctor-overview-orders-cancelled-by-a-machine",
+                [("cancelled", (facts.cancelled).to_string().into())],
+            ),
             Fix::Page(Tab::CancelledByMachine),
         ));
     }
@@ -540,14 +557,21 @@ fn software_attention(facts: &Facts) -> impl Iterator<Item = Thing> + '_ {
         .chain(facts.software_unchecked.iter().map(|machine| {
             Thing::new(
                 Subject::SoftwareUnchecked(machine.clone()),
-                format!("{UNCHECKED_WARNING} for {}", machine.as_str()),
+                tr_args(
+                    "doctor-overview-for",
+                    [
+                        ("UNCHECKED-WARNING", (UNCHECKED_WARNING).to_string().into()),
+                        ("machine", (machine.as_str()).to_string().into()),
+                    ],
+                ),
                 Fix::Page(Tab::Machines),
             )
         }))
         .chain(facts.software_warning_write_failed.then(|| {
             Thing::new(
                 Subject::SoftwareWarningWriteFailed,
-                "Analyte could not save a machine software version warning".into(),
+                tr("doctor-overview-analyte-could-not-save-a-machine-software-version-warning")
+                    .into(),
                 Fix::Page(Tab::Machines),
             )
         }))
@@ -560,8 +584,13 @@ pub(in crate::admin) fn from_alert(alert: &AlertState) -> Thing {
         AlertKey::DiskReserve => Thing::new(
             Subject::DiskLow,
             value.map_or_else(
-                || "Disk space is low".into(),
-                |free| format!("Disk space is low: {} free", format::bytes(free)),
+                || tr("doctor-overview-disk-space-is-low").into(),
+                |free| {
+                    tr_args(
+                        "doctor-overview-disk-space-is-low-free",
+                        [("free", (format::bytes(free)).to_string().into())],
+                    )
+                },
             ),
             Fix::Section(Section::Disk),
         ),
@@ -570,21 +599,28 @@ pub(in crate::admin) fn from_alert(alert: &AlertState) -> Thing {
         }
         AlertKey::MachineSoftwareVersionChanged(machine) => Thing::new(
             Subject::Software(machine.clone()),
-            format!(
-                "Check the software version reported by {}.",
-                machine.as_str()
+            tr_args(
+                "doctor-overview-check-the-software-version-reported-by",
+                [("machine", (machine.as_str()).to_string().into())],
             ),
             Fix::Page(Tab::Machines),
         ),
         AlertKey::MachineSilent(machine) => Thing::new(
             Subject::Silent(machine.clone()),
             value.map_or_else(
-                || format!("{} has gone quiet", machine.as_str()),
+                || {
+                    tr_args(
+                        "doctor-overview-has-gone-quiet",
+                        [("machine", (machine.as_str()).to_string().into())],
+                    )
+                },
                 |seconds| {
-                    format!(
-                        "{} has sent nothing for {}",
-                        machine.as_str(),
-                        format::duration(seconds)
+                    tr_args(
+                        "doctor-overview-has-sent-nothing-for",
+                        [
+                            ("machine", (machine.as_str()).to_string().into()),
+                            ("seconds", (format::duration(seconds)).to_string().into()),
+                        ],
                     )
                 },
             ),
@@ -596,11 +632,11 @@ pub(in crate::admin) fn from_alert(alert: &AlertState) -> Thing {
         AlertKey::OldestUndelivered => Thing::new(
             Subject::Waiting,
             value.map_or_else(
-                || "A result has waited too long to be sent".into(),
+                || tr("doctor-overview-a-result-has-waited-too-long-to-be-sent").into(),
                 |seconds| {
-                    format!(
-                        "A result has waited {} to be sent",
-                        format::duration(seconds)
+                    tr_args(
+                        "doctor-overview-a-result-has-waited-to-be-sent",
+                        [("seconds", (format::duration(seconds)).to_string().into())],
                     )
                 },
             ),
@@ -608,7 +644,7 @@ pub(in crate::admin) fn from_alert(alert: &AlertState) -> Thing {
         ),
         AlertKey::OrderCacheStale => Thing::new(
             Subject::OrderList,
-            "The order list from the lab app is out of date".into(),
+            tr("desktop-the-order-list-from-the-lab-app-is-out").into(),
             Fix::Section(Section::Sending),
         ),
     }
@@ -617,7 +653,7 @@ pub(in crate::admin) fn from_alert(alert: &AlertState) -> Thing {
 /// The line for a machine that refused a device lately, `words` saying which and when (ADR 0026).
 fn refused(machine: &Identifier, words: &str) -> Thing {
     Thing {
-        detail: Some(format::REFUSED_ADVICE.into()),
+        detail: Some(format::refused_advice().into()),
         ..Thing::new(
             Subject::Refused(machine.clone()),
             format!("{}: {words}", machine.as_str()),
@@ -629,10 +665,10 @@ fn refused(machine: &Identifier, words: &str) -> Thing {
 /// The line for a listening machine that accepts any device (ADR 0026).
 fn open(machine: &Identifier) -> Thing {
     Thing {
-        detail: Some(format::OPEN_TO_ANY_ADVICE.into()),
+        detail: Some(format::open_to_any_advice().into()),
         ..Thing::new(
             Subject::Open(machine.clone()),
-            format!("{}: {}", machine.as_str(), format::OPEN_TO_ANY),
+            format!("{}: {}", machine.as_str(), format::open_to_any()),
             Fix::Page(Tab::Machines),
         )
     }
@@ -640,15 +676,24 @@ fn open(machine: &Identifier) -> Thing {
 
 fn blocked(destination: &Identifier, reason: Undeliverable, waiting: Option<u64>) -> Thing {
     let why = match reason {
-        Undeliverable::CredentialsMissing => "keys missing",
-        Undeliverable::NotConfigured => "not set up any more",
+        Undeliverable::CredentialsMissing => tr("doctor-overview-keys-missing"),
+        Undeliverable::NotConfigured => tr("doctor-overview-not-set-up-any-more"),
     };
-    let waiting = waiting.map_or_else(String::new, |count| format!(", {count} waiting"));
+    let waiting = waiting.map_or_else(String::new, |count| {
+        tr_args(
+            "doctor-overview-waiting",
+            [("count", (count).to_string().into())],
+        )
+    });
     Thing::new(
         Subject::Blocked(destination.clone(), reason),
-        format!(
-            "Cannot send to lab app {}: {why}{waiting}",
-            destination.as_str()
+        tr_args(
+            "doctor-overview-cannot-send-to-lab-app",
+            [
+                ("destination", (destination.as_str()).to_string().into()),
+                ("why", (why).to_string().into()),
+                ("waiting", (waiting).to_string().into()),
+            ],
         ),
         Fix::Page(Tab::LabApps),
     )
@@ -657,12 +702,9 @@ fn blocked(destination: &Identifier, reason: Undeliverable, waiting: Option<u64>
 fn review(count: u64) -> Thing {
     let text = if count == 0 {
         // An alert raised just before the last item was resolved.
-        "Items may need review".into()
+        tr("doctor-overview-items-may-need-review").into()
     } else {
-        format!(
-            "{} review",
-            format::amount(count, "item needs", "items need")
-        )
+        format!("{} review", tr_count("admin-count-items-need", count))
     };
     Thing::new(Subject::Review, text, Fix::Page(Tab::NeedsReview))
 }
@@ -670,7 +712,10 @@ fn review(count: u64) -> Thing {
 fn uncertain(count: u64) -> Thing {
     Thing::new(
         Subject::Uncertain,
-        format!("Orders with unknown outcome: {count}"),
+        tr_args(
+            "doctor-overview-orders-with-unknown-outcome",
+            [("count", (count).to_string().into())],
+        ),
         Fix::Page(Tab::MachineOrders),
     )
 }
@@ -678,7 +723,7 @@ fn uncertain(count: u64) -> Thing {
 fn restore_paused() -> Thing {
     Thing::new(
         Subject::RestorePaused,
-        format::RESTORE_PAUSED.into(),
+        format::restore_paused().into(),
         Fix::Section(Section::Orders),
     )
 }

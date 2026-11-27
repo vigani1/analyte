@@ -4,9 +4,9 @@
 <section class="grow stack">
 <h2>{{ title }}</h2>
 {% if let Some(sample) = evidence.sample %}
-<p>Tube ID {{ sample }}</p>
+<p>{{ analyte_i18n::text("admin-tube-id") }} {{ sample }}</p>
 {% else %}
-<p>Tube ID missing</p>
+<p>{{ analyte_i18n::text("admin-tube-id-missing") }}</p>
 {% endif %}
 {% for part in evidence.observations %}
 <div class="stack">
@@ -14,46 +14,46 @@
 <ul>
 {% for value in part.values %}<li>{{ value }}</li>{% endfor %}
 {% for time in part.times %}<li>{{ time }}</li>{% endfor %}
-{% if !part.status.is_empty() %}<li>Analyzer status {{ part.status }}</li>{% endif %}
+{% if !part.status.is_empty() %}<li>{{ analyte_i18n::text("admin-analyzer-status") }} {{ part.status }}</li>{% endif %}
 </ul>
 </div>
 {% endfor %}
 <details>
-<summary>Source fields and receipt ID</summary>
+<summary>{{ analyte_i18n::text("admin-source-fields-and-receipt-id") }}</summary>
 <p>{{ evidence.receipt }}</p>
 <pre class="text" tabindex="0">{{ evidence.exact }}</pre>
 </details>
 </section>
 {% endmacro %}
 {% block main %}
-<h1>{{ crate::admin::view::format::COMPARE_MEASUREMENTS }}</h1>
+<h1>{{ crate::admin::view::format::compare_measurements() }}</h1>
 {% if let Some(sample) = sample %}
-<p>This looks like the same result, now with tube ID {{ sample }}. Resolve the held item?</p>
+<p>{{ analyte_i18n::text("admin-this-looks-like-the-same-result-now-with-tube") }} {{ sample }}{{ analyte_i18n::text("admin-resolve-the-held-item") }}</p>
 {% else %}
-<p>Choose resend to record a duplicate without sending another result. Choose rerun to send a new measurement to the lab app.</p>
+<p>{{ analyte_i18n::text("admin-choose-resend-to-record-a-duplicate-without-sending-another") }}</p>
 {% endif %}
 <div class="split">
-{% call evidence("Held measurement", held) %}{% endcall %}
+{% call evidence(analyte_i18n::text("admin-held-measurement"), held) %}{% endcall %}
 {% if sample.is_some() %}
-{% call evidence("Later measurement", other) %}{% endcall %}
+{% call evidence(analyte_i18n::text("admin-later-measurement"), other) %}{% endcall %}
 {% else %}
-{% call evidence("Earlier measurement", other) %}{% endcall %}
+{% call evidence(analyte_i18n::text("admin-earlier-measurement"), other) %}{% endcall %}
 {% endif %}
 </div>
 <form method="post" action="/parked/{{ id }}/measurement">
 <input type="hidden" name="csrf" value="{{ csrf }}">
 <input type="hidden" name="snapshot" value="{{ snapshot }}">
 <div class="field">
-<label class="field__label" for="measurement-reason">Reason</label>
+<label class="field__label" for="measurement-reason">{{ analyte_i18n::text("admin-reason") }}</label>
 <textarea class="textarea" id="measurement-reason" name="reason" required maxlength="256"></textarea>
 </div>
 <div class="cluster">
-<a class="btn btn--outline" href="/parked/{{ id }}">Cancel</a>
+<a class="btn btn--outline" href="/parked/{{ id }}">{{ analyte_i18n::text("admin-cancel") }}</a>
 {% if sample.is_some() %}
-<button class="btn btn--primary" type="submit" name="decision" value="supersede">Resolve held item</button>
+<button class="btn btn--primary" type="submit" name="decision" value="supersede">{{ analyte_i18n::text("admin-resolve-held-item") }}</button>
 {% else %}
-<button class="btn btn--outline" type="submit" name="decision" value="resend">This is a resend</button>
-<button class="btn btn--primary" type="submit" name="decision" value="rerun">This is a rerun</button>
+<button class="btn btn--outline" type="submit" name="decision" value="resend">{{ analyte_i18n::text("admin-this-is-a-resend") }}</button>
+<button class="btn btn--primary" type="submit" name="decision" value="rerun">{{ analyte_i18n::text("admin-this-is-a-rerun") }}</button>
 {% endif %}
 </div>
 </form>

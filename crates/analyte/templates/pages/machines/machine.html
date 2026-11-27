@@ -16,14 +16,14 @@
 {% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
 {%- endfor %}
 {%- if let Some(warning) = software %}
-{% call feedback::alert(warning.tone, "Check the machine’s software version", warning.text) %}{% endcall %}
-<p>First seen {{ warning.first_seen }}</p>
+{% call feedback::alert(warning.tone, analyte_i18n::text("admin-check-the-machine-s-software-version"), warning.text) %}{% endcall %}
+<p>{{ analyte_i18n::text("admin-first-seen") }} {{ warning.first_seen }}</p>
 {%- if let Some(form) = warning.confirm %}
 <form method="post" action="{{ form.action }}">
 <input type="hidden" name="csrf" value="{{ form.csrf }}">
 <input type="hidden" name="version" value="{{ form.version.as_str() }}">
 <input type="hidden" name="first_seen" value="{{ warning.first_seen }}">
-<button type="submit">Settings checked for this version</button>
+<button type="submit">{{ analyte_i18n::text("admin-settings-checked-for-this-version") }}</button>
 </form>
 {%- endif %}
 {%- endif %}
@@ -39,38 +39,38 @@
 </dl>
 {% endcall %}
 {%- if let Some(rules) = rules %}
-{% call layout::titled_card("md-diff", "Accepted differences from the standard", "", "stack") %}
+{% call layout::titled_card("md-diff", analyte_i18n::text("admin-accepted-differences-from-the-standard"), "", "stack") %}
 {%- if rules.is_empty() %}
-<p class="muted text--sm">None: its settings switch on no difference from the standard.</p>
+<p class="muted text--sm">{{ analyte_i18n::text("admin-none-its-settings-switch-on-no-difference-from-the") }}</p>
 {%- else %}
-<p class="muted text--sm">This model does a few things its own way. Its settings switch these on; each message’s reading shows which ones were used.</p>
+<p class="muted text--sm">{{ analyte_i18n::text("admin-this-model-does-a-few-things-its-own-way") }}</p>
 <ul class="rows machine__rules">
 {%- for rule in rules %}
 <li title="{{ rule.meaning }}">{{ rule.words }}</li>
 {%- endfor %}
 </ul>
-{% call feedback::support("Where these differences come from", declarations) %}{% endcall %}
+{% call feedback::support(analyte_i18n::text("admin-where-these-differences-come-from"), declarations) %}{% endcall %}
 {%- endif %}
 {% endcall %}
 {%- endif %}
 </div>
 <section class="section" aria-labelledby="md-recent">
-<div class="section__head">{% call layout::label("md-recent", "Recent messages received", "") %}{% endcall %}{% if let Some(note) = recent_note %}<span class="subtle machine__note">{{ note }}</span>{% endif %}</div>
+<div class="section__head">{% call layout::label("md-recent", analyte_i18n::text("admin-recent-messages-received"), "") %}{% endcall %}{% if let Some(note) = recent_note %}<span class="subtle machine__note">{{ note }}</span>{% endif %}</div>
 {%- if recent.is_empty() %}
-{% call feedback::empty_card(crate::admin::view::format::NOTHING_RECEIVED_YET, "Messages this machine sends are listed here, newest first.") %}{% endcall %}
+{% call feedback::empty_card(crate::admin::view::format::nothing_received_yet(), analyte_i18n::text("admin-messages-this-machine-sends-are-listed-here-newest-first")) %}{% endcall %}
 {%- else %}
-{% call display::table(MESSAGE_COLUMNS) %}
+{% call display::table(crate::admin::machines::page::message_columns()) %}
 {%- for message in recent %}
 <tr>{% call display::cell("num") %}{% call display::time(message.when) %}{% endcall %}{% endcall %}
 {%- if let Some((shown, all)) = message.sample %}{% call display::cell("num") %}{% call display::hover(shown, all) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("num subtle") %}—{% endcall %}{% endif %}
 {%- call display::cell("") %}{% call display::status_with(message.reading.tone, message.reading.icon, message.reading.word, message.reading.exact) %}{% endcall %}{% if let Some(review) = message.review %}<div class="cell-sub cell-note"><a class="link" href="{{ review.href }}">{{ review.label }}</a></div>{% endif %}{% endcall %}
 {%- if let Some(delivery) = message.delivery %}{% call display::cell("") %}{% call display::status_with(delivery.look.tone, delivery.look.icon, delivery.words, delivery.exact) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("subtle") %}{{ message.no_delivery }}{% endcall %}{% endif %}
-{%- if let Some(href) = message.href %}{% call display::cell("") %}<a class="link" href="{{ href }}">How it was read</a>{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}</tr>
+{%- if let Some(href) = message.href %}{% call display::cell("") %}<a class="link" href="{{ href }}">{{ analyte_i18n::text("admin-how-it-was-read") }}</a>{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}</tr>
 {%- endfor %}
 {% endcall %}
 {%- endif %}
 </section>
-{% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::support(), support) %}{% endcall %}
 {%- if let Some(dialog) = dialog %}
 {% call forms::list_dialog(dialog) %}{% endcall %}
 {%- endif %}

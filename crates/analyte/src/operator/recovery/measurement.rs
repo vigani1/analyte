@@ -1,6 +1,7 @@
 //! Shares protected measurement review and decisions between the browser and CLI.
 use super::Error;
 use crate::{deadline, installation::config::Program};
+use analyte_i18n::text as tr;
 use analyte_model::{Identifier, Reason};
 use analyte_store::{
     Handle, MeasurementConfirmation, MeasurementDecision, MeasurementReview, ReconciliationError,
@@ -87,10 +88,10 @@ pub async fn decide(
 pub fn checked_reason(typed: &str) -> Result<Reason, &'static str> {
     let line = typed.replace("\r\n", " ").replace(['\r', '\n', '\t'], " ");
     if line.trim().is_empty() {
-        return Err("Write a reason. It is recorded in the history.");
+        return Err(tr("cli-write-a-reason-it-is-recorded-in-the-history"));
     }
     if line.chars().count() > 256 {
-        return Err("Keep the reason to 256 characters.");
+        return Err(tr("cli-keep-the-reason-to-256-characters"));
     }
     Reason::new(&line).map_err(|_| "The reason holds a character that cannot be recorded.")
 }

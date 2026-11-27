@@ -13,6 +13,7 @@ name = "analyte-app"
 path = "src/main.rs"
 
 [dependencies]
+analyte-i18n = { workspace = true }
 askama = { workspace = true }
 jiff = { workspace = true }
 reqwest = { workspace = true }

@@ -4,25 +4,40 @@
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("", "Settings", SETTINGS_LEDE) %}{% endcall %}
+{% call layout::intro_head("", "Settings", crate::admin::more::page::settings_lede()) %}{% endcall %}
 {%- for problem in problems %}
 {% call feedback::alert(crate::admin::view::Tone::Attention, problem, "") %}{% endcall %}
 {%- endfor %}
 <div class="stack stack--lg narrow">
+{%- if !languages.is_empty() %}
+{%- if let Some(csrf) = frame.sidebar.csrf %}
+<form method="post" action="/settings/language" class="card card--pad cluster">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<label for="settings-language">{{ analyte_i18n::text("admin-language") }}</label>
+<select id="settings-language" name="language">
+<option value="">{{ analyte_i18n::text("admin-browser-language") }}</option>
+{%- for (tag, selected) in languages %}
+<option value="{{ tag }}"{% if *selected %} selected{% endif %}>{{ tag }}</option>
+{%- endfor %}
+</select>
+<button type="submit" class="btn btn--primary">{{ crate::admin::setup::save_label() }}</button>
+</form>
+{%- endif %}
+{%- endif %}
 <section class="card" aria-labelledby="st-engine">
-<div class="card__head"><h2 id="st-engine" class="card__title">Engine</h2>{% call display::status(crate::admin::view::Tone::Good, "Running") %}{% endcall %}</div>
+<div class="card__head"><h2 id="st-engine" class="card__title">{{ analyte_i18n::text("admin-engine") }}</h2>{% call display::status(crate::admin::view::Tone::Good, analyte_i18n::text("admin-running")) %}{% endcall %}</div>
 <div class="card__body"><dl class="kv">{% for fact in engine %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl></div>
 </section>
-{% call layout::titled_card("st-store", "Store limits", "", "") %}<dl class="kv">{% for fact in store %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl>{% endcall %}
-{% call layout::titled_card("st-times", "Time limits", "", "") %}<dl class="kv">{% for fact in times %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl>{% endcall %}
-{% call layout::titled_card("st-alerts", "Alerts", "", "") %}<dl class="kv">{% for fact in alerts %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl>{% endcall %}
-{% call layout::titled_card("st-keys", "Keys", "Where each is found, never its value", "") %}<dl class="kv">
+{% call layout::titled_card("st-store", analyte_i18n::text("admin-store-limits"), "", "") %}<dl class="kv">{% for fact in store %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl>{% endcall %}
+{% call layout::titled_card("st-times", analyte_i18n::text("admin-time-limits"), "", "") %}<dl class="kv">{% for fact in times %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl>{% endcall %}
+{% call layout::titled_card("st-alerts", analyte_i18n::text("admin-alerts"), "", "") %}<dl class="kv">{% for fact in alerts %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl>{% endcall %}
+{% call layout::titled_card("st-keys", analyte_i18n::text("admin-keys"), analyte_i18n::text("admin-where-each-is-found-never-its-value"), "") %}<dl class="kv">
 {%- for key in keys %}
 <dt>{{ key.owner }} · {{ key.label }}</dt><dd>{% call display::key_status(key) %}{% endcall %}</dd>
 {%- endfor %}
 </dl>{% endcall %}
 </div>
 {%- if !support.is_empty() %}
-{% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::support(), support) %}{% endcall %}
 {%- endif %}
 {%- endblock %}

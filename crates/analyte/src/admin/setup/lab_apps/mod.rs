@@ -14,6 +14,7 @@ mod page;
 pub(super) mod relay;
 mod scan;
 
+use analyte_i18n::{message as tr_args, text as tr};
 use change::{
     Change, Entered, Saved, add_blocking, blockers, count, reason, remove_blocking, removed_reason,
     save_blocking, waiting,
@@ -25,13 +26,16 @@ pub(super) use scan::{
     Scan, SiteLabApp, conflict_sentence, scan, scan_with_site, site_lab_app, where_written,
 };
 
-use super::{Csrf, RELOAD, RESTART_REQUIRED, SetupError, Via, audit, copies, off_thread};
+use super::{Csrf, SetupError, Via, audit, copies, off_thread, reload_advice, restart_required};
 use crate::admin::machines::{DialogItem, RemoveDialog};
 use crate::admin::overview::{self, Delivery, Standing};
 use crate::admin::removed;
 use crate::admin::view::parts::{Hover, Notice};
 use crate::admin::{
-    server::{Context, sessions::Session},
+    server::{
+        Context,
+        sessions::{Session, signed_in},
+    },
     view::{
         self, Tone, format,
         icon::Icon,
@@ -157,16 +161,16 @@ pub(in crate::admin) async fn list(
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
     let section = Section::LabApps(None);
-    let Some(Extension(session)) = session.filter(|Extension(s)| s.is_signed_in()) else {
+    let Some(session) = signed_in(session.as_ref()) else {
         return Problem::SignIn.page(&state, None, section);
     };
     let now = Timestamp::now();
     let read = match read_within(read_list(&state, now)).await {
         Ok(read) => read,
-        Err(problem) => return problem.page(&state, Some(&session), section),
+        Err(problem) => return problem.page(&state, Some(session), section),
     };
-    let (status, page) = list_page(&state, &session, read, now);
-    respond(&state, Some(&session), section, status, page.render())
+    let (status, page) = list_page(&state, session, read, now);
+    respond(&state, Some(session), section, status, page.render())
 }
 
 fn list_page(
@@ -190,7 +194,7 @@ fn list_page(
                 frame,
                 problems: vec![Notice {
                     tone: Tone::Problem,
-                    title: crate::admin::setup::LAB_APPS_UNREADABLE.into(),
+                    title: crate::admin::setup::lab_apps_unreadable().into(),
                     text: format::sentence(&error.to_string()),
                 }],
                 cards: Vec::new(),
@@ -227,7 +231,7 @@ fn list_page(
         Err(error) => {
             problems.push(Notice {
                 tone: Tone::Problem,
-                title: removed::COUNT_FAILED.into(),
+                title: removed::count_failed().into(),
                 text: String::new(),
             });
             support.push(error);
@@ -282,20 +286,20 @@ fn card(
     let (tone, word) = if runs {
         (delivery.tone(), delivery.word())
     } else {
-        (Tone::Attention, "Starts after a restart")
+        (Tone::Attention, tr("setup-starts-after-a-restart"))
     };
     let keys = source.keys(settings, now);
     let missing = keys.iter().any(|key| matches!(key.entry, Entry::Needed(_)));
     let href = format::lab_app_href(name);
     let todo = if missing {
         Some(Todo {
-            text: format::KEYS_ADVICE,
+            text: format::keys_advice(),
             href: href.clone(),
-            label: crate::admin::setup::ADD_KEYS,
+            label: crate::admin::setup::add_keys(),
         })
     } else if runs && delivery == Delivery::NotDelivering {
         Some(Todo {
-            text: format::FAILING_ADVICE,
+            text: format::failing_advice(),
             href: view::Tab::Deliveries.href().to_owned(),
             label: view::Tab::Deliveries.label(),
         })
@@ -353,7 +357,7 @@ fn form_page(
     let (existing, source) = existing.unzip();
     let settings = existing.map(|known| &known.settings);
     let title = settings.map_or_else(
-        || crate::admin::setup::ADD_LAB_APP.to_owned(),
+        || crate::admin::setup::add_lab_app_label().to_owned(),
         |settings| format!("Edit {}", settings.name.as_str()),
     );
     let mut head = Section::LabApps(None).head(title.clone());
@@ -395,10 +399,20 @@ fn form_page(
             .to_string(),
         notices: settings.is_some_and(|settings| settings.review_notices),
         notices_status,
-        defaults: format!(
-            "The defaults suit most labs: {} and {} seconds.",
-            Destination::DEFAULT_FRESHNESS_SECONDS,
-            Destination::DEFAULT_REQUEST_TIMEOUT_SECONDS
+        defaults: tr_args(
+            "setup-the-defaults-suit-most-labs-and-seconds",
+            [
+                (
+                    "DEFAULT-FRESHNESS-SECONDS",
+                    (Destination::DEFAULT_FRESHNESS_SECONDS).to_string().into(),
+                ),
+                (
+                    "DEFAULT-REQUEST-TIMEOUT-SECONDS",
+                    (Destination::DEFAULT_REQUEST_TIMEOUT_SECONDS)
+                        .to_string()
+                        .into(),
+                ),
+            ],
         ),
         senders: existing.map_or_else(Vec::new, |known| senders(&known.users)),
         kept: existing
@@ -421,13 +435,13 @@ pub(in crate::admin) async fn add_form(
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
     let section = Section::LabApps(None);
-    let Some(Extension(session)) = session.filter(|Extension(s)| s.is_signed_in()) else {
+    let Some(session) = signed_in(session.as_ref()) else {
         return Problem::SignIn.page(&state, None, section);
     };
-    let page = form_page(&state, &session, None, None, None);
+    let page = form_page(&state, session, None, None, None);
     respond(
         &state,
-        Some(&session),
+        Some(session),
         section,
         StatusCode::OK,
         page.render(),
@@ -520,16 +534,26 @@ async fn notices_status(store: &analyte_store::Handle, settings: &Destination) -
     match super::stored(store, move |store| store.review_notice_status(&name)).await {
         Ok(Some(analyte_store::ReviewNoticeStatus {
             declined: Some((at, reason)),
-        })) => Some(format!(
-            "Not sending Needs review notices: {} ({}). Results are sent as usual. Analyte asks again after it restarts.",
-            reason.as_str(),
-            format::moment_unix(at, Timestamp::now()).shown
+        })) => Some(tr_args(
+            "setup-not-sending-needs-review-notices-results-are-sent-as",
+            [
+                ("reason", (reason.as_str()).to_string().into()),
+                (
+                    "shown",
+                    (format::moment_unix(at, Timestamp::now()).shown)
+                        .to_string()
+                        .into(),
+                ),
+            ],
         )),
         Ok(Some(analyte_store::ReviewNoticeStatus { declined: None })) => None,
         Ok(None) => {
-            Some("Needs review notices start after Analyte restarts with this setting.".to_owned())
+            Some(tr("setup-needs-review-notices-start-after-analyte-restarts-with-this").to_owned())
         }
-        Err(error) => Some(format!("Could not read whether notices are sent: {error}")),
+        Err(error) => Some(tr_args(
+            "setup-could-not-read-whether-notices-are-sent",
+            [("error", (error).to_string().into())],
+        )),
     }
 }
 
@@ -567,12 +591,12 @@ fn dialog(
             DialogItem {
                 tone: Tone::Good,
                 icon: Icon::Ok,
-                text: "No machine uses it and nothing waits for it.".into(),
+                text: tr("setup-no-machine-uses-it-and-nothing-waits-for-it").into(),
             },
             DialogItem {
                 tone: Tone::Neutral,
                 icon: Icon::Ok,
-                text: crate::admin::setup::BACKUP_ADVICE.into(),
+                text: crate::admin::setup::backup_advice().into(),
             },
         ]
     };
@@ -580,20 +604,20 @@ fn dialog(
         action: format!("{href}/remove"),
         csrf: csrf.to_owned(),
         cancel: href,
-        title: format!("Remove {name}?"),
-        text: "Results already sent and their history stay.",
+        title: tr_args("setup-remove-3", [("name", (name).to_string().into())]),
+        text: tr("setup-results-already-sent-and-their-history-stay"),
         sending: Hover {
             shown: keys.into(),
             exact: String::new(),
         },
         list_title: if blocked {
-            "It cannot be removed now"
+            tr("setup-it-cannot-be-removed-now")
         } else {
-            crate::admin::setup::BEFORE_REMOVAL
+            crate::admin::setup::before_removal()
         },
         items,
         anyway: false,
-        button: (!blocked).then_some(crate::admin::setup::REMOVE),
+        button: (!blocked).then_some(crate::admin::setup::remove_label()),
     }
 }
 
@@ -646,12 +670,12 @@ fn saved_page(
     let name = saved.settings.name.as_str();
     let section = Section::LabApps(Some(name));
     let title = match change {
-        Change::Added => "Lab app added",
-        Change::Saved => "Lab app saved",
+        Change::Added => tr("setup-lab-app-added"),
+        Change::Saved => tr("setup-lab-app-saved"),
     };
-    let mut lines = saved.details("Used by no machine yet: pick it on a machine’s setup page.");
+    let mut lines = saved.details(tr("setup-used-by-no-machine-yet-pick-it-on-a"));
     if !saved.backups.is_empty() {
-        lines.push(crate::admin::setup::BACKUP_KEPT.into());
+        lines.push(crate::admin::setup::backup_kept().into());
     }
     let page = Report {
         lines,
@@ -666,8 +690,14 @@ fn saved_page(
             section.frame(state, title, Some(session)),
             section,
             Tone::Good,
-            format!("{name} is {}", change.verb()),
-            RESTART_REQUIRED,
+            tr_args(
+                "setup-is",
+                [
+                    ("name", (name).to_string().into()),
+                    ("verb", (change.verb()).to_string().into()),
+                ],
+            ),
+            restart_required(),
         )
     };
     respond(state, Some(session), section, StatusCode::OK, page.render())
@@ -687,7 +717,12 @@ pub(in crate::admin) async fn add(
     form: Result<Form<Posted>, axum::extract::rejection::FormRejection>,
 ) -> Response {
     let Ok(Form(posted)) = form else {
-        return refused(&state, &session, None, &SetupError::IncompleteForm(RELOAD));
+        return refused(
+            &state,
+            &session,
+            None,
+            &SetupError::IncompleteForm(reload_advice()),
+        );
     };
     let saved = off_thread(&state.setup, move |setup| {
         add_blocking(setup, posted.entered())
@@ -708,7 +743,7 @@ pub(in crate::admin) async fn save(
             &state,
             &session,
             Some(&name),
-            &SetupError::IncompleteForm(RELOAD),
+            &SetupError::IncompleteForm(reload_advice()),
         );
     };
     let lab_app = name.clone();
@@ -756,7 +791,7 @@ pub(in crate::admin) async fn remove(
             &state,
             &session,
             Some(&name),
-            &SetupError::IncompleteForm(RELOAD),
+            &SetupError::IncompleteForm(reload_advice()),
         );
     }
     let open = waiting(&state.store).await.map(|open| count(&open, &name));
@@ -779,12 +814,12 @@ pub(in crate::admin) async fn remove(
     .await;
     tracing::info!(lab_app = name.as_str(), "lab app page removed a lab app");
     let section = Section::LabApps(None);
-    let title = "Lab app removed";
+    let title = tr("setup-lab-app-removed");
     let page = Report {
         lines: if backups.is_empty() {
             Vec::new()
         } else {
-            vec![crate::admin::setup::BACKUP_KEPT.into()]
+            vec![crate::admin::setup::backup_kept().into()]
         },
         problems: audited
             .err()
@@ -797,7 +832,10 @@ pub(in crate::admin) async fn remove(
             section.frame(&state, title, Some(&session)),
             section,
             Tone::Good,
-            format!("{name} is no longer listed"),
+            tr_args(
+                "setup-is-no-longer-listed-2",
+                [("name", (name).to_string().into())],
+            ),
             keys,
         )
     };
@@ -897,7 +935,7 @@ signing_key_name = '{name}-signing'
         assert!(
             missing
                 .iter()
-                .all(|key| matches!(key.entry, Entry::Needed(why) if why == format::KEY_NEEDED))
+                .all(|key| matches!(key.entry, Entry::Needed(why) if why == format::key_needed()))
         );
         let unreadable = KeySource {
             environment: |_| None,
@@ -908,7 +946,7 @@ signing_key_name = '{name}-signing'
             (unchecked.tone, unchecked.word.as_str()),
             (Tone::Attention, "Cannot be checked")
         );
-        assert!(matches!(unchecked.entry, Entry::Needed(why) if why == format::KEY_UNCHECKED));
+        assert!(matches!(unchecked.entry, Entry::Needed(why) if why == format::key_unchecked()));
         // What removing does to the keys, from what the locked file holds.
         assert_eq!(source.kept(&lab.settings), "Its keys stay stored, locked.");
         assert_eq!(

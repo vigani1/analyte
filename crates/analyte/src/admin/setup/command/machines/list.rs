@@ -7,6 +7,7 @@ use crate::admin::{
 };
 use crate::machine::link::status::Link;
 use analyte_config::SerialSetting;
+use analyte_i18n::{message as tr_args, text as tr};
 
 /// One machine of the settings file, read for `machines list`.
 #[derive(serde::Serialize)]
@@ -198,7 +199,7 @@ pub(super) async fn list(installation: &Installation, json: bool) -> Result<Outc
             settings_read,
             machines,
         } => ("running", None, machines, settings_read),
-        live::Live::NotRunning => ("not running", None, Vec::new(), true),
+        live::Live::NotRunning => (tr("setup-not-running"), None, Vec::new(), true),
         live::Live::Unknown(why) => ("unknown", Some(why.to_string()), Vec::new(), true),
     };
     for machine in &mut machines {
@@ -219,33 +220,43 @@ pub(super) async fn list(installation: &Installation, json: bool) -> Result<Outc
         return Ok(Outcome::Done);
     }
     say(&match (answer.engine, &answer.reason) {
-        ("running", _) => "Engine running: live state as the Machines page shows it.".to_owned(),
-        ("not running", _) => "Engine not running: live state unknown.".to_owned(),
-        (_, reason) => format!(
-            "Live state unknown: {}.",
-            reason.as_deref().unwrap_or("no answer")
+        ("running", _) => {
+            tr("setup-engine-running-live-state-as-the-machines-page-shows").to_owned()
+        }
+        ("not running", _) => tr("setup-engine-not-running-live-state-unknown").to_owned(),
+        (_, reason) => tr_args(
+            "setup-live-state-unknown",
+            [(
+                "answer",
+                (reason.as_deref().unwrap_or("no answer"))
+                    .to_string()
+                    .into(),
+            )],
         ),
     })?;
     if !settings_read {
-        say(
-            "The engine could not read the settings file; machines changed since it started may be missing from its list.",
-        )?;
+        say(tr(
+            "setup-the-engine-could-not-read-the-settings-file-machines",
+        ))?;
     }
     if answer.machines.is_empty() {
-        say("No machine is listed in the settings. Add one with: analyte machines add <name>")?;
+        say(tr("setup-no-machine-is-listed-in-the-settings-add-one"))?;
     }
     for machine in &answer.machines {
         print_machine(machine, answer.engine == "running")?;
     }
     for row in &answer.removed {
-        say(&format!("{}: no longer in the settings", row.id))?;
+        say(&tr_args(
+            "setup-no-longer-in-the-settings",
+            [("id", (row.id).to_string().into())],
+        ))?;
         print_live(row)?;
     }
     Ok(Outcome::Done)
 }
 
 fn print_machine(machine: &Listed, engine: bool) -> std::io::Result<()> {
-    let not = format::NOT_APPLICABLE;
+    let not = format::not_applicable();
     say(&format!("{}:", machine.id))?;
     say(&format!(
         "  Model: {}",
@@ -263,21 +274,32 @@ fn print_machine(machine: &Listed, engine: bool) -> std::io::Result<()> {
         say(&format!("  Cable: {}", cable.words))?;
     }
     if let Some(words) = &machine.choices_words {
-        say(&format!("  Analyzer settings: {words}"))?;
+        say(&tr_args(
+            "setup-analyzer-settings",
+            [("words", (words).to_string().into())],
+        ))?;
     }
     if let Some(line) = devices_line(machine) {
         say(&line)?;
     }
     if let Some(choice) = machine.repeated_results {
-        say(&format!("  Repeated results: {}", choice.label()))?;
+        say(&tr_args(
+            "setup-repeated-results",
+            [("label", (choice.label()).to_string().into())],
+        ))?;
     }
-    say(&format!(
-        "  Lab app: {}",
-        if machine.record_only {
-            format::RECORDING_ONLY
-        } else {
-            machine.lab_app.as_deref().unwrap_or(not)
-        }
+    say(&tr_args(
+        "setup-lab-app-2",
+        [(
+            "not",
+            (if machine.record_only {
+                format::recording_only()
+            } else {
+                machine.lab_app.as_deref().unwrap_or(not)
+            })
+            .to_string()
+            .into(),
+        )],
     ))?;
     say(&format!(
         "  Setup: {}",
@@ -287,42 +309,71 @@ fn print_machine(machine: &Listed, engine: bool) -> std::io::Result<()> {
             "not set up yet"
         }
     ))?;
-    say(&format!(
-        "  Settings version: {}",
-        machine.settings_version.as_deref().unwrap_or(not)
+    say(&tr_args(
+        "setup-settings-version",
+        [(
+            "not",
+            (machine.settings_version.as_deref().unwrap_or(not))
+                .to_string()
+                .into(),
+        )],
     ))?;
     match &machine.live {
         Some(row) => print_live(row),
-        None if engine => say("  State: the engine does not report it"),
+        None if engine => say(tr("setup-state-the-engine-does-not-report-it")),
         None => say("  State: unknown"),
     }
 }
 
 /// What the engine reported for one machine, in the page's words.
 fn print_live(row: &live::Row) -> std::io::Result<()> {
-    say(&format!(
-        "  State: {}{}",
-        row.status,
-        row.note
-            .as_deref()
-            .map(|note| format!(" - {note}"))
-            .unwrap_or_default()
+    say(&tr_args(
+        "setup-state",
+        [
+            ("status", (row.status).to_string().into()),
+            (
+                "unwrap-or-default",
+                (row.note
+                    .as_deref()
+                    .map(|note| format!(" - {note}"))
+                    .unwrap_or_default())
+                .to_string()
+                .into(),
+            ),
+        ],
     ))?;
     if let Some(since) = &row.since {
-        say(&format!("  Open since: {} ({})", since.shown, since.exact))?;
+        say(&tr_args(
+            "setup-open-since",
+            [
+                ("shown", (since.shown).to_string().into()),
+                ("exact", (since.exact).to_string().into()),
+            ],
+        ))?;
     }
-    say(&format!(
-        "  Last data: {}",
-        row.last_data.as_ref().map_or_else(
-            || "nothing received since the start".to_owned(),
-            |at| format!("{} ({})", at.shown, at.exact)
-        )
+    say(&tr_args(
+        "setup-last-data",
+        [(
+            "exact",
+            (row.last_data.as_ref().map_or_else(
+                || "nothing received since the start".to_owned(),
+                |at| format!("{} ({})", at.shown, at.exact),
+            ))
+            .to_string()
+            .into(),
+        )],
     ))?;
     if let Some(recording) = &row.recording {
-        say(&format!("  Recorded: {recording}"))?;
+        say(&tr_args(
+            "setup-recorded",
+            [("recording", (recording).to_string().into())],
+        ))?;
     }
     match &row.refused {
-        Some(refused) => say(&format!("  Latest refusal: {refused}")),
+        Some(refused) => say(&tr_args(
+            "setup-latest-refusal",
+            [("refused", (refused).to_string().into())],
+        )),
         None => Ok(()),
     }
 }
@@ -336,10 +387,15 @@ pub(in super::super) fn devices_line(machine: &Listed) -> Option<String> {
             "  Devices: {}",
             format::only_devices(peers.join(", "))
         )),
-        (None, true) => Some(format!(
-            "  Devices: warning - {}. Accept only the analyzer with: analyte machines set {} --allowed-peer <IP>",
-            format::OPEN_TO_ANY.to_lowercase(),
-            machine.id
+        (None, true) => Some(tr_args(
+            "setup-devices-warning-accept-only-the-analyzer-with-analyte-machines",
+            [
+                (
+                    "to-lowercase",
+                    (format::open_to_any().to_lowercase()).to_string().into(),
+                ),
+                ("id", (machine.id).to_string().into()),
+            ],
         )),
         (None, false) => None,
     }

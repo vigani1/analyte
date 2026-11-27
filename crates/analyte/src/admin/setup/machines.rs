@@ -7,8 +7,8 @@
 //! still wrote it), so results waiting for it are still delivered. A machine just
 //! added goes straight into step 1 of the setup steps.
 use super::{
-    RELOAD, Setup, SetupError, Via, audit, copies, entries, needs_login, off_thread, page, refused,
-    see_other, site, stored,
+    Setup, SetupError, Via, audit, copies, entries, needs_login, off_thread, page, refused,
+    reload_advice, see_other, site, stored,
 };
 use crate::admin::machines::{self, DialogItem, RemoveDialog};
 use crate::admin::view::parts::Hover;
@@ -19,6 +19,7 @@ use crate::admin::{
     view::format,
 };
 use crate::installation::config::{Program, folder};
+use analyte_i18n::{count as tr_count, message as tr_args, text as tr};
 use analyte_model::Identifier;
 use analyte_store::Unfinished;
 use askama::Template as _;
@@ -49,8 +50,8 @@ pub(in crate::admin) async fn add_form(
     };
     let section = Section::Setup(None);
     let page = page::Add {
-        frame: section.frame(&state, format::ADD_MACHINE, Some(&session)),
-        head: section.head(format::ADD_MACHINE),
+        frame: section.frame(&state, format::add_machine(), Some(&session)),
+        head: section.head(format::add_machine()),
         csrf: session.csrf.form_value().to_owned(),
         name,
     };
@@ -187,7 +188,7 @@ pub(in crate::admin) async fn add(
 ) -> Response {
     let refuse = |error: &SetupError| refused(&state, Some(&session), None, error);
     let Ok(Form(addition)) = form else {
-        return refuse(&SetupError::IncompleteForm(RELOAD));
+        return refuse(&SetupError::IncompleteForm(reload_advice()));
     };
     let same = addition.same_analyzer.as_deref() == Some("yes");
     let added = match add_machine(&state.setup, &state.store, &addition.name, same, None).await {
@@ -224,14 +225,17 @@ fn added_page(
     error: &SetupError,
 ) -> Response {
     let section = Section::Setup(Some(id));
-    let mut lines = vec!["It is listed and not set up yet.".to_owned()];
+    let mut lines = vec![tr("setup-it-is-listed-and-not-set-up-yet").to_owned()];
     if reused {
-        lines.push(crate::admin::setup::REUSED_MACHINE_HISTORY.into());
+        lines.push(crate::admin::setup::reused_machine_history().into());
     }
     if !written.backups.is_empty() {
-        lines.push(crate::admin::setup::BACKUP_KEPT.into());
+        lines.push(crate::admin::setup::backup_kept().into());
     }
-    let mut support = vec![format!("Its settings file: {}", path.display())];
+    let mut support = vec![tr_args(
+        "setup-its-settings-file",
+        [("path", (path.display()).to_string().into())],
+    )];
     support.extend(copies(&written.backups));
     let page = Report {
         lines,
@@ -240,7 +244,7 @@ fn added_page(
         links: vec![
             Button {
                 href: format::setup_href(id, ""),
-                label: "Set it up now",
+                label: tr("setup-set-it-up-now"),
                 class: "btn--primary",
             },
             Button {
@@ -251,11 +255,11 @@ fn added_page(
         ],
         support,
         ..Report::new(
-            section.frame(state, "Machine added", Some(session)),
+            section.frame(state, tr("setup-machine-added"), Some(session)),
             section,
             Tone::Good,
-            format!("{id} is added"),
-            "Set it up now, or restart first.",
+            tr_args("setup-is-added", [("id", (id).to_string().into())]),
+            tr("setup-set-it-up-now-or-restart-first"),
         )
     };
     respond(state, Some(session), section, StatusCode::OK, page.render())
@@ -303,38 +307,13 @@ pub(super) async fn unfinished(
 /// One line per kind of open work, or none when nothing is open.
 fn open_work(open: &Unfinished) -> Vec<String> {
     [
-        (
-            open.undelivered,
-            "result or order message",
-            "results or order messages",
-            " not yet accepted by the lab app",
-        ),
-        (
-            open.open_orders,
-            "order",
-            "orders",
-            concat!(
-                " sent to the machine and not finished (sending, sent, accepted, ",
-                "cancel requested or uncertain); once it is removed nothing serves them, so ",
-                "reconcile them with the machine first (Machine orders page)"
-            ),
-        ),
-        (
-            open.unread,
-            "received message",
-            "received messages",
-            " not read yet; only this machine's settings read them, at its next start",
-        ),
-        (
-            open.flagged,
-            "item waiting for review",
-            "items waiting for review",
-            " linked to this machine (Needs review page)",
-        ),
+        format::nonzero_count("setup-open-deliveries", open.undelivered),
+        format::nonzero_count("setup-open-orders", open.open_orders),
+        format::nonzero_count("setup-unread-messages", open.unread),
+        format::nonzero_count("setup-open-review-items", open.flagged),
     ]
     .into_iter()
-    .filter(|(count, ..)| *count > 0)
-    .map(|(count, one, many, rest)| format!("{}{rest}", format::amount(count, one, many)))
+    .flatten()
     .collect()
 }
 
@@ -381,30 +360,35 @@ fn delivery_sentence(lab_app: &LabApp, open: &Result<Unfinished, SetupError>) ->
         exact: String::new(),
     };
     match lab_app {
-        LabApp::None => plain("It is not set up, so nothing is waiting to be sent.".into()),
-        LabApp::Unreadable(error) => plain(format!(
-            concat!(
-                "Its lab app settings cannot be read ({}), so results still waiting for it are ",
-                "kept, never deleted, until that lab app is added on the Lab apps page."
-            ),
-            error
+        LabApp::None => plain(tr("setup-it-is-not-set-up-so-nothing-is-waiting").into()),
+        LabApp::Unreadable(error) => plain(tr_args(
+            "setup-its-lab-app-settings-cannot-be-read-so-results-2",
+            [("error", (error).to_string().into())],
         )),
         LabApp::Kept(name) => match open {
             Ok(open) if open.undelivered > 0 => Hover {
-                shown: format!(
-                    "Its {} will still be sent to {name}.",
-                    format::amount(open.undelivered, "waiting result", "waiting results")
+                shown: tr_args(
+                    "setup-its-will-still-be-sent-to",
+                    [
+                        (
+                            "results",
+                            (tr_count("admin-count-waiting-results", open.undelivered))
+                                .to_string()
+                                .into(),
+                        ),
+                        ("name", (name).to_string().into()),
+                    ],
                 ),
-                exact: format::amount(
-                    open.undelivered,
-                    "result or order message not yet accepted by the lab app",
-                    "results or order messages not yet accepted by the lab app",
-                ),
+                exact: tr_count("setup-open-deliveries", open.undelivered),
             },
-            Ok(_) => plain(format!(
-                "Nothing is waiting; anything it sends before the restart will still be sent to {name}."
+            Ok(_) => plain(tr_args(
+                "setup-nothing-is-waiting-anything-it-sends-before-the-restart",
+                [("name", (name).to_string().into())],
             )),
-            Err(_) => plain(format!("Its waiting results will still be sent to {name}.")),
+            Err(_) => plain(tr_args(
+                "setup-its-waiting-results-will-still-be-sent-to",
+                [("name", (name).to_string().into())],
+            )),
         },
     }
 }
@@ -440,17 +424,13 @@ pub(super) async fn preview_removal(
         items.push(DialogItem {
             tone: Tone::Attention,
             icon: Icon::Warning,
-            text: concat!(
-                "This is the last machine. After the restart Analyte serves only this admin ",
-                "page until a machine is added."
-            )
-            .into(),
+            text: tr("setup-this-is-the-last-machine-after-the-restart-analyte").into(),
         });
     }
     items.push(DialogItem {
         tone: Tone::Neutral,
         icon: Icon::Ok,
-        text: crate::admin::setup::BACKUP_ADVICE.into(),
+        text: crate::admin::setup::backup_advice().into(),
     });
     Ok(Preview {
         sending: delivery_sentence(&kept, &open),
@@ -484,20 +464,20 @@ pub(in crate::admin) async fn confirm_remove(
         action: format::setup_href(&id, "remove"),
         csrf: session.csrf.form_value().to_owned(),
         cancel: format::machine_href(&id),
-        title: format!("Remove {id}?"),
-        text: format::REMOVED_ADVICE,
+        title: tr_args("setup-remove-2", [("id", (id).to_string().into())]),
+        text: format::removed_advice(),
         sending: preview.sending,
         list_title: if warned {
-            "Still unfinished"
+            tr("setup-still-unfinished")
         } else {
-            crate::admin::setup::BEFORE_REMOVAL
+            crate::admin::setup::before_removal()
         },
         items: preview.items,
         anyway: warned,
         button: Some(if warned {
-            "Remove anyway"
+            tr("setup-remove-anyway")
         } else {
-            crate::admin::setup::REMOVE
+            crate::admin::setup::remove_label()
         }),
     };
     machines::with_dialog(&state, &session, &id, dialog).await
@@ -513,7 +493,7 @@ fn warning(open: &Result<Unfinished, SetupError>) -> (Vec<DialogItem>, bool) {
                 DialogItem {
                     tone: Tone::Good,
                     icon: Icon::Ok,
-                    text: "Nothing is unfinished for this machine.".into(),
+                    text: tr("setup-nothing-is-unfinished-for-this-machine").into(),
                 },
                 DialogItem {
                     tone: Tone::Neutral,
@@ -535,8 +515,9 @@ fn warning(open: &Result<Unfinished, SetupError>) -> (Vec<DialogItem>, bool) {
             items.push(DialogItem {
                 tone: Tone::Neutral,
                 icon: Icon::Info,
-                text: format!(
-                    "Removing does not delete any of this. Finish it first, or remove anyway. {UNCOUNTED}"
+                text: tr_args(
+                    "setup-removing-does-not-delete-any-of-this-finish-it",
+                    [("UNCOUNTED", (UNCOUNTED).to_string().into())],
                 ),
             });
             (items, true)
@@ -545,8 +526,9 @@ fn warning(open: &Result<Unfinished, SetupError>) -> (Vec<DialogItem>, bool) {
             vec![DialogItem {
                 tone: Tone::Problem,
                 icon: Icon::Problem,
-                text: format!(
-                    "Unfinished work could not be counted: {error}. Check the Deliveries, Machine orders and Needs review pages first."
+                text: tr_args(
+                    "setup-unfinished-work-could-not-be-counted-check-the-deliveries",
+                    [("error", (error).to_string().into())],
                 ),
             }],
             true,
@@ -581,33 +563,30 @@ impl Removed {
     /// Where its site file went, in one sentence.
     pub(super) fn site_sentence(&self) -> String {
         match &self.site {
-            Ok(Some(path)) => format!(
-                "Its settings file was kept as a dated copy: {}",
-                path.display()
+            Ok(Some(path)) => tr_args(
+                "setup-its-settings-file-was-kept-as-a-dated-copy",
+                [("path", (path.display()).to_string().into())],
             ),
-            Ok(None) => {
-                "Its settings file was left in place (missing or used by another machine)".into()
-            }
-            Err(error) => format!("Its settings file could not be moved: {error}"),
+            Ok(None) => tr("setup-its-settings-file-was-left-in-place-missing-or").into(),
+            Err(error) => tr_args(
+                "setup-its-settings-file-could-not-be-moved",
+                [("error", (error).to_string().into())],
+            ),
         }
     }
 
     /// What happens to its lab app and waiting results, in one sentence.
     pub(super) fn kept_sentence(&self) -> String {
         match &self.kept {
-            Ok(Some(destination)) => format!(
-                concat!(
-                    "Lab app {} stays on the Lab apps page; results still waiting for it are sent ",
-                    "after the restart until none are left"
-                ),
-                destination
+            Ok(Some(destination)) => tr_args(
+                "setup-lab-app-stays-on-the-lab-apps-page-results-2",
+                [("destination", (destination).to_string().into())],
             ),
-            Ok(None) => "It was not set up, so it had no lab app".into(),
-            Err(error) => {
-                format!(
-                    "Its lab app settings could not be read, so waiting results stay stored until that lab app is added on the Lab apps page: {error}"
-                )
-            }
+            Ok(None) => tr("setup-it-was-not-set-up-so-it-had-no").into(),
+            Err(error) => tr_args(
+                "setup-its-lab-app-settings-could-not-be-read-so",
+                [("error", (error).to_string().into())],
+            ),
         }
     }
 
@@ -634,9 +613,12 @@ pub(super) async fn remove_machine(
 ) -> Result<Removed, SetupError> {
     let open = unfinished(store, id).await;
     let summary = match &open {
-        Ok(open) if open.is_empty() => "nothing unfinished".to_owned(),
+        Ok(open) if open.is_empty() => tr("setup-nothing-unfinished").to_owned(),
         Ok(open) => open_work(open).join("; "),
-        Err(error) => format!("unfinished work could not be counted: {error}"),
+        Err(error) => tr_args(
+            "setup-unfinished-work-could-not-be-counted",
+            [("error", (error).to_string().into())],
+        ),
     };
     if !anyway && !matches!(&open, Ok(open) if open.is_empty()) {
         return Err(SetupError::UnfinishedWork(id.to_owned(), summary));
@@ -701,7 +683,7 @@ pub(in crate::admin) async fn remove(
         )
     };
     let Ok(Form(removal)) = form else {
-        return refused(&SetupError::IncompleteForm(RELOAD));
+        return refused(&SetupError::IncompleteForm(reload_advice()));
     };
     let anyway = removal.anyway.as_deref() == Some("yes");
     let removed = match remove_machine(&state.setup, &state.store, &id, anyway).await {
@@ -716,19 +698,18 @@ pub(in crate::admin) async fn remove(
     let mut problems = Vec::new();
     let mut support = copies(&removed.backups);
     match &removed.site {
-        Ok(Some(path)) => support.push(format!(
-            "Its settings file, kept as a dated copy: {}",
-            path.display()
+        Ok(Some(path)) => support.push(tr_args(
+            "setup-its-settings-file-kept-as-a-dated-copy",
+            [("path", (path.display()).to_string().into())],
         )),
-        Ok(None) => lines.push(
-            "Its settings file was left in place (missing or used by another machine).".into(),
-        ),
-        Err(error) => problems.push(format::sentence(&format!(
-            "its settings file could not be moved: {error}"
+        Ok(None) => lines.push(tr("setup-its-settings-file-was-left-in-place-missing-or-2").into()),
+        Err(error) => problems.push(format::sentence(&tr_args(
+            "setup-its-settings-file-could-not-be-moved-2",
+            [("error", (error).to_string().into())],
         ))),
     }
     if !support.is_empty() {
-        lines.insert(0, crate::admin::setup::BACKUP_KEPT.into());
+        lines.insert(0, crate::admin::setup::backup_kept().into());
     }
     if let Err(error) = audited {
         problems.push(format::sentence(&error.to_string()));

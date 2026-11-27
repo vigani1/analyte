@@ -11,6 +11,7 @@ use super::{Command, Shared, tray, window};
 use crate::engine::{service, status::Client};
 use crate::sign_in::{self, Guard, Trigger, pipe};
 use crate::watch::{Notice, Shown, Watch};
+use analyte_i18n::message as tr_args;
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::AppHandle;
@@ -39,7 +40,10 @@ async fn work(app: &AppHandle, shared: &Shared, mut commands: mpsc::Receiver<Com
             Err(error) => {
                 tracing::error!(%error, "the app cannot ask the engine");
                 shared.update_off(|off| {
-                    off.settings = Some(format!("The app cannot make HTTP requests: {error}"));
+                    off.settings = Some(tr_args(
+                        "desktop-the-app-cannot-make-http-requests",
+                        [("error", (error).to_string().into())],
+                    ));
                 });
                 None
             }

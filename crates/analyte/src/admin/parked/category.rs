@@ -7,6 +7,7 @@
 use super::page::Why;
 use crate::admin::view::parts::Hover;
 use crate::admin::view::{Tone, format};
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_mapping::{Finding, Problem};
 use analyte_store::{Parked, ParkedKind};
 
@@ -46,17 +47,17 @@ impl Category {
     pub(super) fn of(parked: &Parked) -> Self {
         let stored = parked.kind.as_str();
         let reason = parked.reason.as_str();
-        let mut support = vec![format!("Reason as stored: {reason}")];
+        let mut support = vec![tr_args(
+            "admin-reason-as-stored",
+            [("reason", (reason).to_string().into())],
+        )];
         let Some(kind) = ParkedKind::from_stored(stored) else {
             return Self {
                 shown: stored.to_owned(),
                 stored: String::new(),
                 tone: Tone::Attention,
                 action: Action::ProcessAgain,
-                guidance: concat!(
-                    "Read the reason above and open the item for its linked records. If it is ",
-                    "not clear what to do, give the item number to support.",
-                ),
+                guidance: tr("admin-read-the-reason-above-and-open-the-item-for"),
                 why: as_stored(reason),
                 support,
             };
@@ -104,18 +105,22 @@ fn as_stored(stored: &str) -> Why {
 }
 
 /// The category in plain words.
-const fn words(kind: ParkedKind) -> &'static str {
+fn words(kind: ParkedKind) -> &'static str {
     match kind {
-        ParkedKind::MappingFinding => "Test or unit not mapped",
-        ParkedKind::InterpretationFailure => "Could not read message",
-        ParkedKind::ResultReconciliation => "Result could not be matched to earlier results",
-        ParkedKind::IncompleteTransfer => "Message from the machine was incomplete",
-        ParkedKind::DeliveryRejected => "Lab app rejected a delivery",
-        ParkedKind::DeliveryConflict => "Lab app reported a conflicting delivery",
-        ParkedKind::OrderVersionRefused => "Order from the lab app was refused",
-        ParkedKind::CancelConflict => "Cancel conflicts with what the machine reported",
-        ParkedKind::PollIntent => format::POLL_TITLE,
-        ParkedKind::OrderEventModelUnknown => "Order event could not name its machine model",
+        ParkedKind::MappingFinding => tr("admin-test-or-unit-not-mapped"),
+        ParkedKind::InterpretationFailure => tr("admin-could-not-read-message"),
+        ParkedKind::ResultReconciliation => {
+            tr("admin-result-could-not-be-matched-to-earlier-results")
+        }
+        ParkedKind::IncompleteTransfer => tr("admin-message-from-the-machine-was-incomplete"),
+        ParkedKind::DeliveryRejected => tr("admin-lab-app-rejected-a-delivery"),
+        ParkedKind::DeliveryConflict => tr("admin-lab-app-reported-a-conflicting-delivery"),
+        ParkedKind::OrderVersionRefused => tr("admin-order-from-the-lab-app-was-refused"),
+        ParkedKind::CancelConflict => tr("admin-cancel-conflicts-with-what-the-machine-reported"),
+        ParkedKind::PollIntent => format::poll_title(),
+        ParkedKind::OrderEventModelUnknown => {
+            tr("admin-order-event-could-not-name-its-machine-model")
+        }
     }
 }
 
@@ -157,67 +162,47 @@ const fn main_action(kind: ParkedKind) -> Action {
 }
 
 /// What someone does about the item.
-const fn guidance(kind: ParkedKind, problem: Option<&Problem>) -> &'static str {
+fn guidance(kind: ParkedKind, problem: Option<&Problem>) -> &'static str {
     match kind {
-        ParkedKind::MappingFinding if matches!(problem, Some(Problem::MissingTest)) => concat!(
-            "The machine sent a result without a test code. Check the machine's settings ",
-            "and where this machine's definition reads the code, then use Process again.",
-        ),
+        ParkedKind::MappingFinding if matches!(problem, Some(Problem::MissingTest)) => {
+            tr("admin-the-machine-sent-a-result-without-a-test-code")
+        }
         ParkedKind::MappingFinding
             if matches!(problem, Some(Problem::ValueKindMismatch { .. })) =>
         {
-            concat!(
-                "The value does not fit the kind this machine's definition expects for this ",
-                "test code. Check that expectation and the machine's settings, then use ",
-                "Process again.",
-            )
+            tr("admin-the-value-does-not-fit-the-kind-this-machine")
         }
-        ParkedKind::MappingFinding if matches!(problem, Some(Problem::MissingSample)) => concat!(
-            "The message has no sample ID. Check how the machine sends sample IDs; once ",
-            "its settings are fixed, use Process again.",
-        ),
-        ParkedKind::MappingFinding => concat!(
-            "Check this machine's definition and settings against the reason above, ",
-            "then use Process again.",
-        ),
-        ParkedKind::InterpretationFailure => concat!(
-            "Check the machine's settings on the Setup page (machine model and ",
-            "connection) against the reason above, then use Process again.",
-        ),
-        ParkedKind::ResultReconciliation => concat!(
-            "Compare this result with the earlier results for the same sample on the ",
-            "machine. If a setting caused the mismatch, fix it, then use Process again.",
-        ),
-        ParkedKind::IncompleteTransfer => concat!(
-            "The machine stopped part-way through sending. Check the cable or network ",
-            "and have the machine send the results again, then use Process again here.",
-        ),
+        ParkedKind::MappingFinding if matches!(problem, Some(Problem::MissingSample)) => {
+            tr("admin-the-message-has-no-sample-id-check-how-the")
+        }
+        ParkedKind::MappingFinding => {
+            tr("admin-check-this-machine-s-definition-and-settings-against-the")
+        }
+        ParkedKind::InterpretationFailure => {
+            tr("admin-check-the-machine-s-settings-on-the-setup-page")
+        }
+        ParkedKind::ResultReconciliation => {
+            tr("admin-compare-this-result-with-the-earlier-results-for-the")
+        }
+        ParkedKind::IncompleteTransfer => {
+            tr("admin-the-machine-stopped-part-way-through-sending-check-the")
+        }
         ParkedKind::DeliveryRejected => {
-            "Settle the problem described above with the lab app team, then use Send again."
+            tr("admin-settle-the-problem-described-above-with-the-lab-app")
         }
-        ParkedKind::DeliveryConflict => concat!(
-            "The lab app already holds different content for this delivery; Analyte does ",
-            "not send it again on its own. Check the delivery in the lab app and settle it ",
-            "there, then Mark resolved.",
-        ),
-        ParkedKind::OrderVersionRefused => concat!(
-            "The lab app sent an older or changed copy of an order Analyte already has; ",
-            "Analyte kept its copy. Correct the order in the lab app, then Mark resolved.",
-        ),
-        ParkedKind::CancelConflict => concat!(
-            "The lab app cancelled tests the machine has already reported on; Analyte sends ",
-            "the machine nothing more. Check both on the machine and in the lab app, then ",
-            "Mark resolved.",
-        ),
-        ParkedKind::PollIntent => concat!(
-            "Analyte starts no other exchange with this machine until this item is ",
-            "resolved. Check on the machine whether this one finished, then Mark resolved.",
-        ),
-        ParkedKind::OrderEventModelUnknown => concat!(
-            "Analyte did not send the lab app this order's change, because the order is older ",
-            "than the machine model Analyte now names in every event. Tell the lab app team ",
-            "the order's state shown here, then Mark resolved.",
-        ),
+        ParkedKind::DeliveryConflict => {
+            tr("admin-the-lab-app-already-holds-different-content-for-this")
+        }
+        ParkedKind::OrderVersionRefused => tr("admin-the-lab-app-sent-an-older-or-changed-copy"),
+        ParkedKind::CancelConflict => {
+            tr("admin-the-lab-app-cancelled-tests-the-machine-has-already")
+        }
+        ParkedKind::PollIntent => {
+            tr("admin-analyte-starts-no-other-exchange-with-this-machine-until")
+        }
+        ParkedKind::OrderEventModelUnknown => {
+            tr("admin-analyte-did-not-send-the-lab-app-this-order")
+        }
     }
 }
 

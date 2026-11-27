@@ -17,9 +17,9 @@
 {% call feedback::alert(crate::admin::view::Tone::Problem, problem, "") %}{% endcall %}
 {%- endfor %}
 {%- if let Some(csrf) = restart %}
-{% call layout::label_card("rp-restart", "Restart to apply") %}
-<p class="text">{{ crate::admin::view::format::RESTART_ADVICE }}</p>
-<form class="cluster" method="post" action="/setup/restart"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="btn btn--primary">{{ crate::admin::view::format::RESTART_NOW }}</button></form>
+{% call layout::label_card("rp-restart", analyte_i18n::text("admin-restart-to-apply")) %}
+<p class="text">{{ crate::admin::view::format::restart_advice() }}</p>
+<form class="cluster" method="post" action="/setup/restart"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="btn btn--primary">{{ crate::admin::view::format::restart_now() }}</button></form>
 {% endcall %}
 {%- endif %}
 {%- if !links.is_empty() %}
@@ -28,6 +28,6 @@
 </p>
 {%- endif %}
 {%- if !support.is_empty() %}
-{% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::support(), support) %}{% endcall %}
 {%- endif %}
 {%- endblock %}

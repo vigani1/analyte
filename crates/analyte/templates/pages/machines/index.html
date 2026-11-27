@@ -7,7 +7,7 @@
 {%- import "components/layout.html" as layout %}
 {%- block main %}
 {% call layout::intro_head("", "Machines", summary) %}
-{% call forms::icon_button("/setup/add", crate::admin::view::icon::Icon::Plus, crate::admin::view::format::ADD_MACHINE, "btn--primary") %}{% endcall %}
+{% call forms::icon_button("/setup/add", crate::admin::view::icon::Icon::Plus, crate::admin::view::format::add_machine(), "btn--primary") %}{% endcall %}
 {% endcall %}
 {%- for notice in problems %}
 {% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
@@ -16,19 +16,19 @@
 {% call feedback::empty_card(empty.title, empty.text) %}{% if let Some((href, words)) = empty.link %}{% call forms::link_button(href, words, "btn--outline btn--sm") %}{% endcall %}{% endif %}{% endcall %}
 {%- endif %}
 {%- if !rows.is_empty() %}
-{% call display::table(MACHINE_COLUMNS) %}
+{% call display::table(crate::admin::machines::page::machine_columns()) %}
 {%- for row in rows %}
 <tr>{% call display::cell("") %}<div class="cell-main"><a href="{{ row.href }}">{{ row.id }}</a></div>{% if let Some(model) = row.model %}<div class="cell-sub">{{ model }}</div>{% endif %}{% endcall %}
 {%- call display::cell("") %}{% call display::status_with(row.status.tone, row.status.icon, row.status.word, row.status.exact) %}{% endcall %}{% if let Some(note) = row.status.note %}<div class="cell-sub cell-note">{{ note }}</div>{% endif %}{% endcall %}
-{%- if let Some(last) = row.last_data %}{% call display::cell("num") %}{% call display::time(last) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("num subtle") %}{{ crate::admin::view::format::NOTHING_YET }}{% endcall %}{% endif %}
+{%- if let Some(last) = row.last_data %}{% call display::cell("num") %}{% call display::time(last) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("num subtle") %}{{ crate::admin::view::format::nothing_yet() }}{% endcall %}{% endif %}
 {%- if let Some(link) = row.link %}{% call display::cell("") %}<span class="with-icon">{% call draw::icon(link.icon, "icon--md") %}{% endcall %}{{ link.kind }}</span>{% if let Some(detail) = link.detail %}<div class="cell-sub mono">{{ detail }}</div>{% endif %}{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}
 {%- if let Some(since) = row.since %}{% call display::cell("num") %}{% call display::time(since) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("num subtle") %}—{% endcall %}{% endif %}
-{%- if let Some(recording) = row.recording %}{% call display::cell("") %}<div class="cell-main tone-warn">{{ crate::admin::view::format::RECORDING_ONLY }}</div><div class="cell-sub">{{ recording }}</div>{% endcall %}{% else if let Some(lab_app) = row.lab_app %}{% call display::cell("") %}{{ lab_app }}{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}</tr>
+{%- if let Some(recording) = row.recording %}{% call display::cell("") %}<div class="cell-main tone-warn">{{ crate::admin::view::format::recording_only() }}</div><div class="cell-sub">{{ recording }}</div>{% endcall %}{% else if let Some(lab_app) = row.lab_app %}{% call display::cell("") %}{{ lab_app }}{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}</tr>
 {%- endfor %}
 {% endcall %}
 {%- endif %}
 {%- if waiting %}
-{% call feedback::note("“Waiting” is normal after a restart", "Analyte is listening; it reads Connected once the machine connects. If it stays like this, check the machine’s host settings.") %}{% endcall %}
+{% call feedback::note(analyte_i18n::text("admin-waiting-after-restart"), analyte_i18n::text("admin-analyte-is-listening-it-reads-connected-once-the-machine")) %}{% endcall %}
 {%- endif %}
 {%- for notice in notices %}
 {% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
@@ -37,6 +37,6 @@
 {% call forms::next_page(href) %}{% endcall %}
 {%- endif %}
 {%- if !support.is_empty() %}
-{% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::support(), support) %}{% endcall %}
 {%- endif %}
 {%- endblock %}

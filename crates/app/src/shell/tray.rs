@@ -3,6 +3,7 @@
 //! "Quit app" ends only this app; the engine keeps running as a service.
 use super::{Command, Shared, autostart};
 use crate::watch::{Shown, Tray};
+use analyte_i18n::{message as tr_args, text as tr};
 use std::sync::Arc;
 use tauri::{
     AppHandle, Manager as _, Wry,
@@ -85,21 +86,36 @@ fn icon(app: &AppHandle, tray: Tray) -> tauri::Result<Image<'static>> {
 }
 
 fn tooltip(shown: Shown) -> String {
-    format!("Analyte: {}", shown.words())
+    tr_args(
+        "desktop-analyte",
+        [("words", (shown.words()).to_string().into())],
+    )
 }
 
 /// Makes the tray icon and its menu.
 pub(super) fn create(app: &AppHandle) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Open Analyte", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", tr("desktop-open-analyte"), true, None::<&str>)?;
     let state = MenuItem::with_id(app, "state", Shown::Checking.words(), false, None::<&str>)?;
     let on = autostart::is_on().unwrap_or_else(|error| {
         tracing::warn!(%error, "whether the app starts at sign-in could not be read");
         false
     });
-    let starts =
-        CheckMenuItem::with_id(app, "autostart", "Start at sign-in", true, on, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit app", true, None::<&str>)?;
-    let note = MenuItem::with_id(app, "note", "The engine keeps running", false, None::<&str>)?;
+    let starts = CheckMenuItem::with_id(
+        app,
+        "autostart",
+        tr("desktop-start-at-sign-in"),
+        true,
+        on,
+        None::<&str>,
+    )?;
+    let quit = MenuItem::with_id(app, "quit", tr("desktop-quit-app"), true, None::<&str>)?;
+    let note = MenuItem::with_id(
+        app,
+        "note",
+        tr("desktop-the-engine-keeps-running"),
+        false,
+        None::<&str>,
+    )?;
     let menu = Menu::with_items(
         app,
         &[
