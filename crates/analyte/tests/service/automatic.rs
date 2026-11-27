@@ -82,8 +82,11 @@ async fn shipped_software_choices_warn_only_when_unchecked() -> Result<(), Error
         let mut selected = details
             .choices
             .iter()
-            .map(|choice| (choice.name.clone(), choice.values[0].value.clone()))
-            .collect::<ChoiceSelections>();
+            .map(|choice| {
+                let value = choice.values.first().ok_or("choice had no values")?;
+                Ok((choice.name.clone(), value.value.clone()))
+            })
+            .collect::<Result<ChoiceSelections, Error>>()?;
         let temp = tempfile::tempdir()?;
         let definition = analyte_fixtures::write_definition(temp.path(), "fixture", &text)?;
         let program = temp.path().join("program.toml");
@@ -92,13 +95,15 @@ async fn shipped_software_choices_warn_only_when_unchecked() -> Result<(), Error
             selected.insert(software.name.clone(), value.value.clone());
             let serial = details.kind == analyte_config::TransportKind::Serial;
             let endpoint = match details.kind {
-                analyte_config::TransportKind::Serial => format!("COM{}", index + 3),
+                analyte_config::TransportKind::Serial => format!("COM{}", index.saturating_add(3)),
                 analyte_config::TransportKind::WatchedFolder => {
                     let folder = temp.path().join(format!("incoming-{index}"));
                     std::fs::create_dir(&folder)?;
                     folder.to_string_lossy().into_owned()
                 }
-                _ => format!("127.0.0.1:{}", index + 5600),
+                analyte_config::TransportKind::TcpClient | analyte_config::TransportKind::TcpServer => {
+                    format!("127.0.0.1:{}", index.saturating_add(5600))
+                }
             };
             let settings = site(&endpoint, &answers(&details, &selected)?, serial)?;
             std::fs::write(temp.path().join(format!("site-{index}.toml")), settings)?;
@@ -175,8 +180,9 @@ fn shipped_wire_version_bands_match_evidence() -> Result<(), Error> {
         else {
             continue;
         };
-        let capabilities = raw["evidence"]["capabilities"]
-            .as_array()
+        let capabilities = raw.get("evidence")
+            .and_then(|evidence| evidence.get("capabilities"))
+            .and_then(toml::Value::as_array)
             .ok_or("missing evidence capabilities")?;
         for (band, tokens) in bands {
             for token in tokens.as_array().ok_or("expected wire token list")? {
@@ -367,11 +373,10 @@ fn edit_value(
     else {
         return Ok(None);
     };
-    let inbound =
-        |event: &&Event| event.link.is_none() && event.direction == Direction::MachineToHost;
+    let inbound = |event: &Event| event.link.is_none() && event.direction == Direction::MachineToHost;
     let mut wire: Vec<_> = events
         .iter()
-        .filter(inbound)
+        .filter(|event| inbound(event))
         .flat_map(|event| event.bytes.iter().copied())
         .collect();
     let mut matches = wire
@@ -381,15 +386,16 @@ fn edit_value(
     let (Some((start, _)), None) = (matches.next(), matches.next()) else {
         return Ok(None);
     };
-    let at = start + offset;
-    let old = wire[at];
-    let new = match old {
-        b'9' => b'0',
-        b'z' => b'a',
-        b'Z' => b'A',
-        _ => old + 1,
+    let at = start.checked_add(offset).ok_or("value offset overflow")?;
+    let payload = wire.get_mut(at..).ok_or("value offset outside upload")?;
+    let byte = payload.first_mut().ok_or("value missing from upload")?;
+    let old = *byte;
+    let new = if matches!(old, b'9' | b'z' | b'Z') {
+        old.saturating_sub(1)
+    } else {
+        old.saturating_add(1)
     };
-    wire[at] = new;
+    *byte = new;
     // The byte count and event boundaries stay fixed. The additive checksums
     // change by the same amount as the one payload byte, regardless of scope.
     let checksum = match stack {
@@ -405,12 +411,15 @@ fn edit_value(
         }
     };
     if let Some((markers, suffix, uppercase)) = checksum {
-        let end = wire[at..]
+        let end = payload
             .iter()
             .position(|byte| markers.contains(byte))
             .ok_or("checksum marker missing")?;
-        let check = at + end + 1 + suffix;
-        let bytes = wire.get_mut(check..check + 2).ok_or("checksum missing")?;
+        let bytes = payload.get_mut(end..)
+            .and_then(|tail| tail.get_mut(1..))
+            .and_then(|tail| tail.get_mut(suffix..))
+            .and_then(|tail| tail.get_mut(..2))
+            .ok_or("checksum missing")?;
         let sum = u8::from_str_radix(std::str::from_utf8(bytes)?, 16)?
             .wrapping_sub(old)
             .wrapping_add(new);
@@ -424,12 +433,12 @@ fn edit_value(
     let mut changed = events.to_vec();
     let mut wire = wire.into_iter();
     for event in &mut changed {
-        if inbound(&&*event) {
+        if inbound(event) {
             let len = event.bytes.len();
             event.bytes = wire.by_ref().take(len).collect();
         }
     }
     let mut original = value.as_bytes().to_vec();
-    original[offset] = new;
+    *original.get_mut(offset).ok_or("value offset outside original")? = new;
     Ok(Some((changed, String::from_utf8(original)?)))
 }
