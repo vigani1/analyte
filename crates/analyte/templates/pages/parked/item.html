@@ -1,9 +1,10 @@
-{#- One item to review (GET /parked/{id}): why it is here with what to do, everything linked to it with the audited "Show the original message", its history, details for support, and the Mark resolved or Process again dialog drawn over it. -#}
+{#- One item to review (GET /parked/{id}): why it is here with what to do and the "What each choice means" help, everything linked to it with the audited "Show the original message", its history, details for support, and the Mark resolved or Process again dialog drawn over it. -#}
 {% extends "layout/base.html" %}
 {%- import "components/display.html" as display %}
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/forms.html" as forms %}
 {%- import "components/layout.html" as layout %}
+{%- import "pages/parked/choices.html" as choices %}
 {%- block main %}
 {% call layout::detail_head(head) %}{% endcall %}
 <div class="split">
@@ -15,6 +16,7 @@
 {%- for button in todo.actions %}{% call forms::link_button(button.href, button.label, button.class) %}{% endcall %}{% endfor -%}
 {% endcall %}
 {%- endif %}
+{% call choices::choices_help() %}{% endcall %}
 {% endcall %}
 {% call layout::titled_card("rd-linked", analyte_i18n::text("admin-everything-linked-to-it"), "", "stack") %}
 {% call display::kv() %}

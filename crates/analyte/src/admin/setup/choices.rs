@@ -109,6 +109,16 @@ pub(in crate::admin::setup) fn hint(kind: ChoiceKind) -> &'static str {
     }
 }
 
+/// [`hint`] after a semicolon, as each language writes it there.
+pub(in crate::admin::setup) fn hint_in_line(kind: ChoiceKind) -> &'static str {
+    match kind {
+        ChoiceKind::Mode => tr("setup-match-the-setting-on-the-analyzer-s-own-screen-in-line"),
+        ChoiceKind::SoftwareVersion => {
+            tr("setup-read-the-version-on-the-analyzer-s-about-screen-in-line")
+        }
+    }
+}
+
 /// The displayed value, with the warning when it is outside the manuals.
 pub(in crate::admin::setup) fn value_words(
     label: &ChoiceLabel,

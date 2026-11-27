@@ -69,6 +69,8 @@ admin-recording-only = Enregistrement seul — rien n’est envoyé à une appli
 
 admin-open-to-any = Accepte les connexions de n’importe quel appareil
 
+admin-open-to-any-in-line = accepte les connexions de n’importe quel appareil
+
 admin-open-to-any-advice = Tout appareil du réseau du laboratoire qui atteint ce port peut envoyer des résultats en se faisant passer pour cet automate. Modifiez sa configuration et choisissez « N’accepter que cet appareil » après le test de connexion.
 
 admin-refused-advice = Seul l’automate doit se connecter à ce port. S’il s’agit de l’automate lui-même, son adresse a changé : ajoutez la nouvelle adresse dans sa configuration. Sinon, trouvez cet appareil.
@@ -119,6 +121,8 @@ admin-no-machine-set-up = Aucun automate n’est configuré.
 
 admin-poll-title = Demande de résultats non réglée
 
+admin-poll-title-in-line = demande de résultats non réglée
+
 admin-how-read = Comment ce message a été lu
 
 admin-compare-measurements = Comparer les mesures
@@ -129,7 +133,11 @@ admin-process-again = Retraiter
 
 admin-marked-resolved = Marqué comme résolu
 
+admin-marked-resolved-in-line = marqué comme résolu
+
 admin-processed-again = Retraité
+
+admin-processed-again-in-line = retraité
 
 admin-open-item = Ouvrir l’élément
 
@@ -418,6 +426,44 @@ admin-resolve-held-item = Résoudre l’élément retenu
 admin-this-is-a-resend = Il s’agit d’un renvoi
 
 admin-this-is-a-rerun = Il s’agit d’une réanalyse
+
+admin-help-what-each-choice-means = Ce que signifie chaque choix
+
+admin-help-three-cases = Un résultat peut revenir pour trois raisons :
+
+admin-help-case-resend = Renvoi
+
+admin-help-case-resend-text = L’automate a envoyé de nouveau le même résultat.
+
+admin-help-case-rerun = Réanalyse
+
+admin-help-case-rerun-text = Le même échantillon et la même analyse ont été mesurés de nouveau.
+
+admin-help-case-correction = Correction
+
+admin-help-case-correction-text = L’automate a modifié un résultat qu’il avait envoyé.
+
+admin-help-correction-note = Aucun bouton n’envoie une modification retenue comme correction. Une correction que l’automate signale comme telle part d’elle-même vers l’application de laboratoire, comme nouvelle révision du résultat, sauf si l’automate est réglé sur « Toujours me demander ». Si un résultat modifié attend ici, vérifiez sur l’automate quelle valeur est la bonne avant de choisir.
+
+admin-help-buttons = Ce que fait chaque bouton :
+
+admin-help-resend-does = Enregistre le résultat retenu comme le même résultat que le précédent. Rien de nouveau n’est envoyé à l’application de laboratoire.
+
+admin-help-rerun-does = Envoie une fois le résultat retenu à l’application de laboratoire, comme nouveau résultat. Le résultat précédent reste ; l’application de laboratoire décide quelle valeur rendre.
+
+admin-help-resolve-held-does = Proposé quand un résultat retenu sans ID d’échantillon correspond à un message ultérieur du même automate qui en a un. Le message ultérieur fait foi, et rien de plus n’est envoyé.
+
+admin-help-process-again-does = Relit le message d’origine avec les réglages actuels et enregistre la lecture comme nouvelle version ; la lecture précédente est conservée. Si le message est maintenant lu correctement, l’élément est réglé et ses résultats partent vers l’application de laboratoire comme d’habitude. Sinon, l’élément reste ouvert.
+
+admin-help-send-again-does = Remet en file d’attente la même transmission pour l’application de laboratoire, inchangée et avec le même ID. L’élément reste ouvert jusqu’à ce que quelqu’un le marque comme résolu.
+
+admin-help-mark-resolved-does = Enregistre que quelqu’un a vérifié l’élément. Rien n’est envoyé à un automate ni à l’application de laboratoire. L’élément passe dans Résolus et reste dans l’historique.
+
+admin-help-audited = Chaque choix demande une raison et enregistre qui l’a fait et quand. Le message d’origine n’est jamais modifié.
+
+admin-help-left-alone = Un élément sur lequel personne ne décide reste ici. Analyte ne l’envoie ni ne le supprime jamais de lui-même.
+
+admin-help-notices = Si les avis À vérifier sont activés pour une application de laboratoire, celle-ci affiche les éléments qui attendent ici et reçoit un avis de clôture dès que chacun est réglé. La décision se prend toujours ici seulement.
 
 admin-left-every-byte-exactly-in-hex-right-the-same = À gauche : chaque octet exactement, en hexadécimal. À droite : les mêmes octets sous forme de texte, les octets qui ne sont pas de simples lettres ou signes étant affichés sous forme de points.
 
@@ -715,6 +761,8 @@ admin-unknown = Inconnu
 
 admin-cancelled = Annulé
 
+admin-cancelled-in-line = annulé
+
 admin-no-more-orders = Aucune autre demande
 
 admin-this-page-is-past-the-last-order = Cette page va au-delà de la dernière demande.
@@ -881,21 +929,39 @@ admin-analyte-did-not-send-the-lab-app-this-order = Analyte n’a pas envoyé à
 
 admin-test-or-unit-not-mapped = Analyse ou unité sans correspondance
 
+admin-test-or-unit-not-mapped-in-line = analyse ou unité sans correspondance
+
 admin-could-not-read-message = Impossible de lire le message
+
+admin-could-not-read-message-in-line = impossible de lire le message
 
 admin-result-could-not-be-matched-to-earlier-results = Le résultat n’a pas pu être rapproché des résultats antérieurs
 
+admin-result-could-not-be-matched-to-earlier-results-in-line = le résultat n’a pas pu être rapproché des résultats antérieurs
+
 admin-message-from-the-machine-was-incomplete = Le message de l’automate était incomplet
+
+admin-message-from-the-machine-was-incomplete-in-line = le message de l’automate était incomplet
 
 admin-lab-app-rejected-a-delivery = L’application de laboratoire a refusé une transmission
 
+admin-lab-app-rejected-a-delivery-in-line = l’application de laboratoire a refusé une transmission
+
 admin-lab-app-reported-a-conflicting-delivery = L’application de laboratoire a signalé une transmission en conflit
+
+admin-lab-app-reported-a-conflicting-delivery-in-line = l’application de laboratoire a signalé une transmission en conflit
 
 admin-order-from-the-lab-app-was-refused = Une demande de l’application de laboratoire a été refusée
 
+admin-order-from-the-lab-app-was-refused-in-line = une demande de l’application de laboratoire a été refusée
+
 admin-cancel-conflicts-with-what-the-machine-reported = L’annulation est en conflit avec ce que l’automate a signalé
 
+admin-cancel-conflicts-with-what-the-machine-reported-in-line = l’annulation est en conflit avec ce que l’automate a signalé
+
 admin-order-event-could-not-name-its-machine-model = L’événement de demande n’a pas pu nommer son modèle d’automate
+
+admin-order-event-could-not-name-its-machine-model-in-line = l’événement de demande n’a pas pu nommer son modèle d’automate
 
 admin-settle-the-problem-described-above-with-the-lab-app = Réglez le problème décrit ci-dessus avec l’équipe de l’application de laboratoire, puis utilisez Renvoyer.
 
@@ -948,6 +1014,8 @@ admin-resolved-today = Résolus aujourd’hui
 admin-open = Ouverts
 
 admin-resolved = Résolus
+
+admin-resolved-in-line = résolus
 
 admin-no-more-items = Aucun autre élément
 
@@ -1351,9 +1419,15 @@ admin-it-still-needs-review =  ; une vérification reste nécessaire
 
 admin-recorded-as-a-resend = Enregistré comme renvoi
 
+admin-recorded-as-a-resend-in-line = enregistré comme renvoi
+
 admin-rerun-queued = Réanalyse en file d’attente
 
+admin-rerun-queued-in-line = réanalyse en file d’attente
+
 admin-superseded-by-the-receipt-with-a-tube-id = Remplacé par la réception avec un ID de tube
+
+admin-superseded-by-the-receipt-with-a-tube-id-in-line = remplacé par la réception avec un ID de tube
 
 admin-no-results-in-it = aucun résultat dedans
 
@@ -1399,15 +1473,27 @@ admin-cancelled-by-the-machine = Annulée par l’automate
 
 admin-not-sent-yet = Pas encore envoyée
 
+admin-not-sent-yet-in-line = pas encore envoyée
+
 admin-sent-not-yet-accepted = Envoyée, pas encore acceptée
+
+admin-sent-not-yet-accepted-in-line = envoyée, pas encore acceptée
 
 admin-accepted-by-the-machine = Acceptée par l’automate
 
+admin-accepted-by-the-machine-in-line = acceptée par l’automate
+
 admin-rejected-by-the-machine = Refusée par l’automate
+
+admin-rejected-by-the-machine-in-line = refusée par l’automate
 
 admin-cancel-requested = Annulation demandée
 
+admin-cancel-requested-in-line = annulation demandée
+
 admin-outcome-unknown-check-the-machine = Issue inconnue : vérifiez l’automate
+
+admin-outcome-unknown-check-the-machine-in-line = issue inconnue : vérifiez l’automate
 
 admin-delivered = Transmis
 
@@ -1563,47 +1649,79 @@ admin-analyte-asked-this-machine-for-its-next-results-and = Analyte a demandé s
 
 admin-test-code-missing = Code d’analyse manquant
 
+admin-test-code-missing-in-line = code d’analyse manquant
+
 admin-sample-id-missing = ID d’échantillon manquant
+
+admin-sample-id-missing-in-line = ID d’échantillon manquant
 
 admin-value-is-not-the-expected-kind = La valeur n’est pas du type attendu
 
+admin-value-is-not-the-expected-kind-in-line = la valeur n’est pas du type attendu
+
 admin-text-with-formatting-codes = Texte avec codes de mise en forme
+
+admin-text-with-formatting-codes-in-line = texte avec codes de mise en forme
 
 admin-result-classified-more-than-one-way = Résultat classé de plusieurs façons
 
+admin-result-classified-more-than-one-way-in-line = résultat classé de plusieurs façons
+
 admin-status-only-update = Mise à jour du statut seul
+
+admin-status-only-update-in-line = mise à jour du statut seul
 
 admin-result-report-incomplete = Compte rendu de résultat incomplet
 
+admin-result-report-incomplete-in-line = compte rendu de résultat incomplet
+
 admin-result-status-not-final = Statut du résultat non définitif
+
+admin-result-status-not-final-in-line = statut du résultat non définitif
 
 admin-processing-the-message-again-with-the-current-settings-produced = Le retraitement du message avec les paramètres actuels n’a produit aucun résultat.
 
 admin-piece-resent-with-other-content = Partie renvoyée avec un autre contenu
 
+admin-piece-resent-with-other-content-in-line = partie renvoyée avec un autre contenu
+
 admin-the-machine-sent-the-same-numbered-piece-of-a = L’automate a envoyé deux fois la même partie numérotée d’un message, avec un contenu différent.
 
 admin-piece-arrived-out-of-turn = Partie arrivée hors séquence
+
+admin-piece-arrived-out-of-turn-in-line = partie arrivée hors séquence
 
 admin-a-piece-of-a-message-arrived-when-no-transfer = Une partie de message est arrivée alors qu’aucun transfert depuis l’automate n’était ouvert.
 
 admin-message-not-expected = Message inattendu
 
+admin-message-not-expected-in-line = message inattendu
+
 admin-a-message-arrived-that-analyte-did-not-expect-or = Un message est arrivé alors qu’Analyte ne l’attendait pas, ou alors que trop de messages étaient en attente.
 
 admin-processing-interrupted = Traitement interrompu
+
+admin-processing-interrupted-in-line = traitement interrompu
 
 admin-processing-of-this-message-stopped-before-it-was-confirmed = Le traitement de ce message s’est arrêté avant d’être confirmé comme terminé.
 
 admin-returned-work-differs-from-the-order-sent = Le travail renvoyé diffère de la demande envoyée
 
+admin-returned-work-differs-from-the-order-sent-in-line = le travail renvoyé diffère de la demande envoyée
+
 admin-the-work-the-machine-returned-differs-from-the-order = Le travail renvoyé par l’automate diffère de la demande qu’Analyte lui a envoyée.
 
 admin-results-held-back-for-review = Résultats retenus pour vérification
 
+admin-results-held-back-for-review-in-line = résultats retenus pour vérification
+
 admin-results-conflict-with-earlier-ones = Résultats en conflit avec des résultats antérieurs
 
+admin-results-conflict-with-earlier-ones-in-line = résultats en conflit avec des résultats antérieurs
+
 admin-message-too-large = Message trop volumineux
+
+admin-message-too-large-in-line = message trop volumineux
 
 admin-the-message-was-larger-than-the-size-limit-for = Le message dépassait la taille limite fixée pour cet automate.
 
@@ -1611,43 +1729,69 @@ admin-the-connection-was-stopped-while-the-message-was-arriving = La connexion a
 
 admin-message-not-finished-in-time = Message non terminé à temps
 
+admin-message-not-finished-in-time-in-line = message non terminé à temps
+
 admin-the-machine-did-not-finish-sending-the-message-in = L’automate n’a pas terminé l’envoi du message à temps ; la partie reçue est conservée.
 
 admin-message-arrived-while-busy = Message arrivé pendant une surcharge
 
+admin-message-arrived-while-busy-in-line = message arrivé pendant une surcharge
+
 admin-check-characters-do-not-match = Les caractères de contrôle ne correspondent pas
+
+admin-check-characters-do-not-match-in-line = les caractères de contrôle ne correspondent pas
 
 admin-the-check-characters-at-the-end-of-the-message = Les caractères de contrôle à la fin du message ne correspondent pas à son contenu.
 
 admin-transfer-cut-off-or-refused = Transfert interrompu ou refusé
 
+admin-transfer-cut-off-or-refused-in-line = transfert interrompu ou refusé
+
 admin-the-transfer-from-the-machine-did-not-finish-or = Le transfert depuis l’automate ne s’est pas terminé ou a été refusé ; ce qui est arrivé est conservé.
 
 admin-edited-result-kept-for-review = Résultat modifié conservé pour vérification
 
+admin-edited-result-kept-for-review-in-line = résultat modifié conservé pour vérification
+
 admin-transfer-cut-off = Transfert interrompu
+
+admin-transfer-cut-off-in-line = transfert interrompu
 
 admin-the-machine-stopped-sending-before-the-message-was-complete = L’automate a cessé d’envoyer avant que le message soit complet ; les parties reçues sont conservées.
 
 admin-transfer-cut-off-by-a-stop = Transfert interrompu par un arrêt
 
+admin-transfer-cut-off-by-a-stop-in-line = transfert interrompu par un arrêt
+
 admin-analyte-stopped-while-the-machine-was-sending-the-pieces = Analyte s’est arrêté pendant l’envoi par l’automate ; les parties qu’il avait confirmées sont conservées.
 
 admin-lab-app-already-has-different-content = L’application de laboratoire a déjà un contenu différent
+
+admin-lab-app-already-has-different-content-in-line = l’application de laboratoire a déjà un contenu différent
 
 admin-the-lab-app-already-holds-different-content-under-this = L’application de laboratoire détient déjà un contenu différent sous l’ID de cette transmission.
 
 admin-machine-s-cancel-answers-disagree = Les réponses d’annulation de l’automate se contredisent
 
+admin-machine-s-cancel-answers-disagree-in-line = les réponses d’annulation de l’automate se contredisent
+
 admin-order-event-not-sent = Événement de demande non envoyé
 
+admin-order-event-not-sent-in-line = événement de demande non envoyé
+
 admin-result-kept-for-review = Résultat conservé pour vérification
+
+admin-result-kept-for-review-in-line = résultat conservé pour vérification
 
 admin-already-received = déjà reçu
 
 admin-delivery-stored-for-another-contract = Transmission stockée pour un autre contrat
 
+admin-delivery-stored-for-another-contract-in-line = transmission stockée pour un autre contrat
+
 admin-unexpected-answer-from-the-lab-app = Réponse inattendue de l’application de laboratoire
+
+admin-unexpected-answer-from-the-lab-app-in-line = réponse inattendue de l’application de laboratoire
 
 admin-this-pc-s-time-zone = Fuseau horaire de ce PC ({ $name })
 
@@ -1829,25 +1973,43 @@ admin-kept-never-deleted = Conservé, jamais supprimé
 
 admin-test-code-parts-do-not-match = Les parties du code d’analyse ne correspondent pas
 
+admin-test-code-parts-do-not-match-in-line = les parties du code d’analyse ne correspondent pas
+
 admin-value-cannot-be-read = Valeur illisible
+
+admin-value-cannot-be-read-in-line = valeur illisible
 
 admin-escape-code-not-agreed = Code d’échappement non convenu
 
+admin-escape-code-not-agreed-in-line = code d’échappement non convenu
+
 admin-processing-mode-unknown = Mode de traitement inconnu
+
+admin-processing-mode-unknown-in-line = mode de traitement inconnu
 
 admin-no-results-in-the-message = Aucun résultat dans le message
 
+admin-no-results-in-the-message-in-line = aucun résultat dans le message
+
 admin-time-cannot-be-read = Heure illisible
 
+admin-time-cannot-be-read-in-line = heure illisible
+
 admin-incomplete-astm-report = Compte rendu ASTM incomplet
+
+admin-incomplete-astm-report-in-line = compte rendu ASTM incomplet
 
 admin-the-analyzer-did-not-report-normal-completion = L’analyseur n’a pas signalé de fin normale.
 
 admin-final-status-cannot-be-sent = Le statut définitif ne peut pas être envoyé
 
+admin-final-status-cannot-be-sent-in-line = le statut définitif ne peut pas être envoyé
+
 admin-this-machine-sends-no-run-number-that-stays-the = Cet automate n’envoie aucun numéro de passage qui reste identique, et son code patient n’est pas un ID d’échantillon fiable ; Analyte ne peut donc pas distinguer ce résultat des autres.
 
 admin-result-identity-repeated = Identité de résultat répétée
+
+admin-result-identity-repeated-in-line = identité de résultat répétée
 
 admin-two-results-in-this-message-would-have-the-same = Deux résultats de ce message auraient la même identité, et aucun sous-ID ne les distingue.
 
@@ -1855,13 +2017,19 @@ admin-the-device-time-or-sequence-number-that-this-machine = L’appareil, l’h
 
 admin-result-identity-not-trusted = Identité de résultat non fiable
 
+admin-result-identity-not-trusted-in-line = identité de résultat non fiable
+
 admin-this-machine-s-sequence-numbers-can-start-over-so = Les numéros de séquence de cet automate peuvent recommencer à zéro ; ils ne peuvent donc pas distinguer les résultats sans un passage et une révision fiables.
 
 admin-this-machine-s-messages-carry-no-trusted-result-or = Les messages de cet automate ne contiennent aucune identité fiable de résultat ou de passage, et n’indiquent pas si un résultat est un résultat patient ou un résultat de contrôle qualité.
 
 admin-processing-again-produced-no-results = Le retraitement n’a produit aucun résultat
 
+admin-processing-again-produced-no-results-in-line = le retraitement n’a produit aucun résultat
+
 admin-result-differs-from-an-earlier-one = Le résultat diffère d’un résultat antérieur
+
+admin-result-differs-from-an-earlier-one-in-line = le résultat diffère d’un résultat antérieur
 
 admin-a-result-came-with-other-content-under-the-same = Un résultat est arrivé avec un autre contenu sous la même identité qu’un résultat antérieur, et rien ne l’indique comme une correction.
 
@@ -1877,7 +2045,11 @@ admin-the-lab-app-gave-an-answer-that-the-lab = L’application de laboratoire a
 
 admin-older-order-version-refused = Version plus ancienne de la demande refusée
 
+admin-older-order-version-refused-in-line = version plus ancienne de la demande refusée
+
 admin-changed-order-refused = Demande modifiée refusée
+
+admin-changed-order-refused-in-line = demande modifiée refusée
 
 admin-error-awos-item-not-retained = élément AWOS non conservé
 
@@ -2011,7 +2183,11 @@ admin-message-holds-no-results = Le message ne contient aucun résultat.
 
 admin-identity-missing = Identité de résultat manquante
 
+admin-identity-missing-in-line = identité de résultat manquante
+
 admin-message-cut-off = Message interrompu
+
+admin-message-cut-off-in-line = message interrompu
 
 admin-report-reload = Rechargez la page ; si le problème persiste, transmettez les détails ci-dessous au support.
 
@@ -2072,6 +2248,8 @@ admin-recorded-as-new = nouveau
 admin-recorded-as-correction = une correction
 
 admin-lab-app-answer-unreadable = La réponse de l’application de laboratoire n’a pas pu être lue
+
+admin-lab-app-answer-unreadable-in-line = la réponse de l’application de laboratoire n’a pas pu être lue
 
 admin-page-could-not-be-shown = Cette page n’a pas pu être affichée
 

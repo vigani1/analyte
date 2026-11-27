@@ -84,6 +84,8 @@ doctor-overview-orders-with-unknown-outcome = Órdenes con desenlace desconocido
 
 doctor-overview-sending = Envío
 
+doctor-overview-sending-in-line = envío
+
 doctor-overview-disk = Disco
 
 doctor-overview-analyte-review-list = analyte review list

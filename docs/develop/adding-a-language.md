@@ -7,6 +7,9 @@
 2. Translate whole messages. Use Fluent select expressions for plurals.
    Keep commands and literal machine or lab-app terms as written. Preserve
    any formatting the message needs and keep markup in the templates.
+   A message ending in `-in-line` is the label above it written inside a
+   sentence; give it the capitals your language uses there. Code never
+   changes the case of a translated label.
 3. Register the new files and tag in
    [the embedded catalog list](../../crates/core/i18n/src/lib.rs).
    A missing translation uses the English message.

@@ -95,10 +95,7 @@ pub(super) fn fill(setup: &Setup, id: &str, draft: &mut Draft, ask: Ask) -> Resu
                 .collect();
             let question = tr_args(
                 "setup-step-2-cable-the-model-suggests-none-match-the",
-                [(
-                    "to-lowercase",
-                    (cable::label(setting).to_lowercase()).to_string().into(),
-                )],
+                [("setting", cable::label_in_line(setting).into())],
             );
             let chosen = ask.choose(&question, &choices)?;
             cable::set(draft, setting, chosen);
@@ -164,12 +161,7 @@ fn ask_model_choices(
             "setup-step-2-analyzer-settings-the-model-suggests-none",
             [
                 ("label", (choice.label.as_str()).to_string().into()),
-                (
-                    "to-lowercase",
-                    (choices::hint(choice.kind).to_lowercase())
-                        .to_string()
-                        .into(),
-                ),
+                ("hint", choices::hint_in_line(choice.kind).into()),
             ],
         );
         if let Some(value) = ask.choose(&question, &options)? {

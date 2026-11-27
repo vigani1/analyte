@@ -69,6 +69,8 @@ admin-recording-only = Vetëm regjistrim. Asgjë nuk dërgohet te aplikacioni i 
 
 admin-open-to-any = Pranon lidhje nga çdo pajisje
 
+admin-open-to-any-in-line = pranon lidhje nga çdo pajisje
+
 admin-open-to-any-advice = Çdo pajisje në rrjetin laboratorik që arrin këtë portë mund të dërgojë rezultate si kjo pajisje. Ndryshoni konfigurimin e tij dhe zgjidhni "Pranoje vetëm këtë pajisje" pas testit të lidhjes.
 
 admin-refused-advice = Vetëm pajisja duhet të lidhet me këtë portë. Nëse kjo është vetë pajisja, adresa e saj ndryshoi: shtoni adresën e re në konfigurimin e saj. Nëse jo, gjeni atë pajisje.
@@ -119,6 +121,8 @@ admin-no-machine-set-up = Asnjë pajisje nuk është ngritur.
 
 admin-poll-title = Kërkesa për rezultate nuk u zgjidh
 
+admin-poll-title-in-line = kërkesa për rezultate nuk u zgjidh
+
 admin-how-read = Si u lexua ky mesazh
 
 admin-compare-measurements = Krahasoni matjet
@@ -129,7 +133,11 @@ admin-process-again = Ripërpuno
 
 admin-marked-resolved = Shënuar si i zgjidhur
 
+admin-marked-resolved-in-line = shënuar si i zgjidhur
+
 admin-processed-again = Ripërpunuar
+
+admin-processed-again-in-line = ripërpunuar
 
 admin-open-item = Hap çështjen
 
@@ -418,6 +426,44 @@ admin-resolve-held-item = Zgjidh çështjen e mbajtur për shqyrtim
 admin-this-is-a-resend = Ky është një ridërgim
 
 admin-this-is-a-rerun = Kjo është një rimatje
+
+admin-help-what-each-choice-means = Çfarë do të thotë secila zgjedhje
+
+admin-help-three-cases = Një rezultat mund të vijë përsëri për tre arsye:
+
+admin-help-case-resend = Ridërgim
+
+admin-help-case-resend-text = Pajisja dërgoi përsëri të njëjtin rezultat.
+
+admin-help-case-rerun = Rimatje
+
+admin-help-case-rerun-text = E njëjta mostër dhe e njëjta analizë u matën përsëri.
+
+admin-help-case-correction = Korrigjim
+
+admin-help-case-correction-text = Pajisja ndryshoi një rezultat që e kishte dërguar.
+
+admin-help-correction-note = Asnjë buton nuk e dërgon një ndryshim të mbajtur për shqyrtim si korrigjim. Një korrigjim që pajisja e shënon si të tillë shkon vetë te aplikacioni i laboratorit si version i ri i rezultatit, përveç kur pajisja është vendosur te «Më pyet gjithmonë». Nëse një rezultat i ndryshuar pret këtu, kontrolloni në pajisje cila vlerë është e saktë para se të zgjidhni.
+
+admin-help-buttons = Çfarë bën secili buton:
+
+admin-help-resend-does = E regjistron rezultatin e mbajtur për shqyrtim si të njëjtin rezultat me atë të mëparshmin. Asgjë e re nuk i dërgohet aplikacionit të laboratorit.
+
+admin-help-rerun-does = Ia dërgon rezultatin e mbajtur për shqyrtim aplikacionit të laboratorit një herë, si rezultat të ri. Rezultati i mëparshëm mbetet; aplikacioni i laboratorit vendos cilën vlerë të raportojë.
+
+admin-help-resolve-held-does = Ofrohet kur një rezultat i mbajtur për shqyrtim pa ID-në e mostrës përputhet me një mesazh të mëvonshëm nga e njëjta pajisje që e ka atë. Vlen mesazhi i mëvonshëm dhe asgjë shtesë nuk dërgohet.
+
+admin-help-process-again-does = E lexon përsëri mesazhin origjinal me cilësimet aktuale dhe e ruan leximin si version të ri; leximi i mëparshëm mbahet. Nëse mesazhi tani lexohet saktë, artikulli zgjidhet dhe rezultatet e tij shkojnë te aplikacioni i laboratorit si zakonisht. Nëse jo, artikulli mbetet i hapur.
+
+admin-help-send-again-does = E vendos përsëri në radhë të njëjtën dërgesë për aplikacionin e laboratorit, të pandryshuar dhe me të njëjtën ID. Artikulli mbetet i hapur derisa dikush ta shënojë si të zgjidhur.
+
+admin-help-mark-resolved-does = Regjistron se dikush e kontrolloi artikullin. Asgjë nuk i dërgohet një pajisjeje apo aplikacionit të laboratorit. Artikulli kalon te «E zgjidhur» dhe mbetet në histori.
+
+admin-help-audited = Çdo zgjedhje kërkon një arsye dhe regjistron kush e bëri dhe kur. Mesazhi origjinal nuk ndryshohet kurrë.
+
+admin-help-left-alone = Një artikull për të cilin askush nuk vendos mbetet këtu. Analyte nuk e dërgon dhe nuk e fshin kurrë vetë.
+
+admin-help-notices = Nëse njoftimet për shqyrtim janë aktive për një aplikacion laboratori, ai aplikacion shfaq artikujt që presin këtu dhe merr një njoftim mbyllës sapo secili zgjidhet. Vendimi merret gjithmonë vetëm këtu.
 
 admin-left-every-byte-exactly-in-hex-right-the-same = Majtas: çdo bajt saktësisht, në heks. Djathtas: të njëjtat bajtë si teksti, me bajtë që nuk janë shkronja të thjeshta ose shenja të shfaqura si pika.
 
@@ -715,6 +761,8 @@ admin-unknown = E panjohur
 
 admin-cancelled = Anuluar
 
+admin-cancelled-in-line = anuluar
+
 admin-no-more-orders = Nuk ka më porosi
 
 admin-this-page-is-past-the-last-order = Kjo faqe ka kaluar porosinë e fundit.
@@ -881,21 +929,39 @@ admin-analyte-did-not-send-the-lab-app-this-order = Analyte nuk ia dërgoi ndrys
 
 admin-test-or-unit-not-mapped = Analiza ose njësia nuk ka një përputhje të përcaktuar
 
+admin-test-or-unit-not-mapped-in-line = analiza ose njësia nuk ka një përputhje të përcaktuar
+
 admin-could-not-read-message = Mesazhi nuk mund të lexohej
+
+admin-could-not-read-message-in-line = mesazhi nuk mund të lexohej
 
 admin-result-could-not-be-matched-to-earlier-results = Rezultati nuk mund të përputhej me rezultatet e mëparshme
 
+admin-result-could-not-be-matched-to-earlier-results-in-line = rezultati nuk mund të përputhej me rezultatet e mëparshme
+
 admin-message-from-the-machine-was-incomplete = Mesazhi nga pajisja ishte i paplotë
+
+admin-message-from-the-machine-was-incomplete-in-line = mesazhi nga pajisja ishte i paplotë
 
 admin-lab-app-rejected-a-delivery = Aplikacioni i laboratorit refuzoi një dërgesë
 
+admin-lab-app-rejected-a-delivery-in-line = aplikacioni i laboratorit refuzoi një dërgesë
+
 admin-lab-app-reported-a-conflicting-delivery = Aplikacioni i laboratorit raportoi një dërgesë kontradiktore
+
+admin-lab-app-reported-a-conflicting-delivery-in-line = aplikacioni i laboratorit raportoi një dërgesë kontradiktore
 
 admin-order-from-the-lab-app-was-refused = Porosia nga aplikacioni i laboratorit u refuzua
 
+admin-order-from-the-lab-app-was-refused-in-line = porosia nga aplikacioni i laboratorit u refuzua
+
 admin-cancel-conflicts-with-what-the-machine-reported = Anulo konfliktet me atë që raportoi pajisja
 
+admin-cancel-conflicts-with-what-the-machine-reported-in-line = anulo konfliktet me atë që raportoi pajisja
+
 admin-order-event-could-not-name-its-machine-model = Ngjarja e porosisë nuk mund ta emërtonte modelin e saj të pajisjes
+
+admin-order-event-could-not-name-its-machine-model-in-line = ngjarja e porosisë nuk mund ta emërtonte modelin e saj të pajisjes
 
 admin-settle-the-problem-described-above-with-the-lab-app = Zgjidheni problemin e përshkruar më sipër me ekipin e aplikacionit të laboratorit. Pastaj zgjidhni «Ridërgo».
 
@@ -948,6 +1014,8 @@ admin-resolved-today = Zgjidhet sot
 admin-open = Hapur
 
 admin-resolved = E zgjidhur
+
+admin-resolved-in-line = e zgjidhur
 
 admin-no-more-items = Nuk ka më artikuj
 
@@ -1351,9 +1419,15 @@ admin-it-still-needs-review = ; ende kërkon shqyrtim
 
 admin-recorded-as-a-resend = Regjistruar si ridërgim
 
+admin-recorded-as-a-resend-in-line = regjistruar si ridërgim
+
 admin-rerun-queued = Rezultati i rimatjes është në radhë për dërgim
 
+admin-rerun-queued-in-line = rezultati i rimatjes është në radhë për dërgim
+
 admin-superseded-by-the-receipt-with-a-tube-id = Zëvendësohet nga fatura me një tub ID
+
+admin-superseded-by-the-receipt-with-a-tube-id-in-line = zëvendësohet nga fatura me një tub ID
 
 admin-no-results-in-it = asnjë rezultat në të
 
@@ -1395,15 +1469,27 @@ admin-cancelled-by-the-machine = Anuluar nga pajisja
 
 admin-not-sent-yet = Nuk është dërguar ende
 
+admin-not-sent-yet-in-line = nuk është dërguar ende
+
 admin-sent-not-yet-accepted = Dërguar, nuk është pranuar ende
+
+admin-sent-not-yet-accepted-in-line = dërguar, nuk është pranuar ende
 
 admin-accepted-by-the-machine = Pranohet nga pajisja
 
+admin-accepted-by-the-machine-in-line = pranohet nga pajisja
+
 admin-rejected-by-the-machine = Refuzuar nga pajisja
+
+admin-rejected-by-the-machine-in-line = refuzuar nga pajisja
 
 admin-cancel-requested = Anulo kërkohet
 
+admin-cancel-requested-in-line = anulo kërkohet
+
 admin-outcome-unknown-check-the-machine = Rezultati i panjohur: kontrolloni pajisjen
+
+admin-outcome-unknown-check-the-machine-in-line = rezultati i panjohur: kontrolloni pajisjen
 
 admin-delivered = Dorëzuar
 
@@ -1559,47 +1645,79 @@ admin-analyte-asked-this-machine-for-its-next-results-and = Analyte e pyeti kët
 
 admin-test-code-missing = Kodi i analizës mungon
 
+admin-test-code-missing-in-line = kodi i analizës mungon
+
 admin-sample-id-missing = Mungon ID-ja e mostrës
+
+admin-sample-id-missing-in-line = mungon ID-ja e mostrës
 
 admin-value-is-not-the-expected-kind = Vlera nuk është lloji i pritur
 
+admin-value-is-not-the-expected-kind-in-line = vlera nuk është lloji i pritur
+
 admin-text-with-formatting-codes = Tekst me kode formatimi
+
+admin-text-with-formatting-codes-in-line = tekst me kode formatimi
 
 admin-result-classified-more-than-one-way = Rezultati i klasifikuar në më shumë se një mënyrë
 
+admin-result-classified-more-than-one-way-in-line = rezultati i klasifikuar në më shumë se një mënyrë
+
 admin-status-only-update = Përditësim vetëm për statusin
+
+admin-status-only-update-in-line = përditësim vetëm për statusin
 
 admin-result-report-incomplete = Raporti i rezultatit i paplotë
 
+admin-result-report-incomplete-in-line = raporti i rezultatit i paplotë
+
 admin-result-status-not-final = Statusi i rezultatit jo përfundimtar
+
+admin-result-status-not-final-in-line = statusi i rezultatit jo përfundimtar
 
 admin-processing-the-message-again-with-the-current-settings-produced = Përpunimi i mesazhit përsëri me cilësimet aktuale nuk dha rezultate.
 
 admin-piece-resent-with-other-content = Pjesë e refuzuar me përmbajtje tjetër
 
+admin-piece-resent-with-other-content-in-line = pjesë e refuzuar me përmbajtje tjetër
+
 admin-the-machine-sent-the-same-numbered-piece-of-a = Pajisja dërgoi dy herë të njëjtën pjesë të një mesazhi me numër, me përmbajtje të ndryshme.
 
 admin-piece-arrived-out-of-turn = Pjesë mbërriti jashtë radhe
+
+admin-piece-arrived-out-of-turn-in-line = pjesë mbërriti jashtë radhe
 
 admin-a-piece-of-a-message-arrived-when-no-transfer = Një pjesë e një mesazhi mbërriti kur asnjë transferim nga pajisja nuk ishte i hapur.
 
 admin-message-not-expected = Mesazhi nuk pritet
 
+admin-message-not-expected-in-line = mesazhi nuk pritet
+
 admin-a-message-arrived-that-analyte-did-not-expect-or = Arriti një mesazh që Analyte nuk e priste, ose ndërkohë që prisnin shumë mesazhe.
 
 admin-processing-interrupted = Përpunimi u ndërpre
+
+admin-processing-interrupted-in-line = përpunimi u ndërpre
 
 admin-processing-of-this-message-stopped-before-it-was-confirmed = Përpunimi i këtij mesazhi ndaloi përpara se të konfirmohej si i plotë.
 
 admin-returned-work-differs-from-the-order-sent = Puna e kthyer ndryshon nga porosia e dërguar
 
+admin-returned-work-differs-from-the-order-sent-in-line = puna e kthyer ndryshon nga porosia e dërguar
+
 admin-the-work-the-machine-returned-differs-from-the-order = Puna që ktheu pajisja ndryshon nga porosia që i dërgoi Analyte.
 
 admin-results-held-back-for-review = Rezultate të mbajtura për shqyrtim
 
+admin-results-held-back-for-review-in-line = rezultate të mbajtura për shqyrtim
+
 admin-results-conflict-with-earlier-ones = Rezultatet bien ndesh me ato të mëparshmet
 
+admin-results-conflict-with-earlier-ones-in-line = rezultatet bien ndesh me ato të mëparshmet
+
 admin-message-too-large = Mesazhi është shumë i madh
+
+admin-message-too-large-in-line = mesazhi është shumë i madh
 
 admin-the-message-was-larger-than-the-size-limit-for = Mesazhi ishte më i madh se kufiri i madhësisë për këtë pajisje.
 
@@ -1607,43 +1725,69 @@ admin-the-connection-was-stopped-while-the-message-was-arriving = Lidhja u ndër
 
 admin-message-not-finished-in-time = Mesazhi nuk ka përfunduar në kohë
 
+admin-message-not-finished-in-time-in-line = mesazhi nuk ka përfunduar në kohë
+
 admin-the-machine-did-not-finish-sending-the-message-in = Pajisja nuk e mbaroi dërgimin e mesazhit në kohë; pjesa e mbërritur ruhet.
 
 admin-message-arrived-while-busy = Mesazhi mbërriti ndërsa ishte i zënë
 
+admin-message-arrived-while-busy-in-line = mesazhi mbërriti ndërsa ishte i zënë
+
 admin-check-characters-do-not-match = Shenjat e kontrollit nuk përputhen
+
+admin-check-characters-do-not-match-in-line = shenjat e kontrollit nuk përputhen
 
 admin-the-check-characters-at-the-end-of-the-message = Karakteret e kontrollit në fund të mesazhit nuk përputhen me përmbajtjen e tij.
 
 admin-transfer-cut-off-or-refused = Transferimi ndërpritet ose refuzohet
 
+admin-transfer-cut-off-or-refused-in-line = transferimi ndërpritet ose refuzohet
+
 admin-the-transfer-from-the-machine-did-not-finish-or = Transferimi nga pajisja nuk ka përfunduar, ose është refuzuar; ajo që ka mbërritur mbahet.
 
 admin-edited-result-kept-for-review = Rezultat i ndryshuar, i mbajtur për shqyrtim
 
+admin-edited-result-kept-for-review-in-line = rezultat i ndryshuar, i mbajtur për shqyrtim
+
 admin-transfer-cut-off = Transferimi i ndërprerë
+
+admin-transfer-cut-off-in-line = transferimi i ndërprerë
 
 admin-the-machine-stopped-sending-before-the-message-was-complete = Pajisja ndaloi dërgimin përpara se mesazhi të përfundonte; copat e mbërritura ruhen.
 
 admin-transfer-cut-off-by-a-stop = Transferimi ndërpritet nga një ndalesë
 
+admin-transfer-cut-off-by-a-stop-in-line = transferimi ndërpritet nga një ndalesë
+
 admin-analyte-stopped-while-the-machine-was-sending-the-pieces = Analyte ndaloi ndërsa pajisja po dërgonte; mbahen pjesët që kishte konfirmuar.
 
 admin-lab-app-already-has-different-content = Aplikacioni i laboratorit tashmë ka përmbajtje të ndryshme
+
+admin-lab-app-already-has-different-content-in-line = aplikacioni i laboratorit tashmë ka përmbajtje të ndryshme
 
 admin-the-lab-app-already-holds-different-content-under-this = Aplikacioni i laboratorit tashmë ka përmbajtje të ndryshme nën ID të kësaj dërgese.
 
 admin-machine-s-cancel-answers-disagree = Përgjigjet e anulimit të pajisjes nuk pajtohen
 
+admin-machine-s-cancel-answers-disagree-in-line = përgjigjet e anulimit të pajisjes nuk pajtohen
+
 admin-order-event-not-sent = Ngjarja e porosisë nuk u dërgua
 
+admin-order-event-not-sent-in-line = ngjarja e porosisë nuk u dërgua
+
 admin-result-kept-for-review = Rezultat i mbajtur për shqyrtim
+
+admin-result-kept-for-review-in-line = rezultat i mbajtur për shqyrtim
 
 admin-already-received = tashmë të marra
 
 admin-delivery-stored-for-another-contract = Dorëzimi ruhet për një kontratë tjetër
 
+admin-delivery-stored-for-another-contract-in-line = dorëzimi ruhet për një kontratë tjetër
+
 admin-unexpected-answer-from-the-lab-app = Përgjigje e papritur nga aplikacioni i laboratorit
+
+admin-unexpected-answer-from-the-lab-app-in-line = përgjigje e papritur nga aplikacioni i laboratorit
 
 admin-this-pc-s-time-zone = Zona kohore e kësaj PC ({ $name })
 
@@ -1809,25 +1953,43 @@ admin-kept-never-deleted = Ruhet, nuk fshihet kurrë
 
 admin-test-code-parts-do-not-match = Pjesët e kodit të testimit nuk përputhen
 
+admin-test-code-parts-do-not-match-in-line = pjesët e kodit të testimit nuk përputhen
+
 admin-value-cannot-be-read = Vlera nuk mund të lexohet
+
+admin-value-cannot-be-read-in-line = vlera nuk mund të lexohet
 
 admin-escape-code-not-agreed = Kodi i arratisjes nuk u pajtua
 
+admin-escape-code-not-agreed-in-line = kodi i arratisjes nuk u pajtua
+
 admin-processing-mode-unknown = Modaliteti i përpunimit i panjohur
+
+admin-processing-mode-unknown-in-line = modaliteti i përpunimit i panjohur
 
 admin-no-results-in-the-message = Asnjë rezultat në mesazh
 
+admin-no-results-in-the-message-in-line = asnjë rezultat në mesazh
+
 admin-time-cannot-be-read = Koha nuk mund të lexohet
 
+admin-time-cannot-be-read-in-line = koha nuk mund të lexohet
+
 admin-incomplete-astm-report = Raport ASTM jo i plotë
+
+admin-incomplete-astm-report-in-line = raport ASTM jo i plotë
 
 admin-the-analyzer-did-not-report-normal-completion = Analizatori nuk raportoi përfundimin normal.
 
 admin-final-status-cannot-be-sent = Statusi përfundimtar nuk mund të dërgohet
 
+admin-final-status-cannot-be-sent-in-line = statusi përfundimtar nuk mund të dërgohet
+
 admin-this-machine-sends-no-run-number-that-stays-the = Kjo pajisje nuk dërgon asnjë numër ekzekutimi që mbetet i njëjtë dhe kodi i tij i pacientit nuk është një mostër e besuar ID, kështu që Analyte nuk mund ta dallojë këtë rezultat nga të tjerët.
 
 admin-result-identity-repeated = Identiteti i rezultatit përsëritet
+
+admin-result-identity-repeated-in-line = identiteti i rezultatit përsëritet
 
 admin-two-results-in-this-message-would-have-the-same = Dy rezultate në këtë mesazh do të kishin të njëjtin identitet dhe asnjë nën-ID nuk i dallon ato.
 
@@ -1835,13 +1997,19 @@ admin-the-device-time-or-sequence-number-that-this-machine = Mungon pajisja, koh
 
 admin-result-identity-not-trusted = Identiteti i rezultatit nuk është i besueshëm
 
+admin-result-identity-not-trusted-in-line = identiteti i rezultatit nuk është i besueshëm
+
 admin-this-machine-s-sequence-numbers-can-start-over-so = Numrat e sekuencës së kësaj pajisjeje mund të fillojnë nga e para, kështu që ata nuk mund të dallojnë rezultatet pa një ekzekutim dhe rishikim të besueshëm.
 
 admin-this-machine-s-messages-carry-no-trusted-result-or = Mesazhet e kësaj pajisjeje nuk kanë asnjë rezultat të besueshëm ose identitet të ekzekutimit dhe nuk thonë nëse një rezultat është një pacient apo një rezultat i kontrollit të cilësisë.
 
 admin-processing-again-produced-no-results = Përpunimi përsëri nuk dha rezultate
 
+admin-processing-again-produced-no-results-in-line = përpunimi përsëri nuk dha rezultate
+
 admin-result-differs-from-an-earlier-one = Rezultati ndryshon nga ai i mëparshmi
+
+admin-result-differs-from-an-earlier-one-in-line = rezultati ndryshon nga ai i mëparshmi
 
 admin-a-result-came-with-other-content-under-the-same = Një rezultat erdhi me përmbajtje të tjera me të njëjtin identitet si një rezultat i mëparshëm dhe asgjë nuk e shënon atë si korrigjim.
 
@@ -1857,7 +2025,11 @@ admin-the-lab-app-gave-an-answer-that-the-lab = Aplikacioni i laboratorit dha nj
 
 admin-older-order-version-refused = Versioni i vjetër i porosisë u refuzua
 
+admin-older-order-version-refused-in-line = versioni i vjetër i porosisë u refuzua
+
 admin-changed-order-refused = Urdhri i ndryshuar u refuzua
+
+admin-changed-order-refused-in-line = urdhri i ndryshuar u refuzua
 
 admin-error-awos-item-not-retained = Artikulli AWOS nuk u ruajt
 
@@ -1977,7 +2149,11 @@ admin-message-holds-no-results = Mesazhi nuk ka rezultate.
 
 admin-identity-missing = Identiteti i rezultatit mungon
 
+admin-identity-missing-in-line = identiteti i rezultatit mungon
+
 admin-message-cut-off = Mesazhi u ndërpre
+
+admin-message-cut-off-in-line = mesazhi u ndërpre
 
 admin-report-reload = Rifresko faqen; nëse kjo vazhdon të ndodhë, jepni detajet më poshtë për të mbështetur.
 
@@ -2042,6 +2218,8 @@ admin-recorded-as-new = i ri
 admin-recorded-as-correction = korrigjim
 
 admin-lab-app-answer-unreadable = Përgjigjja e aplikacionit të laboratorit nuk u lexua
+
+admin-lab-app-answer-unreadable-in-line = përgjigjja e aplikacionit të laboratorit nuk u lexua
 
 admin-page-could-not-be-shown = Kjo faqe nuk mund të shfaqej
 

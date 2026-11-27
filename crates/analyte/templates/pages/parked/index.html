@@ -1,15 +1,17 @@
-{#- Needs review (GET /parked): the Open and Resolved filters with their counts, then the open items as cards with what to do and those resolved today, or the resolved items as rows saying how each was settled. -#}
+{#- Needs review (GET /parked): the Open and Resolved filters with their counts, the "What each choice means" help, then the open items as cards with what to do and those resolved today, or the resolved items as rows saying how each was settled. -#}
 {% extends "layout/base.html" %}
 {%- import "components/display.html" as display %}
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/forms.html" as forms %}
 {%- import "components/layout.html" as layout %}
+{%- import "pages/parked/choices.html" as choices %}
 {%- block main %}
 {% call layout::intro_head("", analyte_i18n::text("admin-needs-review"), crate::admin::parked::page::lede()) %}
 <nav class="chips" aria-label="{{ analyte_i18n::text("admin-show") }}">
 {%- for chip in chips %}{% call forms::chip(chip) %}{% endcall %}{% endfor -%}
 </nav>
 {% endcall %}
+{% call layout::card() %}{% call choices::choices_help() %}{% endcall %}{% endcall %}
 {%- if let Some(empty) = empty %}
 <div class="card">
 {%- if empty.good %}

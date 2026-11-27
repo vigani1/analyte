@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Labels inside a sentence (Activity lines, the serial cable differences,
+  the `machines` setup questions and the devices warning in `machines
+  list`) now have their own message in every language instead of being
+  lowercased in code, so German keeps its nouns capitalised. English reads
+  as before.
+
+- Needs review pages explain each choice in a "What each choice means"
+  section beside the decisions: resend, rerun and correction, what each
+  button does and whether the lab app receives anything, the audit, what
+  happens to an item left alone and the review notices (ADRs 0035, 0038).
+
 - Fix the desktop app in Albanian: it could not start the engine because the
   catalog translated the `System32` folder in the path to `sc.exe`. Paths,
   commands and environment variable names are now fixed in code, and

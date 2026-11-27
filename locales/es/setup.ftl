@@ -307,6 +307,8 @@ setup-later = Más tarde
 
 setup-done = Hecho
 
+setup-done-in-line = hecho
+
 setup-set-up-a-machine = Configurar un equipo
 
 setup-setup-steps = Pasos de configuración
@@ -339,9 +341,9 @@ setup-data-bits = { $data-bits } bits de datos
 
 setup-stop-bits = { $stop-bits } bits de parada
 
-setup-the-manual-suggests = { $to-lowercase } { $now } (el manual sugiere { $suggested })
+setup-the-manual-suggests = { $setting } { $now } (el manual sugiere { $suggested })
 
-setup-the-machine-definition-suggests-none = { $to-lowercase } { $now } (la definición del equipo no sugiere ninguno)
+setup-the-machine-definition-suggests-none = { $setting } { $now } (la definición del equipo no sugiere ninguno)
 
 setup-as-the-manual-suggests = { $serial }; como sugiere el manual
 
@@ -367,13 +369,23 @@ setup-software-flow-control-xon-xoff = control de flujo por software (XON/XOFF)
 
 setup-baud-rate = Velocidad en baudios
 
+setup-baud-rate-in-line = velocidad en baudios
+
 setup-data-bits-2 = Bits de datos
+
+setup-data-bits-2-in-line = bits de datos
 
 setup-parity = Paridad
 
+setup-parity-in-line = paridad
+
 setup-stop-bits-2 = Bits de parada
 
+setup-stop-bits-2-in-line = bits de parada
+
 setup-flow-control = Control de flujo
+
+setup-flow-control-in-line = control de flujo
 
 setup-1-stop-bit = 1 bit de parada
 
@@ -393,7 +405,11 @@ setup-the-machine-definition-suggests-none-2 = { $label }: { $value } (la defini
 
 setup-match-the-setting-on-the-analyzer-s-own-screen = Haga que coincida con el ajuste de la pantalla propia del analizador.
 
+setup-match-the-setting-on-the-analyzer-s-own-screen-in-line = haga que coincida con el ajuste de la pantalla propia del analizador.
+
 setup-read-the-version-on-the-analyzer-s-about-screen = Lea la versión en la pantalla Acerca de del analizador.
+
+setup-read-the-version-on-the-analyzer-s-about-screen-in-line = lea la versión en la pantalla Acerca de del analizador.
 
 setup-its-settings-file = Su archivo de configuración: { $path }
 
@@ -765,7 +781,7 @@ setup-recorded = { "  " }Grabado: { $recording }
 
 setup-latest-refusal = { "  " }Último rechazo: { $refused }
 
-setup-devices-warning-accept-only-the-analyzer-with-analyte-machines = { "  " }Dispositivos: aviso - { $to-lowercase }. Acepte solo el analizador con: analyte machines set { $id } --allowed-peer <IP>
+setup-devices-warning-accept-only-the-analyzer-with-analyte-machines = { "  " }Dispositivos: aviso - { $access }. Acepte solo el analizador con: analyte machines set { $id } --allowed-peer <IP>
 
 setup-not-running = no está en funcionamiento
 
@@ -831,11 +847,11 @@ setup-remove-it = ¿Eliminarlo?
 
 setup-any-device-that-reaches-this-port-could-send-results = Cualquier dispositivo que llegue a este puerto podría enviar resultados haciéndose pasar por este equipo. Ejecute analyte machines test para ver la dirección del analizador.
 
-setup-step-2-cable-the-model-suggests-none-match-the = Paso 2, Cable: ¿{ $to-lowercase }? El modelo no sugiere ninguno; haga que coincida con la pantalla de ajustes LIS/host del analizador
+setup-step-2-cable-the-model-suggests-none-match-the = Paso 2, Cable: ¿{ $setting }? El modelo no sugiere ninguno; haga que coincida con la pantalla de ajustes LIS/host del analizador
 
 setup-step-2-analyzer-settings-seconds-between-report-polls-to = Paso 2, Ajustes del analizador: segundos entre consultas de informes (de { $start } a { $end })
 
-setup-step-2-analyzer-settings-the-model-suggests-none = Paso 2, Ajustes del analizador: ¿{ $label }? El modelo no sugiere ninguno; { $to-lowercase }
+setup-step-2-analyzer-settings-the-model-suggests-none = Paso 2, Ajustes del analizador: ¿{ $label }? El modelo no sugiere ninguno; { $hint }
 
 setup-step-2-recording-seconds-between-asks-for-the-next = Paso 2, Grabación: segundos entre consultas del siguiente informe (de { $start } a { $end })
 

@@ -62,6 +62,8 @@ admin-recording-only = Recording only — nothing is sent to a lab app
 
 admin-open-to-any = Accepts connections from any device
 
+admin-open-to-any-in-line = accepts connections from any device
+
 admin-open-to-any-advice = Any device on the lab network that reaches this port can send results as this machine. Edit its setup and choose “Only accept this device” after the connection test.
 
 admin-refused-advice = Only the machine should connect to this port. If this is the machine itself, its address changed: add the new address in its setup. If not, find that device.
@@ -112,6 +114,8 @@ admin-no-machine-set-up = No machine is set up.
 
 admin-poll-title = Request for results not settled
 
+admin-poll-title-in-line = request for results not settled
+
 admin-how-read = How this message was read
 
 admin-compare-measurements = Compare measurements
@@ -122,7 +126,11 @@ admin-process-again = Process again
 
 admin-marked-resolved = Marked resolved
 
+admin-marked-resolved-in-line = marked resolved
+
 admin-processed-again = Processed again
+
+admin-processed-again-in-line = processed again
 
 admin-open-item = Open the item
 
@@ -411,6 +419,44 @@ admin-resolve-held-item = Resolve held item
 admin-this-is-a-resend = This is a resend
 
 admin-this-is-a-rerun = This is a rerun
+
+admin-help-what-each-choice-means = What each choice means
+
+admin-help-three-cases = A result can come back for three reasons:
+
+admin-help-case-resend = Resend
+
+admin-help-case-resend-text = The machine sent the same result again.
+
+admin-help-case-rerun = Rerun
+
+admin-help-case-rerun-text = The same sample and test were measured again.
+
+admin-help-case-correction = Correction
+
+admin-help-case-correction-text = The machine changed a result it had sent.
+
+admin-help-correction-note = No button sends a held change as a correction. A correction the machine marks as one goes to the lab app by itself, as a new revision of the result, unless the machine is set to Always ask me. If a changed result waits here, check on the machine which value is right before you choose.
+
+admin-help-buttons = What each button does:
+
+admin-help-resend-does = Records the held result as the same result as the earlier one. Nothing new is sent to the lab app.
+
+admin-help-rerun-does = Sends the held result to the lab app once, as a new result. The earlier result stays; the lab app decides which value to report.
+
+admin-help-resolve-held-does = Offered when a held result without a sample ID matches a later message from the same machine that has one. The later message counts, and nothing extra is sent.
+
+admin-help-process-again-does = Reads the original message again with the current settings and saves the reading as a new version; the earlier reading is kept. If the message now reads correctly, the item is settled and its results go to the lab app as usual. If not, the item stays open.
+
+admin-help-send-again-does = Queues the same delivery for the lab app again, unchanged and with the same ID. The item stays open until someone marks it resolved.
+
+admin-help-mark-resolved-does = Records that someone checked the item. Nothing is sent to a machine or the lab app. The item moves to Resolved and stays in the history.
+
+admin-help-audited = Every choice asks for a reason and records who made it and when. The original message is never changed.
+
+admin-help-left-alone = An item that nobody decides on stays here. Analyte never sends or deletes it by itself.
+
+admin-help-notices = If Needs review notices are on for a lab app, that lab app shows the items waiting here and gets a closing notice once each one is settled. The decision is still made only here.
 
 admin-left-every-byte-exactly-in-hex-right-the-same = Left: every byte exactly, in hex. Right: the same bytes as text, with bytes that are not plain letters or signs shown as dots.
 
@@ -708,6 +754,8 @@ admin-unknown = Unknown
 
 admin-cancelled = Cancelled
 
+admin-cancelled-in-line = cancelled
+
 admin-no-more-orders = No more orders
 
 admin-this-page-is-past-the-last-order = This page is past the last order.
@@ -874,21 +922,39 @@ admin-analyte-did-not-send-the-lab-app-this-order = Analyte did not send the lab
 
 admin-test-or-unit-not-mapped = Test or unit not mapped
 
+admin-test-or-unit-not-mapped-in-line = test or unit not mapped
+
 admin-could-not-read-message = Could not read message
+
+admin-could-not-read-message-in-line = could not read message
 
 admin-result-could-not-be-matched-to-earlier-results = Result could not be matched to earlier results
 
+admin-result-could-not-be-matched-to-earlier-results-in-line = result could not be matched to earlier results
+
 admin-message-from-the-machine-was-incomplete = Message from the machine was incomplete
+
+admin-message-from-the-machine-was-incomplete-in-line = message from the machine was incomplete
 
 admin-lab-app-rejected-a-delivery = Lab app rejected a delivery
 
+admin-lab-app-rejected-a-delivery-in-line = lab app rejected a delivery
+
 admin-lab-app-reported-a-conflicting-delivery = Lab app reported a conflicting delivery
+
+admin-lab-app-reported-a-conflicting-delivery-in-line = lab app reported a conflicting delivery
 
 admin-order-from-the-lab-app-was-refused = Order from the lab app was refused
 
+admin-order-from-the-lab-app-was-refused-in-line = order from the lab app was refused
+
 admin-cancel-conflicts-with-what-the-machine-reported = Cancel conflicts with what the machine reported
 
+admin-cancel-conflicts-with-what-the-machine-reported-in-line = cancel conflicts with what the machine reported
+
 admin-order-event-could-not-name-its-machine-model = Order event could not name its machine model
+
+admin-order-event-could-not-name-its-machine-model-in-line = order event could not name its machine model
 
 admin-settle-the-problem-described-above-with-the-lab-app = Settle the problem described above with the lab app team, then use Send again.
 
@@ -941,6 +1007,8 @@ admin-resolved-today = Resolved today
 admin-open = Open
 
 admin-resolved = Resolved
+
+admin-resolved-in-line = resolved
 
 admin-no-more-items = No more items
 
@@ -1344,9 +1412,15 @@ admin-it-still-needs-review = ; it still needs review
 
 admin-recorded-as-a-resend = Recorded as a resend
 
+admin-recorded-as-a-resend-in-line = recorded as a resend
+
 admin-rerun-queued = Rerun queued
 
+admin-rerun-queued-in-line = rerun queued
+
 admin-superseded-by-the-receipt-with-a-tube-id = Superseded by the receipt with a tube ID
+
+admin-superseded-by-the-receipt-with-a-tube-id-in-line = superseded by the receipt with a tube ID
 
 admin-no-results-in-it = no results in it
 
@@ -1392,15 +1466,27 @@ admin-cancelled-by-the-machine = Cancelled by the machine
 
 admin-not-sent-yet = Not sent yet
 
+admin-not-sent-yet-in-line = not sent yet
+
 admin-sent-not-yet-accepted = Sent, not yet accepted
+
+admin-sent-not-yet-accepted-in-line = sent, not yet accepted
 
 admin-accepted-by-the-machine = Accepted by the machine
 
+admin-accepted-by-the-machine-in-line = accepted by the machine
+
 admin-rejected-by-the-machine = Rejected by the machine
+
+admin-rejected-by-the-machine-in-line = rejected by the machine
 
 admin-cancel-requested = Cancel requested
 
+admin-cancel-requested-in-line = cancel requested
+
 admin-outcome-unknown-check-the-machine = Outcome unknown: check the machine
+
+admin-outcome-unknown-check-the-machine-in-line = outcome unknown: check the machine
 
 admin-delivered = Delivered
 
@@ -1556,47 +1642,79 @@ admin-analyte-asked-this-machine-for-its-next-results-and = Analyte asked this m
 
 admin-test-code-missing = Test code missing
 
+admin-test-code-missing-in-line = test code missing
+
 admin-sample-id-missing = Sample ID missing
+
+admin-sample-id-missing-in-line = sample ID missing
 
 admin-value-is-not-the-expected-kind = Value is not the expected kind
 
+admin-value-is-not-the-expected-kind-in-line = value is not the expected kind
+
 admin-text-with-formatting-codes = Text with formatting codes
+
+admin-text-with-formatting-codes-in-line = text with formatting codes
 
 admin-result-classified-more-than-one-way = Result classified more than one way
 
+admin-result-classified-more-than-one-way-in-line = result classified more than one way
+
 admin-status-only-update = Status-only update
+
+admin-status-only-update-in-line = status-only update
 
 admin-result-report-incomplete = Result report incomplete
 
+admin-result-report-incomplete-in-line = result report incomplete
+
 admin-result-status-not-final = Result status not final
+
+admin-result-status-not-final-in-line = result status not final
 
 admin-processing-the-message-again-with-the-current-settings-produced = Processing the message again with the current settings produced no results.
 
 admin-piece-resent-with-other-content = Piece resent with other content
 
+admin-piece-resent-with-other-content-in-line = piece resent with other content
+
 admin-the-machine-sent-the-same-numbered-piece-of-a = The machine sent the same numbered piece of a message twice, with different content.
 
 admin-piece-arrived-out-of-turn = Piece arrived out of turn
+
+admin-piece-arrived-out-of-turn-in-line = piece arrived out of turn
 
 admin-a-piece-of-a-message-arrived-when-no-transfer = A piece of a message arrived when no transfer from the machine was open.
 
 admin-message-not-expected = Message not expected
 
+admin-message-not-expected-in-line = message not expected
+
 admin-a-message-arrived-that-analyte-did-not-expect-or = A message arrived that Analyte did not expect, or while too many messages were waiting.
 
 admin-processing-interrupted = Processing interrupted
+
+admin-processing-interrupted-in-line = processing interrupted
 
 admin-processing-of-this-message-stopped-before-it-was-confirmed = Processing of this message stopped before it was confirmed as complete.
 
 admin-returned-work-differs-from-the-order-sent = Returned work differs from the order sent
 
+admin-returned-work-differs-from-the-order-sent-in-line = returned work differs from the order sent
+
 admin-the-work-the-machine-returned-differs-from-the-order = The work the machine returned differs from the order Analyte sent it.
 
 admin-results-held-back-for-review = Results held back for review
 
+admin-results-held-back-for-review-in-line = results held back for review
+
 admin-results-conflict-with-earlier-ones = Results conflict with earlier ones
 
+admin-results-conflict-with-earlier-ones-in-line = results conflict with earlier ones
+
 admin-message-too-large = Message too large
+
+admin-message-too-large-in-line = message too large
 
 admin-the-message-was-larger-than-the-size-limit-for = The message was larger than the size limit for this machine.
 
@@ -1604,43 +1722,69 @@ admin-the-connection-was-stopped-while-the-message-was-arriving = The connection
 
 admin-message-not-finished-in-time = Message not finished in time
 
+admin-message-not-finished-in-time-in-line = message not finished in time
+
 admin-the-machine-did-not-finish-sending-the-message-in = The machine did not finish sending the message in time; the part that arrived is kept.
 
 admin-message-arrived-while-busy = Message arrived while busy
 
+admin-message-arrived-while-busy-in-line = message arrived while busy
+
 admin-check-characters-do-not-match = Check characters do not match
+
+admin-check-characters-do-not-match-in-line = check characters do not match
 
 admin-the-check-characters-at-the-end-of-the-message = The check characters at the end of the message do not match its content.
 
 admin-transfer-cut-off-or-refused = Transfer cut off or refused
 
+admin-transfer-cut-off-or-refused-in-line = transfer cut off or refused
+
 admin-the-transfer-from-the-machine-did-not-finish-or = The transfer from the machine did not finish, or was refused; what arrived is kept.
 
 admin-edited-result-kept-for-review = Edited result kept for review
 
+admin-edited-result-kept-for-review-in-line = edited result kept for review
+
 admin-transfer-cut-off = Transfer cut off
+
+admin-transfer-cut-off-in-line = transfer cut off
 
 admin-the-machine-stopped-sending-before-the-message-was-complete = The machine stopped sending before the message was complete; the pieces that arrived are kept.
 
 admin-transfer-cut-off-by-a-stop = Transfer cut off by a stop
 
+admin-transfer-cut-off-by-a-stop-in-line = transfer cut off by a stop
+
 admin-analyte-stopped-while-the-machine-was-sending-the-pieces = Analyte stopped while the machine was sending; the pieces it had confirmed are kept.
 
 admin-lab-app-already-has-different-content = Lab app already has different content
+
+admin-lab-app-already-has-different-content-in-line = lab app already has different content
 
 admin-the-lab-app-already-holds-different-content-under-this = The lab app already holds different content under this delivery’s ID.
 
 admin-machine-s-cancel-answers-disagree = Machine’s cancel answers disagree
 
+admin-machine-s-cancel-answers-disagree-in-line = machine’s cancel answers disagree
+
 admin-order-event-not-sent = Order event not sent
 
+admin-order-event-not-sent-in-line = order event not sent
+
 admin-result-kept-for-review = Result kept for review
+
+admin-result-kept-for-review-in-line = result kept for review
 
 admin-already-received = already received
 
 admin-delivery-stored-for-another-contract = Delivery stored for another contract
 
+admin-delivery-stored-for-another-contract-in-line = delivery stored for another contract
+
 admin-unexpected-answer-from-the-lab-app = Unexpected answer from the lab app
+
+admin-unexpected-answer-from-the-lab-app-in-line = unexpected answer from the lab app
 
 admin-this-pc-s-time-zone = This PC’s time zone ({ $name })
 
@@ -1806,25 +1950,43 @@ admin-kept-never-deleted = Kept, never deleted
 
 admin-test-code-parts-do-not-match = Test code parts do not match
 
+admin-test-code-parts-do-not-match-in-line = test code parts do not match
+
 admin-value-cannot-be-read = Value cannot be read
+
+admin-value-cannot-be-read-in-line = value cannot be read
 
 admin-escape-code-not-agreed = Escape code not agreed
 
+admin-escape-code-not-agreed-in-line = escape code not agreed
+
 admin-processing-mode-unknown = Processing mode unknown
+
+admin-processing-mode-unknown-in-line = processing mode unknown
 
 admin-no-results-in-the-message = No results in the message
 
+admin-no-results-in-the-message-in-line = no results in the message
+
 admin-time-cannot-be-read = Time cannot be read
 
+admin-time-cannot-be-read-in-line = time cannot be read
+
 admin-incomplete-astm-report = Incomplete ASTM report
+
+admin-incomplete-astm-report-in-line = incomplete ASTM report
 
 admin-the-analyzer-did-not-report-normal-completion = The analyzer did not report normal completion.
 
 admin-final-status-cannot-be-sent = Final status cannot be sent
 
+admin-final-status-cannot-be-sent-in-line = final status cannot be sent
+
 admin-this-machine-sends-no-run-number-that-stays-the = This machine sends no run number that stays the same, and its patient code is not a trusted sample ID, so Analyte cannot tell this result apart from others.
 
 admin-result-identity-repeated = Result identity repeated
+
+admin-result-identity-repeated-in-line = result identity repeated
 
 admin-two-results-in-this-message-would-have-the-same = Two results in this message would have the same identity, and no sub-ID tells them apart.
 
@@ -1832,13 +1994,19 @@ admin-the-device-time-or-sequence-number-that-this-machine = The device, time or
 
 admin-result-identity-not-trusted = Result identity not trusted
 
+admin-result-identity-not-trusted-in-line = result identity not trusted
+
 admin-this-machine-s-sequence-numbers-can-start-over-so = This machine’s sequence numbers can start over, so they cannot tell results apart without a trusted run and revision.
 
 admin-this-machine-s-messages-carry-no-trusted-result-or = This machine’s messages carry no trusted result or run identity, and do not say whether a result is a patient or a quality control result.
 
 admin-processing-again-produced-no-results = Processing again produced no results
 
+admin-processing-again-produced-no-results-in-line = processing again produced no results
+
 admin-result-differs-from-an-earlier-one = Result differs from an earlier one
+
+admin-result-differs-from-an-earlier-one-in-line = result differs from an earlier one
 
 admin-a-result-came-with-other-content-under-the-same = A result came with other content under the same identity as an earlier result, and nothing marks it as a correction.
 
@@ -1854,7 +2022,11 @@ admin-the-lab-app-gave-an-answer-that-the-lab = The lab app gave an answer that 
 
 admin-older-order-version-refused = Older order version refused
 
+admin-older-order-version-refused-in-line = older order version refused
+
 admin-changed-order-refused = Changed order refused
+
+admin-changed-order-refused-in-line = changed order refused
 
 admin-error-awos-item-not-retained = AWOS item not retained
 
@@ -1974,7 +2146,11 @@ admin-message-holds-no-results = The message holds no results.
 
 admin-identity-missing = Result identity missing
 
+admin-identity-missing-in-line = result identity missing
+
 admin-message-cut-off = Message cut off
+
+admin-message-cut-off-in-line = message cut off
 
 admin-report-reload = Reload the page; if this keeps happening, give the details below to support.
 
@@ -2035,6 +2211,8 @@ admin-recorded-as-new = new
 admin-recorded-as-correction = a correction
 
 admin-lab-app-answer-unreadable = Lab app’s answer could not be read
+
+admin-lab-app-answer-unreadable-in-line = lab app’s answer could not be read
 
 admin-page-could-not-be-shown = This page could not be shown
 

@@ -298,6 +298,8 @@ setup-later = Më vonë
 
 setup-done = U krye
 
+setup-done-in-line = u krye
+
 setup-set-up-a-machine = Vendosni një pajisje
 
 setup-setup-steps = Hapat e konfigurimit
@@ -330,9 +332,9 @@ setup-data-bits = Bitë të dhënash { $data-bits }
 
 setup-stop-bits = { $stop-bits } bit ndalimi
 
-setup-the-manual-suggests = { $to-lowercase } { $now } (manuali sugjeron { $suggested })
+setup-the-manual-suggests = { $setting } { $now } (manuali sugjeron { $suggested })
 
-setup-the-machine-definition-suggests-none = { $to-lowercase } { $now } (përkufizimi i pajisjes nuk sugjeron asnjë)
+setup-the-machine-definition-suggests-none = { $setting } { $now } (përkufizimi i pajisjes nuk sugjeron asnjë)
 
 setup-as-the-manual-suggests = { $serial }; siç sugjeron manuali
 
@@ -358,13 +360,23 @@ setup-software-flow-control-xon-xoff = kontrolli i rrjedhës së softuerit (XON/
 
 setup-baud-rate = Norma Baud
 
+setup-baud-rate-in-line = norma Baud
+
 setup-data-bits-2 = Bitë të dhënash
+
+setup-data-bits-2-in-line = bitë të dhënash
 
 setup-parity = Barazi
 
+setup-parity-in-line = barazi
+
 setup-stop-bits-2 = Stop copa
 
+setup-stop-bits-2-in-line = stop copa
+
 setup-flow-control = Kontrolli i rrjedhës
+
+setup-flow-control-in-line = kontrolli i rrjedhës
 
 setup-1-stop-bit = 1 bit ndalimi
 
@@ -384,7 +396,11 @@ setup-the-machine-definition-suggests-none-2 = { $label }: { $value } (përkufiz
 
 setup-match-the-setting-on-the-analyzer-s-own-screen = Përputhni cilësimin në ekranin e vetë analizatorit.
 
+setup-match-the-setting-on-the-analyzer-s-own-screen-in-line = përputhni cilësimin në ekranin e vetë analizatorit.
+
 setup-read-the-version-on-the-analyzer-s-about-screen = Lexoni versionin në ekranin Rreth të analizatorit.
+
+setup-read-the-version-on-the-analyzer-s-about-screen-in-line = lexoni versionin në ekranin Rreth të analizatorit.
 
 setup-its-settings-file = Skedari i cilësimeve të tij: { $path }
 
@@ -756,7 +772,7 @@ setup-recorded = { "  " }Regjistruar: { $recording }
 
 setup-latest-refusal = { "  " }Refuzimi i fundit: { $refused }
 
-setup-devices-warning-accept-only-the-analyzer-with-analyte-machines = { "  " }Pajisjet: paralajmërim - { $to-lowercase }. Prano vetëm analizatorin me: analyte machines set { $id } --allowed-peer <IP>
+setup-devices-warning-accept-only-the-analyzer-with-analyte-machines = { "  " }Pajisjet: paralajmërim - { $access }. Prano vetëm analizatorin me: analyte machines set { $id } --allowed-peer <IP>
 
 setup-not-running = jashtë funksionit
 
@@ -822,11 +838,11 @@ setup-remove-it = Të hiqet?
 
 setup-any-device-that-reaches-this-port-could-send-results = Çdo pajisje që arrin këtë port mund të dërgojë rezultate si kjo pajisje. Ekzekutoni analyte machines test për të parë adresën e analizatorit.
 
-setup-step-2-cable-the-model-suggests-none-match-the = Hapi 2, Kablloja: { $to-lowercase }? Modeli nuk sugjeron asnjë; përputhet me ekranin e cilësimeve të LIS/host të analizatorit
+setup-step-2-cable-the-model-suggests-none-match-the = Hapi 2, Kablloja: { $setting }? Modeli nuk sugjeron asnjë; përputhet me ekranin e cilësimeve të LIS/host të analizatorit
 
 setup-step-2-analyzer-settings-seconds-between-report-polls-to = Hapi 2, Cilësimet e analizatorit: sekonda ndërmjet sondazheve të raportimit ({ $start } në { $end })
 
-setup-step-2-analyzer-settings-the-model-suggests-none = Hapi 2, Cilësimet e analizatorit: { $label }? Modeli nuk sugjeron asnjë; { $to-lowercase }
+setup-step-2-analyzer-settings-the-model-suggests-none = Hapi 2, Cilësimet e analizatorit: { $label }? Modeli nuk sugjeron asnjë; { $hint }
 
 setup-step-2-recording-seconds-between-asks-for-the-next = Hapi 2, Regjistrimi: sekonda ndërmjet kërkon raportin tjetër ({ $start } në { $end })
 

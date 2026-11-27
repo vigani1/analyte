@@ -70,6 +70,22 @@ pub(in crate::admin) fn order_look(state: OrderState) -> StateLook {
     }
 }
 
+/// An order's state in the middle of a sentence, such as an Activity line:
+/// the word [`order_look`] shows, as each language writes it there.
+pub(in crate::admin) fn order_in_line(state: OrderState) -> &'static str {
+    match state {
+        OrderState::Requested => tr("admin-not-sent-yet-in-line"),
+        OrderState::Sending => tr("doctor-overview-sending-in-line"),
+        OrderState::Sent => tr("admin-sent-not-yet-accepted-in-line"),
+        OrderState::Accepted => tr("admin-accepted-by-the-machine-in-line"),
+        OrderState::Done => tr("setup-done-in-line"),
+        OrderState::Rejected => tr("admin-rejected-by-the-machine-in-line"),
+        OrderState::CancelRequested => tr("admin-cancel-requested-in-line"),
+        OrderState::CancelConfirmed => tr("admin-cancelled-in-line"),
+        OrderState::Uncertain => tr("admin-outcome-unknown-check-the-machine-in-line"),
+    }
+}
+
 /// A delivery's state as every page shows it; pages keep the stored state on hover.
 pub(in crate::admin) fn delivery_look(state: DeliveryState) -> StateLook {
     match state {

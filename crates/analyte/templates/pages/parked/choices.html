@@ -1,0 +1,28 @@
+{#- The "What each choice means" disclosure every Needs review page shows beside its decisions: the three kinds of repeat, what each button does and sends, the audit, what happens to an item left alone and the review notices (ADRs 0035 and 0038). -#}
+{%- import "components/display.html" as display %}
+{%- import "components/layout.html" as layout %}
+
+{#- The help itself, closed until someone opens it. -#}
+{%- macro choices_help() -%}
+{% call layout::disclosure(analyte_i18n::text("admin-help-what-each-choice-means")) %}
+<p class="text">{{ analyte_i18n::text("admin-help-three-cases") }}</p>
+{% call display::kv() %}
+{% call display::pair(analyte_i18n::text("admin-help-case-resend"), "") %}{{ analyte_i18n::text("admin-help-case-resend-text") }}{% endcall %}
+{% call display::pair(analyte_i18n::text("admin-help-case-rerun"), "") %}{{ analyte_i18n::text("admin-help-case-rerun-text") }}{% endcall %}
+{% call display::pair(analyte_i18n::text("admin-help-case-correction"), "") %}{{ analyte_i18n::text("admin-help-case-correction-text") }}{% endcall %}
+{% endcall %}
+<p class="muted note">{{ analyte_i18n::text("admin-help-correction-note") }}</p>
+<p class="text">{{ analyte_i18n::text("admin-help-buttons") }}</p>
+{% call display::kv() %}
+{% call display::pair(analyte_i18n::text("admin-this-is-a-resend"), "") %}{{ analyte_i18n::text("admin-help-resend-does") }}{% endcall %}
+{% call display::pair(analyte_i18n::text("admin-this-is-a-rerun"), "") %}{{ analyte_i18n::text("admin-help-rerun-does") }}{% endcall %}
+{% call display::pair(analyte_i18n::text("admin-resolve-held-item"), "") %}{{ analyte_i18n::text("admin-help-resolve-held-does") }}{% endcall %}
+{% call display::pair(analyte_i18n::text("admin-process-again"), "") %}{{ analyte_i18n::text("admin-help-process-again-does") }}{% endcall %}
+{% call display::pair(analyte_i18n::text("admin-send-again"), "") %}{{ analyte_i18n::text("admin-help-send-again-does") }}{% endcall %}
+{% call display::pair(analyte_i18n::text("admin-mark-resolved"), "") %}{{ analyte_i18n::text("admin-help-mark-resolved-does") }}{% endcall %}
+{% endcall %}
+<p class="text">{{ analyte_i18n::text("admin-help-audited") }}</p>
+<p class="text">{{ analyte_i18n::text("admin-help-left-alone") }}</p>
+<p class="text">{{ analyte_i18n::text("admin-help-notices") }}</p>
+{% endcall %}
+{%- endmacro %}

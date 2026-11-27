@@ -85,6 +85,18 @@ pub(in crate::admin) fn label(setting: SerialSetting) -> &'static str {
     }
 }
 
+/// [`label`] in the middle of a sentence, as each language writes it there:
+/// "baud rate 19200 (the manual suggests 9600)".
+pub(in crate::admin) fn label_in_line(setting: SerialSetting) -> &'static str {
+    match setting {
+        SerialSetting::Baud => tr("setup-baud-rate-in-line"),
+        SerialSetting::DataBits => tr("setup-data-bits-2-in-line"),
+        SerialSetting::Parity => tr("setup-parity-in-line"),
+        SerialSetting::StopBits => tr("setup-stop-bits-2-in-line"),
+        SerialSetting::FlowControl => tr("setup-flow-control-in-line"),
+    }
+}
+
 /// Every value Setup offers for `setting`, as the form value and its label.
 pub(in crate::admin::setup) fn options(setting: SerialSetting) -> Vec<(String, String)> {
     match setting {
@@ -193,10 +205,7 @@ fn differences(serial: &Serial, suggestion: Option<&SerialValues>) -> Vec<String
                 Some(suggested) => tr_args(
                     "setup-the-manual-suggests",
                     [
-                        (
-                            "to-lowercase",
-                            (label(setting).to_lowercase()).to_string().into(),
-                        ),
+                        ("setting", label_in_line(setting).into()),
                         ("now", (now).to_string().into()),
                         ("suggested", (suggested).to_string().into()),
                     ],
@@ -204,10 +213,7 @@ fn differences(serial: &Serial, suggestion: Option<&SerialValues>) -> Vec<String
                 None => tr_args(
                     "setup-the-machine-definition-suggests-none",
                     [
-                        (
-                            "to-lowercase",
-                            (label(setting).to_lowercase()).to_string().into(),
-                        ),
+                        ("setting", label_in_line(setting).into()),
                         ("now", (now).to_string().into()),
                     ],
                 ),
@@ -435,6 +441,16 @@ mod tests {
             [
                 "baud rate 19200 (the manual suggests 9600)",
                 "flow control hardware (the machine definition suggests none)"
+            ]
+        );
+        // ADR 0039 (owner request 2026-11-27): each language writes the
+        // setting inside the sentence itself; German keeps its nouns.
+        let german = analyte_i18n::Language::negotiate(["de"]).expect("German is installed");
+        assert_eq!(
+            german.sync_scope(|| differences(&serial, Some(&suggestion))),
+            [
+                "Baudrate 19200 (das Handbuch schlägt 9600 vor)",
+                "Flusssteuerung hardware (die Gerätedefinition schlägt nichts vor)"
             ]
         );
     }

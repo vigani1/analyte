@@ -76,6 +76,8 @@ doctor-overview-orders-with-unknown-outcome = Orders with unknown outcome: { $co
 
 doctor-overview-sending = Sending
 
+doctor-overview-sending-in-line = sending
+
 doctor-overview-disk = Disk
 
 doctor-overview-analyte-review-list = analyte review list
