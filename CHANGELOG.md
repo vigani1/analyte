@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Record only for a model with a full machine definition now keeps the ASTM
+  link departures the definition declares. A Roche cobas e 411 recorded in a
+  cobas protocol type has its packed frames acknowledged after storage
+  instead of refused, and the BioCARE Biolyte 2000's repeated ENQ is
+  accepted. Setup asks the cobas protocol type for record only. A frame that
+  fails its checksum is still refused and kept (ADR 0034).
+
 - The Dialab Autolyser has a full machine definition written from its
   Operator's Manual Rev18 (evidence level documented) and replaces its
   record-only settings. It reads results and holds them for staff, since

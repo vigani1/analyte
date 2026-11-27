@@ -54,6 +54,13 @@ impl Recorder {
     /// the model folder `model` (`vendor/model`), with `answers` as its site
     /// file's `[recording]` lines.
     async fn start_model(model: &str, record: &str, answers: &str) -> Result<Self, Error> {
+        Self::start_file(model, "record.toml", record, answers).await
+    }
+
+    /// Starts a record-only machine from the model file `text`, saved as
+    /// `file` (`record.toml` or a ready `machine.toml`) in the model folder
+    /// `model`, with `answers` as its site file's `[recording]` lines.
+    async fn start_file(model: &str, file: &str, text: &str, answers: &str) -> Result<Self, Error> {
         let _ = tracing_subscriber::fmt()
             .with_test_writer()
             .with_ansi(false)
@@ -64,7 +71,7 @@ impl Recorder {
         let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
         let address = listener.local_addr()?;
         std::fs::create_dir_all(root.join(model))?;
-        std::fs::write(root.join(model).join("record.toml"), record)?;
+        std::fs::write(root.join(model).join(file), text)?;
         std::fs::write(
             root.join("site.toml"),
             format!(
@@ -75,7 +82,7 @@ impl Recorder {
         std::fs::write(
             &path,
             analyte_fixtures::program(&format!(
-                "[[machines]]\nid = 'recorder'\ndefinition = '{model}/record.toml'\nsite = 'site.toml'\n"
+                "[[machines]]\nid = 'recorder'\ndefinition = '{model}/{file}'\nsite = 'site.toml'\n"
             )),
         )?;
         let mut program = Program::load(&path)?;

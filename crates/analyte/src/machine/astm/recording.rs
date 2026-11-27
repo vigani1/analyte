@@ -10,10 +10,12 @@
 //! Frames carry one record each (LIS01-A2 6.3.1.1), unless the model declares
 //! packed records for the analyzer mode the lab chose (ADR 0015): then a frame
 //! whose checksum, number and length pass may hold several. Outbound replies
-//! stay one record per frame either way.
+//! stay one record per frame either way. A ready definition that declares a
+//! repeated ENQ after a lost acknowledgment gets that one retry too.
 use super::Error;
 use crate::machine::driver::{Flow, HostInput, Protocol, Session};
 use crate::machine::receive::custody::{self, WriteDeadline, ms};
+use analyte_config::RecordStack;
 use analyte_config::recording::AstmCapture;
 use analyte_dialog::astm::{Action, Config, Dialog, End, Epoch, Event, Interrupt, Role, Timers};
 use std::time::{Duration, Instant};
@@ -32,7 +34,7 @@ pub(in crate::machine) struct Host {
 }
 
 /// The LIS01-A2 dialog settings of the capture profile; Analyte is the computer.
-fn config(link: &AstmCapture, packed: bool, commit: Duration) -> Result<Config, Error> {
+fn config(link: &AstmCapture, stack: &RecordStack, commit: Duration) -> Result<Config, Error> {
     let timers = Timers {
         establish: ms(link.establish_ms()),
         contention: ms(link.contention_ms()),
@@ -49,7 +51,8 @@ fn config(link: &AstmCapture, packed: bool, commit: Duration) -> Result<Config, 
         link.frames(),
         Interrupt::Honor,
     )?
-    .with_record_boundaries(if packed {
+    .with_repeat_enq(stack.repeat_enq())
+    .with_record_boundaries(if stack.packed_records() {
         analyte_framing::astm::RecordBoundaries::Packed
     } else {
         analyte_framing::astm::RecordBoundaries::Separate
@@ -60,9 +63,9 @@ impl Host {
     pub(in crate::machine) fn open(
         machine: &crate::installation::config::Machine,
         link: &AstmCapture,
-        packed: bool,
+        stack: &RecordStack,
     ) -> Result<Self, Error> {
-        let config = config(link, packed, custody::budget(machine))?;
+        let config = config(link, stack, custody::budget(machine))?;
         let admission = link
             .frame_limit()
             .checked_add(machine.snapshot.canonical().len())
@@ -100,7 +103,7 @@ impl Host {
 }
 
 impl Protocol for Host {
-    type Settings = analyte_config::RecordStack;
+    type Settings = RecordStack;
     type Action = Action;
     type Error = Error;
 

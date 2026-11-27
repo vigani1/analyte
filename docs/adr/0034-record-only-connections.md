@@ -119,7 +119,8 @@ identity mapping, or a lab app.
     connection, a packed query included, and its own replies stay one record
     per frame. The shared ASTM profile, and every model that declares
     nothing, stay strict. A ready `machine.toml` records with its protocol
-    and link only, so its departures do not carry into record only.
+    and link only, so its departures do not carry into record only
+    (narrowed by the note of 2026-11-27 below: its ASTM link departures do).
 11. **Leaving record only.** Saving the machine normally (Setup, or `machines
     set --connect-normally --lab-app ...`) needs a ready definition and a lab
     app, and removes `[recording]`. Recorded messages are never delivered
@@ -178,3 +179,27 @@ uses a model, so a model would stay blocked forever. The owner decided:
 - When a model gains a `machine.toml`, its `record.toml` is removed in the
   same change (a folder never holds both); record-only for a ready model
   records with its definition's protocol, as Decision 1 already allows.
+
+### Note, 2026-11-27: a ready model keeps its link departures
+
+The amendment above lets a ready model record with its definition. Decision
+10 still said that a definition's departures do not carry into record only,
+so a cobas e 411 recorded in a cobas protocol type got every packed frame
+refused with NAK, which the `record.toml` it replaced had accepted. Clarified:
+
+- Record only for a ready `machine.toml` keeps the departures that change
+  only the ASTM link it speaks: packed records in one frame and one repeated
+  ENQ after a lost acknowledgment. They are checked exactly as a normal
+  connection checks them (ADR 0015 scope and evidence, every offered
+  combination of choices).
+- When a mode choice selects one of them (the cobas e 411's protocol type),
+  record only asks that choice as its analyzer mode, with the definition's
+  own values and no suggestion, and only the answered value's departures
+  apply. Only one mode choice may select link departures.
+- Everything else stays out: departures that read records (an empty H.12),
+  HL7 departures (the capture reads only MSH), and narrower frame limits,
+  timers, contention priority or checksum digits, since the capture profile
+  already holds the standard's own bounds.
+- The guarantees do not change: every chunk is stored before any reply,
+  nothing is read or delivered, and a frame that fails its checksum, number
+  or length is refused with NAK and kept.

@@ -453,6 +453,7 @@ impl DefinitionDetails {
         }
         let document: MachineDocument = load_table(path, table, None)?;
         choices::check(&document, path)?;
+        let analyzer_mode = recording::definition_mode(&document, path)?;
         Ok(Self {
             asks_autolyser_poll: uses_site_autolyser_poll(&document),
             asks_vidas_patient_namespace: uses_site_vidas_namespace(&document),
@@ -461,7 +462,7 @@ impl DefinitionDetails {
             kind: document.transport.kind,
             serial: document.transport.serial,
             choices: document.choices,
-            analyzer_mode: None,
+            analyzer_mode,
         })
     }
 }
