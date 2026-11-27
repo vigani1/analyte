@@ -70,6 +70,7 @@ dependencies = [
  "hmac",
  "if-addrs",
  "jiff 0.2.45",
+ "proptest",
  "reqwest",
  "rpassword",
  "rusqlite",
