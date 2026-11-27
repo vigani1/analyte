@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `analyte captures de-identify` writes a de-identified copy of a recording on
+  the lab PC: patient fields become synthetic values of the same shape and
+  checksums are recomputed, so the copy still replays. ASTM, HL7, IHE LAW,
+  VIDAS and Autolyser are supported; POCT is refused. The original is never
+  changed (ADR 0037).
+
 - New per-machine **Repeated results** setting in Setup and
   `analyte machines set --repeated-results`. **Handle automatically**
   (default) keeps today's resend, correction and rerun handling. **Always ask

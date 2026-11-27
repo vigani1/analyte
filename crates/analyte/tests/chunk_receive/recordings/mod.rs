@@ -324,3 +324,58 @@ async fn recordings_replay_exact_host_bytes_and_outcomes() -> Result<(), Error> 
     }
     Ok(())
 }
+
+// ADR 0037 and ADR 0009: a de-identified copy keeps the conversation, so it
+// replays through the program with the same host bytes and the same outcome.
+#[tokio::test]
+async fn de_identified_recordings_replay_with_the_same_outcomes() -> Result<(), Error> {
+    use analyte::operator::captures::deidentify::{self, LetterCase};
+    for protocol in [Protocol::Law, Protocol::Vidas, Protocol::Autolyser] {
+        let (header, events) = recording::read(
+            std::fs::File::open(path(protocol, Case::Happy))?,
+            recording::Limits::default(),
+        )?;
+        // The synthetic VIDAS profile sends upper-case checksums.
+        let copy = deidentify::de_identify(&header, &events, Some(LetterCase::Upper))?;
+        assert!(copy.replaced > 0, "{} has a sample ID", protocol.key());
+        assert_ne!(copy.events, events);
+        assert!(copy.header.de_identification.starts_with(deidentify::MARK));
+        let mut run = Running::start(protocol.definition()).await?;
+        let program = Program::load(&run.path)?;
+        let stack = program
+            .machines()
+            .first()
+            .ok_or("machine missing")?
+            .snapshot()
+            .effective()
+            .stack();
+        let deadline = Duration::from_millis(u64::from(stack.operation_timeout_ms()));
+        analyte_sim::replay(
+            &mut run.peer,
+            &copy.events,
+            &copy.header.exceptions,
+            deadline,
+        )
+        .await?;
+        match protocol {
+            Protocol::Law => {
+                poct_deliveries(&run, 1).await?;
+                run.close_with_deliveries(1).await?;
+            }
+            Protocol::Vidas => {
+                run.parked("VIDAS Literal lacks trusted result/run identity")
+                    .await?;
+                run.result_value("<0.1")?;
+                run.close().await?;
+            }
+            Protocol::Autolyser => {
+                run.parked("Autolyser Rev18 has no immutable run identity")
+                    .await?;
+                run.result_value("<0.1   ")?;
+                run.close().await?;
+            }
+            Protocol::Poct => return Err("POCT1-A copies are refused".into()),
+        }
+    }
+    Ok(())
+}
