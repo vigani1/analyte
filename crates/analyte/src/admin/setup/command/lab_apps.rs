@@ -9,15 +9,17 @@
 //! account may write that file ([`crate::installation::credentials::Locked::check_writer`]).
 //! Where they go is settled before they are asked for.
 use super::ask::Ask;
-use super::{Failure, Installation, Outcome, actor, backups, problem, record, restart_note, say};
+use super::{
+    Failure, Installation, Outcome, actor, backups, record, restart_note, saved_without_audit, say,
+};
 use crate::admin::engine::{Engine, EngineError};
 use crate::admin::setup::{
     Seams, Setup, SetupError, Via,
     lab_apps::{
         API_KEY, KeySource, SIGNING_KEY,
         change::{
-            Change, Entered, Saved, add_blocking, count, reason, remove_blocking, removed_reason,
-            save_blocking, saved_lines, waiting,
+            Change, Entered, Saved, add_blocking, address_line, count, reason, remove_blocking,
+            removed_reason, save_blocking, saved_lines, waiting,
         },
         conflict_sentence,
         relay::{Answer, PATH, Sent},
@@ -25,7 +27,6 @@ use crate::admin::setup::{
     },
     off_thread,
 };
-use crate::admin::view::format;
 use crate::installation::credentials::Locked;
 use analyte_model::Identifier;
 use jiff::Timestamp;
@@ -231,9 +232,7 @@ async fn through_engine(
             match audit_failed {
                 None => Ok(Outcome::Done),
                 Some(error) => {
-                    problem(&format::sentence(&format!(
-                        "the change was saved, but {error}"
-                    )))?;
+                    saved_without_audit(&error)?;
                     Ok(Outcome::Partly)
                 }
             }
@@ -264,7 +263,7 @@ fn list(setup: &Setup) -> Result<Outcome, Failure> {
     for known in &scan.known {
         let settings = &known.settings;
         say(&format!("{}:", settings.name.as_str()))?;
-        say(&format!("  Address: {}", settings.base_url.as_str()))?;
+        say(&format!("  {}", address_line(settings.base_url.as_str())))?;
         say(&format!(
             "  Order list current for: {} s",
             settings.freshness_seconds
@@ -328,7 +327,7 @@ async fn add(
     entered.signing_key = signing;
     if asked {
         say(&format!("Lab app: {}", entered.name.trim()))?;
-        say(&format!("Address: {}", entered.base_url.trim()))?;
+        say(&address_line(entered.base_url.trim()))?;
         if !ask.confirm("Save?")? {
             return Err(Failure::NotConfirmed);
         }

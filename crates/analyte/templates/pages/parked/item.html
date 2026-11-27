@@ -30,17 +30,17 @@
 {%- endif %}
 </div>
 <div class="card__foot">
-{% call layout::disclosure("Show the original message") %}
+{% call layout::disclosure(crate::admin::view::format::SHOW_ORIGINAL) %}
 <p class="muted note">The original bytes are hidden because they may contain patient data. Each time they are shown, Analyte first records who asked and why.</p>
 {%- if original.signed_in %}
 {%- for target in original.targets %}
 <div class="stack">
-<p class="text">{% call display::words(target.title) %}{% endcall %}{% if let Some(href) = target.departures %} · <a class="link" href="{{ href }}">How this message was read</a>{% endif %}</p>
+<p class="text">{% call display::words(target.title) %}{% endcall %}{% if let Some(href) = target.departures %} · <a class="link" href="{{ href }}">{{ crate::admin::view::format::HOW_READ }}</a>{% endif %}</p>
 {% call forms::raw_request(target.form) %}{% endcall %}
 </div>
 {%- endfor %}
 {%- else %}
-<p class="text"><a class="link" href="/login">Sign in</a> to show the original message.</p>
+<p class="text"><a class="link" href="/login">{{ crate::admin::server::SIGN_IN }}</a> to show the original message.</p>
 {%- endif %}
 {% endcall %}
 {% endcall %}

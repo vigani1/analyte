@@ -110,7 +110,7 @@ pub(in crate::admin) async fn listen_view(
     };
     let section = Section::Setup(None);
     let Some(page) = page else {
-        let title = "Connection test";
+        let title = crate::admin::setup::wizard::CONNECTION_TEST;
         let report = Report::new(
             section.frame(&state, title, Some(&session)),
             section,
@@ -135,20 +135,6 @@ fn listen_page(state: &Context, session: &Session, test: &Test, now: Timestamp) 
     let limit = state.setup.seams.limits.duration.as_secs();
     let remaining = view.remaining.as_secs();
     let running = view.end.is_none();
-    let mut received = format!(
-        "{} received",
-        format::amount(
-            u64::try_from(view.seen).unwrap_or(u64::MAX),
-            "byte",
-            "bytes"
-        )
-    );
-    if view.size_limit_reached {
-        received.push_str(&format!(
-            " · reading stopped at the {} limit",
-            format::bytes(u64::try_from(state.setup.seams.limits.bytes).unwrap_or(u64::MAX))
-        ));
-    }
     let id = test.machine.as_str();
     Listen {
         frame: frame(state, session, id),
@@ -161,12 +147,8 @@ fn listen_page(state: &Context, session: &Session, test: &Test, now: Timestamp) 
             clock: running.then(|| format::countdown(remaining)),
             elapsed: limit.saturating_sub(remaining),
             limit,
-            received,
-            framing: vec![if view.framing.is_empty() {
-                "None yet".to_owned()
-            } else {
-                format::control_names(&view.framing)
-            }],
+            received: verdict::received(&view, state.setup.seams.limits.bytes),
+            framing: vec![verdict::framing(&view.framing)],
             state: test_state(&view, &test.connection, id, now),
             verdict: verdict::of_view(&view, test.family, &test.route),
             stop: running.then(|| session.csrf.form_value().to_owned()),

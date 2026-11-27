@@ -308,12 +308,12 @@ fn shown_page(
         frame: Frame::new(
             state,
             Tab::NeedsReview,
-            "Original message",
+            crate::admin::view::format::ORIGINAL_MESSAGE,
             Some(counts.open),
             Some(session),
             Timestamp::now(),
         ),
-        head: Section::NeedsReview(Some(id)).head("Original message"),
+        head: Section::NeedsReview(Some(id)).head(crate::admin::view::format::ORIGINAL_MESSAGE),
         what: if continued {
             format!("{what}, continued")
         } else {

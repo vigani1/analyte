@@ -64,8 +64,8 @@ pub(in crate::admin) fn accepts(
     allowed: Option<&analyte_config::AllowedPeers>,
 ) -> Option<String> {
     match (connection, allowed) {
-        (Connection::Listening(_), Some(allowed)) => Some(format!("Only {allowed}")),
-        (Connection::Listening(_), None) => Some("Any device".into()),
+        (Connection::Listening(_), Some(allowed)) => Some(only_devices(allowed)),
+        (Connection::Listening(_), None) => Some(ANY_DEVICE.into()),
         (
             Connection::Serial(_)
             | Connection::UsbAdapter(_)
@@ -183,7 +183,7 @@ pub(in crate::admin) fn machine_lede(model: Option<&str>, last: Option<Moment>) 
         None => Line::text(if model.is_some() {
             "nothing received yet"
         } else {
-            "Nothing received yet"
+            NOTHING_RECEIVED_YET
         }),
     };
     match model {
@@ -236,7 +236,7 @@ pub(in crate::admin) struct MachineCounts {
 pub(in crate::admin) fn machines_summary(counts: &MachineCounts) -> String {
     let mut parts = Vec::new();
     if counts.running == 0 {
-        parts.push("No machine is running".to_owned());
+        parts.push(NO_MACHINE_RUNNING.to_owned());
     } else {
         parts.push(format!(
             "{} of {} open",
@@ -426,6 +426,77 @@ pub(in crate::admin) fn driver(driver: &analyte_model::NamespacedId) -> String {
         driver.value.as_str()
     )
 }
+
+/// The connection accepts devices without an address restriction.
+pub(in crate::admin) const ANY_DEVICE: &str = "Any device";
+
+/// The page's wording for the addresses a listening port accepts.
+pub(in crate::admin) fn only_devices(addresses: impl std::fmt::Display) -> String {
+    format!("Only {addresses}")
+}
+
+/// The state before a machine has been configured.
+pub(in crate::admin) const NOT_SET_UP: &str = "Not set up yet";
+
+/// The state of a saved machine the engine has yet to start.
+pub(in crate::admin) const STARTS_AFTER_RESTART: &str = "Saved: starts after a restart";
+
+/// The state of a removed machine the engine still runs.
+pub(in crate::admin) const STOPS_AT_RESTART: &str = "Removed: stops at the restart";
+
+/// Heads the warning when machine settings cannot be read.
+pub(in crate::admin) const SETTINGS_UNREADABLE: &str = "Analyte’s settings could not be read";
+
+/// Names the action to add a machine in Setup.
+pub(in crate::admin) const ADD_MACHINE: &str = "Add a machine";
+
+/// The machine model has not been chosen.
+pub(in crate::admin) const NOT_CHOSEN: &str = "Not chosen yet";
+
+/// The saved machine has yet to run.
+pub(in crate::admin) const NOT_RUNNING: &str = "Not running yet";
+
+/// Heads the connection state inside Analyte.
+pub(in crate::admin) const IN_ANALYTE: &str = "In Analyte";
+
+/// Labels the kind of connection.
+pub(in crate::admin) const CONNECTED_BY: &str = "Connected by";
+
+/// Labels the devices a machine accepts.
+pub(in crate::admin) const ACCEPTS_FROM: &str = "Accepts connections from";
+
+/// Labels the serial cable settings.
+pub(in crate::admin) const CABLE_SETTINGS: &str = "Cable settings";
+
+/// Labels choices from the analyzer model.
+pub(in crate::admin) const ANALYZER_SETTINGS: &str = "Analyzer settings";
+
+/// Labels when data last arrived from a machine.
+pub(in crate::admin) const LAST_DATA: &str = "Last data";
+
+/// Labels the lab app that receives this machine’s results.
+pub(in crate::admin) const SENDS_RESULTS_TO: &str = "Sends results to";
+
+/// Labels the model of a machine.
+pub(in crate::admin) const MODEL: &str = "Model";
+
+/// Labels the configured connection.
+pub(in crate::admin) const CONNECTION: &str = "Connection";
+
+/// Labels the machine associated with the settings or data.
+pub(in crate::admin) const MACHINE: &str = "Machine";
+
+/// Labels the link to a machine’s details.
+pub(in crate::admin) const OPEN_MACHINE: &str = "Open the machine";
+
+/// Says that the machine has sent no data in the activity being shown.
+pub(in crate::admin) const NOTHING_RECEIVED_YET: &str = "Nothing received yet";
+
+/// Reports that the engine has no running machines.
+pub(in crate::admin) const NO_MACHINE_RUNNING: &str = "No machine is running";
+
+/// Reports that none of the machines have been set up.
+pub(in crate::admin) const NO_MACHINE_SET_UP: &str = "No machine is set up.";
 
 #[cfg(test)]
 mod tests {

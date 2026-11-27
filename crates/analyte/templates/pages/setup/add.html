@@ -16,6 +16,6 @@
 <p class="text">Analyte keeps results, items to review and history by machine name. A machine added under the name of one removed earlier joins that stored history. Use an earlier name only for the same analyzer; give a different analyzer a new name, so its results are never matched with the old one’s.</p>
 <div class="field"><label class="check"><input type="checkbox" name="same_analyzer" value="yes">This is the same analyzer that used this name before</label><span class="field__hint">Needed only when the name has stored history.</span></div>
 </section>
-<div class="wizard-foot">{% call forms::link_button(crate::admin::view::Tab::Setup.href(), "Cancel", "btn--outline") %}{% endcall %}<button type="submit" class="btn btn--primary">Add a machine</button></div>
+<div class="wizard-foot">{% call forms::link_button(crate::admin::view::Tab::Setup.href(), "Cancel", "btn--outline") %}{% endcall %}<button type="submit" class="btn btn--primary">{{ crate::admin::view::format::ADD_MACHINE }}</button></div>
 </form>
 {%- endblock %}

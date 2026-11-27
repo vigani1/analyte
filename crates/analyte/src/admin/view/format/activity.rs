@@ -122,16 +122,16 @@ pub(in crate::admin) fn said(
         Activity::Parked { item, details } => {
             let (title, tone) = headline(details);
             Said {
-                head: "Needs review".into(),
+                head: crate::admin::view::Tab::NeedsReview.label().into(),
                 rest: from(format!("– item {item} added: {}", lower_first(&title))),
                 tone,
                 icon: tone.icon(),
-                word: "Needs review",
+                word: crate::admin::view::Tab::NeedsReview.label(),
                 link: Some((format!("/parked/{item}"), "Open")),
             }
         }
         Activity::Resolved { item, action } => Said {
-            head: "Needs review".into(),
+            head: crate::admin::view::Tab::NeedsReview.label().into(),
             rest: from(format!(
                 "– item {item} {}",
                 lower_first(settled_action(action))
@@ -275,7 +275,12 @@ type FeedLink = Option<(String, &'static str)>;
 /// How one delivery try to `lab_app` ended, as an Activity line says it,
 /// and where to look at it; [`attempt_look`] gives its tone, icon and word.
 fn attempt(lab_app: &str, outcome: AttemptOutcome) -> (String, FeedLink) {
-    let deliveries = || Some(("/deliveries?show=undelivered".to_owned(), "Deliveries"));
+    let deliveries = || {
+        Some((
+            "/deliveries?show=undelivered".to_owned(),
+            crate::admin::view::Tab::Deliveries.label(),
+        ))
+    };
     match outcome {
         AttemptOutcome::Delivered => (format!("delivered to {lab_app}"), None),
         AttemptOutcome::RetryAt(_) => (format!("sending to {lab_app} failed, will retry"), None),
@@ -286,7 +291,7 @@ fn attempt(lab_app: &str, outcome: AttemptOutcome) -> (String, FeedLink) {
         AttemptOutcome::Rejected => (format!("rejected by {lab_app}"), deliveries()),
         AttemptOutcome::Paused => (
             format!("sending to {lab_app} paused: lab app settings need repair"),
-            Some((lab_app_href(lab_app), "Lab app")),
+            Some((lab_app_href(lab_app), crate::admin::view::format::LAB_APP)),
         ),
         AttemptOutcome::Conflict => (format!("{lab_app} reports a conflict"), deliveries()),
     }
@@ -345,8 +350,8 @@ fn every_try_href(delivery: DeliveryId) -> String {
 /// as recorded.
 fn change(action: &str, target: Option<&str>) -> (String, FeedLink) {
     let named = target.unwrap_or("(not recorded)");
-    let machine = || target.map(|id| (machine_href(id), "Machine"));
-    let lab_app = || target.map(|name| (lab_app_href(name), "Lab app"));
+    let machine = || target.map(|id| (machine_href(id), crate::admin::view::format::MACHINE));
+    let lab_app = || target.map(|name| (lab_app_href(name), crate::admin::view::format::LAB_APP));
     let page = |tab: super::super::Tab| Some((tab.href().to_owned(), tab.label()));
     match action {
         "setup-add" => (format!("added machine {named}"), machine()),
