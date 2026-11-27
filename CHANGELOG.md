@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add French (`fr`) for the admin pages, Setup, command line and desktop
+  app. Choose Français in admin Settings or use `analyte --lang fr`. The
+  machine-translated wording awaits native review.
+
 - Add Albanian (`sq`) for the admin pages, Setup, command line and desktop
   app. Choose Shqip in admin Settings or use `analyte --lang sq`. The
   machine-translated wording awaits native review.

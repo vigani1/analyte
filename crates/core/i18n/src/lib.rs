@@ -26,6 +26,14 @@ const ALBANIAN: &[&str] = &[
     include_str!("../../../../locales/sq/doctor-overview.ftl"),
     include_str!("../../../../locales/sq/dates.ftl"),
 ];
+const FRENCH: &[&str] = &[
+    include_str!("../../../../locales/fr/admin.ftl"),
+    include_str!("../../../../locales/fr/setup.ftl"),
+    include_str!("../../../../locales/fr/cli.ftl"),
+    include_str!("../../../../locales/fr/desktop.ftl"),
+    include_str!("../../../../locales/fr/doctor-overview.ftl"),
+    include_str!("../../../../locales/fr/dates.ftl"),
+];
 
 struct Catalog {
     tag: &'static str,
@@ -100,7 +108,8 @@ impl Catalog {
 
 static SOURCE: LazyLock<Catalog> = LazyLock::new(|| Catalog::new("en", "English", ENGLISH));
 static TRANSLATIONS: LazyLock<Vec<Catalog>> = LazyLock::new(|| {
-    let embedded: &[(&str, &str, &[&str])] = &[("sq", "Shqip", ALBANIAN)];
+    let embedded: &[(&str, &str, &[&str])] =
+        &[("sq", "Shqip", ALBANIAN), ("fr", "Français", FRENCH)];
     embedded
         .iter()
         .map(|(tag, name, sources)| Catalog::new(tag, name, sources))
@@ -251,7 +260,7 @@ mod tests {
 
     #[test]
     fn catalogs_parse_and_english_is_the_default() {
-        assert_eq!(Language::select(["fr-CA", "en-GB"]).tag(), "en");
+        assert_eq!(Language::select(["it-IT", "en-GB"]).tag(), "en");
         assert_eq!(Language::select(["und"]).tag(), "en");
         assert_eq!(text("admin-language"), "Language");
     }
@@ -278,6 +287,23 @@ mod tests {
                 assert_eq!(text("admin-language"), "Gjuha");
                 assert_eq!(count("admin-count-results", 1_u64), "1 rezultat");
                 assert_eq!(count("admin-count-results", 2_u64), "2 rezultate");
+            });
+        }
+    }
+
+    // Unicode CLDR plural rules: French uses one for 0 and 1.
+    #[test]
+    fn french_matches_regional_tags_and_formats_one_and_other() {
+        for tag in ["fr", "fr-FR", "fr-CH", "fr-CA"] {
+            let language = Language::select([tag, "en"]);
+            assert_eq!(language.tag(), "fr");
+            language.sync_scope(|| {
+                assert_eq!(text("admin-language"), "Langue");
+                assert_eq!(count("admin-count-results", 0_u64), "0 résultat");
+                assert_eq!(count("admin-count-results", 1_u64), "1 résultat");
+                assert_eq!(count("admin-count-results", 2_u64), "2 résultats");
+                assert_eq!(weekday(1), "lundi");
+                assert_eq!(month(11), "novembre");
             });
         }
     }
