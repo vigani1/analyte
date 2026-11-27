@@ -207,7 +207,7 @@ async fn keys_go(installation: &Installation) -> Result<Place, Failure> {
 
 /// Reads both keys.
 fn read_keys(keys: Keys) -> Result<[String; 2], Failure> {
-    let mut keys = keys(&[api_key().0, signing_key().0])?.into_iter();
+    let mut keys = keys(&[api_key().label, signing_key().label])?.into_iter();
     Ok([
         keys.next().unwrap_or_default(),
         keys.next().unwrap_or_default(),
@@ -333,7 +333,7 @@ fn list(setup: &Setup) -> Result<Outcome, Failure> {
             (signing_key(), &settings.signing_key_name),
         ] {
             let key = source.key(label, name, now);
-            say(&format!("  {}: {} ({})", label.0, key.word, key.exact))?;
+            say(&format!("  {}: {} ({})", label.label, key.word, key.exact))?;
         }
     }
     Ok(Outcome::Done)

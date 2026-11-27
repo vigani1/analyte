@@ -558,7 +558,11 @@ setup-could-not-read-whether-notices-are-sent = Could not read whether notices a
 
 setup-remove-3 = Remove { $name }?
 
-setup-is = { $name } is { $verb }
+setup-is =
+    { $state ->
+        [added] { $name } is added
+       *[saved] { $name } is saved
+    }
 
 setup-is-no-longer-listed-2 = { $name } is no longer listed
 
@@ -1092,7 +1096,13 @@ setup-key-owner-lab-app = Lab app { $name }
 
 setup-key-owner-alert-target = Alert target { $target }
 
-setup-paste-the-key = Paste the { $key }
+setup-paste-the-api-key = Paste the API key
+
+setup-paste-the-signing-key = Paste the signing key
+
+setup-new-api-key = New API key
+
+setup-new-signing-key = New signing key
 
 setup-no-answer = no answer
 

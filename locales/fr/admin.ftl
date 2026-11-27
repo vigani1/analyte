@@ -227,8 +227,6 @@ admin-paste-it-from-your-lab-app-team-s-message = Collez-la depuis le message de
 
 admin-replace = Remplacer
 
-admin-new = Nouveau
-
 admin-back = Retour
 
 admin-next = Suivant
@@ -1347,7 +1345,11 @@ admin-sending-to-paused-lab-app-settings-need-repair = envoi à { $lab-app } en 
 
 admin-reports-a-conflict = { $lab-app } signale un conflit
 
-admin-sending-to-tried-times = envoi à { $lab-app } : { $failed } · { $count } tentatives, { $first } – { $last }
+admin-sending-to-tried-times =
+    { $outcome ->
+        [cut-off] envoi à { $lab-app } : interrompu · { $count } tentatives, { $first } – { $last }
+       *[failed] envoi à { $lab-app } : échec · { $count } tentatives, { $first } – { $last }
+    }
 
 admin-next-try-after = { " " }· prochaine tentative après { $next }
 
@@ -1382,8 +1384,6 @@ admin-not-read-yet = Pas encore lu
 admin-message-stored-not-read-yet = message stocké, pas encore lu
 
 admin-no-results-2 = aucun résultat
-
-admin-was-cut-off = a été interrompu
 
 admin-not-recorded-2 = (non enregistré)
 

@@ -9,7 +9,10 @@ python3 scripts/check-layout-names.py
 python3 scripts/test-protocol-tests.py
 python3 scripts/check-protocol-tests.py
 python3 scripts/check-fuzz-targets.py
+python3 scripts/test-locales.py
 python3 scripts/check-locales.py
+python3 scripts/test-catalog-sinks.py
+python3 scripts/check-catalog-sinks.py
 python3 scripts/test-links.py
 python3 scripts/check-links.py
 failed=0

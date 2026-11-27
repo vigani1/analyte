@@ -569,10 +569,9 @@ setup-could-not-read-whether-notices-are-sent = Es konnte nicht gelesen werden, 
 setup-remove-3 = { $name } entfernen?
 
 setup-is =
-    { $verb ->
+    { $state ->
         [added] { $name } ist hinzugefügt
-        [saved] { $name } ist gespeichert
-       *[other] { $name }: { $verb }
+       *[saved] { $name } ist gespeichert
     }
 
 setup-is-no-longer-listed-2 = { $name } ist nicht mehr aufgeführt
@@ -1107,7 +1106,13 @@ setup-key-owner-lab-app = Labor-App { $name }
 
 setup-key-owner-alert-target = Warnungsziel { $target }
 
-setup-paste-the-key = Fügen Sie den { $key } ein
+setup-paste-the-api-key = Fügen Sie den API-Schlüssel ein
+
+setup-paste-the-signing-key = Fügen Sie den Signaturschlüssel ein
+
+setup-new-api-key = Neuer API-Schlüssel
+
+setup-new-signing-key = Neuer Signaturschlüssel
 
 setup-no-answer = keine Antwort
 

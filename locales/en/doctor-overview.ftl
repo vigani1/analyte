@@ -334,6 +334,10 @@ doctor-overview-check-the-machine-s-settings = check the machine's settings
 
 doctor-overview-machine-software = Machine software
 
+doctor-overview-machine = Machine { $id }
+
+doctor-overview-machine-named-software = Machine { $id } software
+
 doctor-overview-check-the-store-and-run-analyte-doctor-again = check the store and run analyte doctor again
 
 doctor-overview-free-disk-space-on-this-drive-analyte-deletes-nothing = free disk space on this drive; Analyte deletes nothing to make room

@@ -13,8 +13,24 @@
   button does and whether the lab app receives anything, the audit, what
   happens to an item left alone and the review notices (ADRs 0035, 0038).
 
+- Fix the desktop app in Albanian: it could not start the engine because the
+  catalog translated the `System32` folder in the path to `sc.exe`. Paths,
+  commands and environment variable names are now fixed in code, and
+  `scripts/check-catalog-sinks.py` fails when catalog text reaches a path,
+  command, environment variable, HTTP header or file name.
+
+- The catalog check now fails on control characters in a `.ftl` file and on
+  a translated message whose variables differ from English.
+
+- Each language now words the lab app "added"/"saved" notice, the delivery
+  "failed"/"cut off" status line and the doctor's per-machine check names;
+  English words no longer reach other languages. The lab app key prompts
+  are their own messages instead of a lowercased label, so English now
+  reads "Paste the API key" and "New API key".
+
 - Add French (`fr`) for the admin pages, Setup, command line and desktop
   app. Choose Français in admin Settings or use `analyte --lang fr`. The
+  machine-translated wording awaits native review.
 
 - Add Spanish (`es`) for the admin pages, Setup, command line and desktop
   app. Choose Español in admin Settings or use `analyte --lang es`. The

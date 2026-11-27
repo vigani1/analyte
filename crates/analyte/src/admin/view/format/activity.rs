@@ -406,8 +406,9 @@ fn tried(
         (Ok(at), Ok(last)) => clock_in(at, last, zone),
         (Err(_), _) | (_, Err(_)) => not_a_date(seconds),
     };
-    let failed = match outcome {
-        AttemptOutcome::Interrupted => tr("admin-was-cut-off"),
+    // A fixed key: the catalog chooses each language's words for it.
+    let outcome_key = match outcome {
+        AttemptOutcome::Interrupted => "cut-off",
         AttemptOutcome::RetryAt(_)
         | AttemptOutcome::Delivered
         | AttemptOutcome::Rejected
@@ -418,7 +419,7 @@ fn tried(
         "admin-sending-to-tried-times",
         [
             ("lab-app", (lab_app).to_string().into()),
-            ("failed", (failed).to_string().into()),
+            ("outcome", outcome_key.into()),
             ("count", (tries.count).to_string().into()),
             ("first", (at(tries.first)).to_string().into()),
             ("last", (at(last)).to_string().into()),
@@ -534,6 +535,39 @@ fn change(action: &str, target: Option<&str>) -> (String, FeedLink) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use analyte_i18n::Language;
+
+    // ADR 0039: a cut-off or failed send is a fixed key the catalog words;
+    // the English "failed" once reached every language.
+    #[test]
+    fn a_failed_send_is_worded_by_each_catalog() {
+        let line = |outcome: &str| {
+            tr_args(
+                "admin-sending-to-tried-times",
+                [
+                    ("lab-app", "main-lab".into()),
+                    ("outcome", outcome.into()),
+                    ("count", "3".into()),
+                    ("first", "09:00".into()),
+                    ("last", "09:05".into()),
+                ],
+            )
+        };
+        assert_eq!(
+            line("failed"),
+            "sending to main-lab failed · tried 3 times, 09:00 – 09:05"
+        );
+        assert_eq!(
+            line("cut-off"),
+            "sending to main-lab was cut off · tried 3 times, 09:00 – 09:05"
+        );
+        for language in Language::installed().filter(|language| language.tag() != "en") {
+            let (failed, cut) = language.sync_scope(|| (line("failed"), line("cut-off")));
+            assert_ne!(failed, cut, "{}", language.tag());
+            assert!(!failed.contains("failed"), "{}: {failed}", language.tag());
+            assert!(!cut.contains("cut-off"), "{}: {cut}", language.tag());
+        }
+    }
 
     // ADR 0039 (owner request 2026-11-27): a label inside an Activity line is
     // its own message in each language. English lowers it as it always did;

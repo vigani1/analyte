@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Check embedded UI message IDs and report translation coverage."""
+"""Check embedded UI message IDs and report translation coverage.
+
+Also fails when a catalog file holds a control character (below U+0020 other
+than tab, LF and CR, or U+007F), when a translation has a message ID English
+lacks, or when a translated message uses other Fluent variables than English.
+"""
 
 from pathlib import Path
 import re
@@ -15,6 +20,8 @@ USE = re.compile(
 SHARED_USE = re.compile(r'\bmessage\(\s*"([a-z][a-z0-9-]*)"')
 SHARED = Path("crates") / "core" / "i18n" / "src" / "lib.rs"
 REFERENCE = re.compile(r"\{\s*([a-z][a-z0-9-]*)\s*\}")
+VARIABLE = re.compile(r"\$([a-zA-Z][a-zA-Z0-9_-]*)")
+CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
 def production_sources():
@@ -27,24 +34,40 @@ def production_sources():
                 yield path
 
 
+def control_characters(name, source):
+    """Report each control character a catalog file must not hold."""
+    for number, line in enumerate(source.split("\n"), 1):
+        for found in CONTROL.finditer(line):
+            yield f"{name}:{number}: control character U+{ord(found[0]):04X}"
+
+
 def catalog(folder):
+    """Each message's references and variables, plus the file problems found."""
     messages = {}
+    variables = {}
     errors = []
     for ftl in sorted(folder.glob("*.ftl")):
         source = ftl.read_text(encoding="utf-8")
+        name = ftl.relative_to(ROOT).as_posix()
+        errors.extend(control_characters(name, source))
         found = list(MESSAGE.finditer(source))
         for index, match in enumerate(found):
             key = match[1]
             end = found[index + 1].start() if index + 1 < len(found) else len(source)
             if key in messages:
-                errors.append(f"{ftl.relative_to(ROOT)}: duplicate message {key}")
-            messages[key] = set(REFERENCE.findall(source[match.end():end]))
-    return messages, errors
+                errors.append(f"{name}: duplicate message {key}")
+            body = "\n".join(
+                line for line in source[match.end():end].split("\n")
+                if not line.lstrip().startswith("#")
+            )
+            messages[key] = set(REFERENCE.findall(body))
+            variables[key] = set(VARIABLE.findall(body))
+    return messages, variables, errors
 
 
 def main():
     locales = ROOT / "locales"
-    english, errors = catalog(locales / "en")
+    english, english_variables, errors = catalog(locales / "en")
     uses = {}
     for source in production_sources():
         for key in USE.findall(source.read_text(encoding="utf-8")):
@@ -67,12 +90,17 @@ def main():
     if not english:
         errors.append("locales/en: source catalog is empty")
     for language in sorted(path for path in locales.iterdir() if path.is_dir()):
-        translated, duplicates = catalog(language)
+        translated, variables, problems = catalog(language)
         if language.name != "en":
-            errors.extend(duplicates)
+            errors.extend(problems)
         unknown = translated.keys() - english.keys()
         if unknown:
             errors.append(f"{language.name}: unknown message IDs: {', '.join(sorted(unknown))}")
+        for key in sorted(translated.keys() & english.keys()):
+            if variables[key] != english_variables[key]:
+                found = ", ".join(sorted(variables[key])) or "none"
+                wanted = ", ".join(sorted(english_variables[key])) or "none"
+                errors.append(f"{language.name}: {key} uses variables {found}, English {wanted}")
         common = len(translated.keys() & english.keys())
         coverage = common * 100 / max(len(english), 1)
         print(f"{language.name}: {common}/{len(english)} messages ({coverage:.1f}%)")

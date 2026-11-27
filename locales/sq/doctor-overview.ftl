@@ -334,6 +334,10 @@ doctor-overview-check-the-machine-s-settings = kontrolloni cilësimet e pajisjes
 
 doctor-overview-machine-software = Softueri i pajisjes
 
+doctor-overview-machine = Pajisja { $id }
+
+doctor-overview-machine-named-software = Softueri i pajisjes { $id }
+
 doctor-overview-check-the-store-and-run-analyte-doctor-again = kontrolloni depon e të dhënave dhe ekzekutoni përsëri analyte doctor
 
 doctor-overview-free-disk-space-on-this-drive-analyte-deletes-nothing = lironi hapësirë në këtë disk. Analyte nuk fshin asgjë për të liruar hapësirë

@@ -342,6 +342,10 @@ doctor-overview-check-the-machine-s-settings = compruebe la configuración del e
 
 doctor-overview-machine-software = Software del equipo
 
+doctor-overview-machine = Equipo { $id }
+
+doctor-overview-machine-named-software = Software del equipo { $id }
+
 doctor-overview-check-the-store-and-run-analyte-doctor-again = compruebe el almacén y vuelva a ejecutar analyte doctor
 
 doctor-overview-free-disk-space-on-this-drive-analyte-deletes-nothing = libere espacio en esta unidad; Analyte no elimina nada para hacer sitio
