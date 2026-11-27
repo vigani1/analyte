@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `analyte captures de-identify` writes a de-identified copy of a recording on
+  the lab PC: patient fields become synthetic values of the same shape and
+  checksums are recomputed, so the copy still replays. ASTM, HL7, IHE LAW,
+  VIDAS and Autolyser are supported; POCT is refused. The original is never
+  changed (ADR 0037).
+
 - The Dialab Autolyser has a full machine definition written from its
   Operator's Manual Rev18 (evidence level documented) and replaces its
   record-only settings. It reads results and holds them for staff, since

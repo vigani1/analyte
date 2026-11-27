@@ -47,3 +47,4 @@ later one changes says "Changed by" in its status line and beside the part.
 | [0034](0034-record-only-connections.md)         | Record-only connections for the first lab visit (extends ADR 0010; amended: definitions ship from the manuals) |
 | [0035](0035-machine-result-identity-recipes.md) | Machine result identity recipes (extends ADR 0003) |
 | [0036](0036-machine-software-version-warning.md) | Warn when a machine reports unexpected software |
+| [0037](0037-de-identified-recording-copies.md)   | De-identified recording copies made on the lab PC (extends ADRs 0009, 0034) |
