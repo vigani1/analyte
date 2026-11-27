@@ -19,6 +19,8 @@
   and the weekday and month names in dates (new `locales/en/dates.ftl`).
   English output is unchanged. Logs, audit reasons, machine data, protocol
   tokens, wire text, file contents and command names stay as they are.
+  Albanian covers every new message, machine-translated and awaiting native
+  review like the rest of `locales/sq/`.
 
 - Optional Needs review notices to the lab app (ADR 0038): with "Send Needs
   review notices: yes" on Setup → Lab apps (or `analyte lab-apps set <name>
