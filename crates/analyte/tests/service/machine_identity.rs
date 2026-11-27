@@ -168,7 +168,8 @@ fn hl7_identity_upload(
     value: &str,
 ) -> Result<String, Error> {
     use analyte_config::Terminator;
-    let version = String::from(syntax.edition());
+    // HL7 2.5.1 §2.15.9.12: MSH-12 carries the edition's wire spelling.
+    let version = analyte_hl7::Version::from(syntax.edition()).as_str();
     let mut records = BTreeMap::from([
         ("PID", BTreeMap::from([((1, 1, 1), "1".into())])),
         (
@@ -193,8 +194,16 @@ fn hl7_identity_upload(
         ),
     ]);
     identity_fields(&mut records, mappings);
+    // A declared MSH-16 category departure (YHLO LIS Protocol Manual V1.1
+    // §2.3.1) replaces the acknowledgment fields: MSH-9 is the two-component
+    // ORU^R01 and MSH-16 = 0 marks a patient result.
+    let (message_type, category) = if syntax.msh16_message_category() {
+        ("ORU^R01", "||||0")
+    } else {
+        ("ORU^R01^ORU_R01", "")
+    };
     let mut segments = vec![format!(
-        "MSH|^~\\&|SYN|LAB|HOST|LAB|20261127120000||ORU^R01^ORU_R01|message{id}|P|{version}"
+        "MSH|^~\\&|SYN|LAB|HOST|LAB|20261127120000||{message_type}|message{id}|P|{version}{category}"
     )];
     for record in ["PID", "OBR", "OBX"] {
         segments.push(synthetic_record(record, records.get(record), "~", 1)?);
