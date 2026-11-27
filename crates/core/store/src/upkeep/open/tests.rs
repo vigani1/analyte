@@ -872,3 +872,103 @@ fn schema_nineteen_keeps_every_machine_order_and_leaves_its_model_unknown() -> T
     );
     Ok(())
 }
+
+// ADR 0038: step 21 rebuilds the outbox to take Needs review notices. Every
+// delivery, its attempts, its accepted time and the sequence counter are kept;
+// the indexes and the guards against changing or removing a delivery are back.
+#[test]
+fn schema_twenty_one_keeps_every_delivery_and_its_guards() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("twenty.db");
+    {
+        let db = Connection::open(&path)?;
+        for step in [
+            include_str!("../schema.sql"),
+            include_str!("../parked_at.sql"),
+            include_str!("../read_indexes.sql"),
+            include_str!("../attempt_runs.sql"),
+            include_str!("../order_models.sql"),
+            include_str!("../software_version.sql"),
+        ] {
+            db.execute_batch(step)?;
+        }
+        db.execute_batch(concat!(
+            "PRAGMA foreign_keys=ON;",
+            "INSERT INTO receipts VALUES ('\"r-1\"','{\"machine\":\"m-1\",\"received_at\":\"2026-01-01T00:00:00Z\"}',x'00',x'00');",
+            "INSERT INTO interpretations VALUES ('\"r-1\"',1,'{}');",
+            "INSERT INTO outbox(sequence,id,kind,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES ",
+            "(3,'\"d-a\"','result','\"r-1\"',1,'main-lab','k1',x'01',x'02',1,'pending',0,90),",
+            "(9,'\"d-b\"','result','\"r-1\"',1,'main-lab','k2',x'03',x'04',1,'pending',0,95);",
+            "INSERT INTO attempts(delivery,outcome,time) VALUES ('\"d-a\"','\"Done\"',130),('\"d-b\"','{\"RetryAt\":145}',140);",
+            "UPDATE outbox SET state='done' WHERE id='\"d-a\"';",
+            // A delivery data keeping removed raised the counter beyond the rows.
+            "UPDATE sqlite_sequence SET seq=12 WHERE name='outbox';",
+        ))?;
+        assert_eq!(
+            db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+            20
+        );
+    }
+    let rows = |db: &Connection| -> Result<Vec<String>, Error> {
+        let mut statement = db.prepare("SELECT json_array(sequence,id,kind,receipt,version,order_id,destination,ordering_key,hex(payload),hex(digest),contract,state,next_attempt,enqueued_at,enqueue_time_backfilled,delivered_at,delivered_attempt) FROM outbox ORDER BY sequence")?;
+        let found = statement
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        Ok(found)
+    };
+    let before = rows(&Connection::open(&path)?)?;
+    let store = Store::open(&path, limits(), Box::new(Space(u64::MAX)))?;
+    assert_eq!(
+        store
+            .db
+            .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+        SCHEMA_VERSION
+    );
+    assert_eq!(rows(&store.db)?, before, "every delivery is kept as it was");
+    assert_eq!(
+        store.db.query_row(
+            "SELECT count(*) FROM attempts a JOIN outbox o ON o.id=a.delivery",
+            [],
+            |r| r.get::<_, i64>(0)
+        )?,
+        2
+    );
+    assert_eq!(
+        store.db.query_row(
+            "SELECT seq FROM sqlite_sequence WHERE name='outbox'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )?,
+        12
+    );
+    for index in [
+        "alert_oldest_pending",
+        "outbox_delivered_at",
+        "outbox_delivered_attempt",
+        "outbox_destination_state",
+        "outbox_ordering",
+        "outbox_receipt",
+    ] {
+        assert!(
+            store.db.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='index' AND name=?1 AND tbl_name='outbox')",
+                [index],
+                |r| r.get::<_, bool>(0)
+            )?,
+            "{index}"
+        );
+    }
+    crate::test_support::assert_constraint(store.db.execute("DELETE FROM outbox", []));
+    crate::test_support::assert_constraint(
+        store
+            .db
+            .execute("UPDATE outbox SET payload=x'ff' WHERE id='\"d-a\"'", []),
+    );
+    // Only a notice can be declined.
+    crate::test_support::assert_constraint(
+        store
+            .db
+            .execute("UPDATE outbox SET state='declined' WHERE id='\"d-b\"'", []),
+    );
+    Ok(())
+}

@@ -53,8 +53,9 @@ to the sample it already holds.
    results: 401/403, 3xx and 413 pause the lab app, 400/422 and 409 park the
    notice for an operator, 408/429/5xx retry.
 6. **Bounds and keeping.** A notice is at most 256 test codes and the contract
-   document limit. Notices about a receipt's items are removed with the
-   receipt when data keeping purges it, because they name its sample.
+   document limit. Data keeping never purges a message that has a Needs
+   review item, resolved or not (ADR 0013), so a notice is kept exactly as
+   long as the item and message it names; nothing new is retained.
 
 ## Consequences
 

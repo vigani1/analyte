@@ -276,7 +276,7 @@ impl Store {
         }
         Self::capacity_on(&self.db, &self.path, &self.limits, &*self.space, required)?;
         let tx = self.db.transaction()?;
-        let mut queued = 0;
+        let mut queued: usize = 0;
         for notice in notices {
             let given: bool = tx.query_row(
                 "SELECT EXISTS(SELECT 1 FROM review_notices WHERE destination=?1 AND item=?2 AND phase=?3)",
@@ -328,7 +328,7 @@ impl Store {
                     )?;
                 }
             }
-            queued += 1;
+            queued = queued.saturating_add(1);
         }
         tx.execute(
             "UPDATE review_notice_destinations SET scanned=max(scanned,?2) WHERE destination=?1",
@@ -390,7 +390,7 @@ struct Origin {
 }
 
 /// Traces an item to its machine through its linked records: a delivery, a
-/// receipt, a machine order, a transfer or a machine's question. The first
+/// receipt, a transfer, a machine order or a machine's question. The first
 /// target that traces wins; an item about a notice traces to nothing.
 fn origin(
     db: &Connection,
@@ -399,60 +399,8 @@ fn origin(
 ) -> Result<Option<Origin>, Error> {
     for target in &evidence.details.targets {
         let target_key = serde_json::to_string(target.as_str())?;
-        let delivery: Option<(DeliveryKind, Option<String>, Option<i64>, Option<String>, String, String)> = db
-            .query_row(
-                "SELECT kind,receipt,version,order_id,destination,ordering_key FROM outbox WHERE id=?1",
-                [&target_key],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
-            )
-            .optional()?;
-        if let Some((kind, receipt, version, order, named, ordering)) = delivery {
-            let named = Identifier::new(&named).map_err(|_| Error::Corruption)?;
-            return match kind {
-                DeliveryKind::ReviewNotice => Ok(None),
-                DeliveryKind::Result => {
-                    let (Some(receipt), Some(version)) = (receipt, version) else {
-                        return Err(Error::Corruption);
-                    };
-                    let Some(metadata) = metadata(db, &receipt)? else {
-                        return Ok(None);
-                    };
-                    let ordering: OrderingKey = serde_json::from_str(&ordering)?;
-                    let results = results(db, &receipt, Some(version))?
-                        .into_iter()
-                        .filter(|result| {
-                            matches!(&result.identity, IdentityStatus::Resolved(identity)
-                                if identity.observation == ordering.observation)
-                        })
-                        .collect();
-                    Ok(Some(Origin {
-                        machine: metadata.machine,
-                        connection: Some(metadata.connection),
-                        destination: Some(named),
-                        results,
-                        sample: None,
-                    }))
-                }
-                DeliveryKind::OrderEvent => {
-                    let Some(order) = order else {
-                        return Err(Error::Corruption);
-                    };
-                    let machines: Vec<String> = db
-                        .prepare("SELECT machine FROM machine_orders WHERE destination=?1 AND order_id=?2 ORDER BY machine LIMIT 2")?
-                        .query_map(params![named.as_str(), order], |r| r.get(0))?
-                        .collect::<Result<_, _>>()?;
-                    let [machine] = machines.as_slice() else {
-                        return Ok(None);
-                    };
-                    Ok(Some(Origin {
-                        machine: Identifier::new(machine).map_err(|_| Error::Corruption)?,
-                        connection: None,
-                        sample: order_sample(db, named.as_str(), &order)?,
-                        destination: Some(named),
-                        results: Vec::new(),
-                    }))
-                }
-            };
+        if let Some(found) = delivery_origin(db, &target_key)? {
+            return Ok(found);
         }
         if let Some(metadata) = metadata(db, &target_key)? {
             let results = match &evidence.context {
@@ -468,54 +416,13 @@ fn origin(
                 }
                 None => results(db, &target_key, None)?,
             };
-            return Ok(Some(Origin {
-                machine: metadata.machine,
-                connection: Some(metadata.connection),
-                destination: None,
-                results,
-                sample: None,
-            }));
+            return Ok(Some(Origin::of(metadata, None, results)));
         }
-        let transfer: Option<Option<String>> = db
-            .query_row(
-                "SELECT receipt FROM transfers WHERE id=?1",
-                [target.as_str()],
-                |r| r.get(0),
-            )
-            .optional()?;
-        if let Some(receipt) = transfer {
-            let Some(metadata) = receipt
-                .map(|receipt| metadata(db, &receipt))
-                .transpose()?
-                .flatten()
-            else {
-                return Ok(None);
-            };
-            return Ok(Some(Origin {
-                machine: metadata.machine,
-                connection: Some(metadata.connection),
-                destination: None,
-                results: Vec::new(),
-                sample: None,
-            }));
+        if let Some(found) = transfer_origin(db, target.as_str())? {
+            return Ok(found);
         }
-        if let Ok(order) = target.as_str().parse::<i64>() {
-            let machine_order: Option<(String, String, String)> = db
-                .query_row(
-                    "SELECT machine,destination,order_id FROM machine_orders WHERE id=?1",
-                    [order],
-                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-                )
-                .optional()?;
-            if let Some((machine, named, order)) = machine_order {
-                return Ok(Some(Origin {
-                    machine: Identifier::new(&machine).map_err(|_| Error::Corruption)?,
-                    connection: None,
-                    sample: order_sample(db, &named, &order)?,
-                    destination: Some(Identifier::new(&named).map_err(|_| Error::Corruption)?),
-                    results: Vec::new(),
-                }));
-            }
+        if let Some(found) = order_origin(db, target.as_str())? {
+            return Ok(Some(found));
         }
     }
     let asked: Option<String> = db
@@ -533,6 +440,141 @@ fn origin(
                 destination: None,
                 results: Vec::new(),
                 sample: None,
+            })
+        })
+        .transpose()
+}
+
+impl Origin {
+    fn of(
+        metadata: ReceiptMetadata,
+        destination: Option<Identifier>,
+        results: Vec<ResultContent>,
+    ) -> Self {
+        Self {
+            machine: metadata.machine,
+            connection: Some(metadata.connection),
+            destination,
+            results,
+            sample: None,
+        }
+    }
+}
+
+/// One outbox row as an item's origin needs it.
+struct DeliveryRow {
+    kind: DeliveryKind,
+    receipt: Option<String>,
+    version: Option<i64>,
+    order: Option<String>,
+    destination: String,
+    ordering: String,
+}
+
+/// The origin of an item about delivery `target_key`: none when no such
+/// delivery exists; `Some(None)` when it traces to nothing, as a notice does.
+fn delivery_origin(db: &Connection, target_key: &str) -> Result<Option<Option<Origin>>, Error> {
+    let row = db
+        .query_row(
+            "SELECT kind,receipt,version,order_id,destination,ordering_key FROM outbox WHERE id=?1",
+            [target_key],
+            |r| {
+                Ok(DeliveryRow {
+                    kind: r.get(0)?,
+                    receipt: r.get(1)?,
+                    version: r.get(2)?,
+                    order: r.get(3)?,
+                    destination: r.get(4)?,
+                    ordering: r.get(5)?,
+                })
+            },
+        )
+        .optional()?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let named = Identifier::new(&row.destination).map_err(|_| Error::Corruption)?;
+    Ok(Some(match row.kind {
+        DeliveryKind::ReviewNotice => None,
+        DeliveryKind::Result => {
+            let (Some(receipt), Some(version)) = (row.receipt, row.version) else {
+                return Err(Error::Corruption);
+            };
+            let Some(metadata) = metadata(db, &receipt)? else {
+                return Ok(Some(None));
+            };
+            let ordering: OrderingKey = serde_json::from_str(&row.ordering)?;
+            let results = results(db, &receipt, Some(version))?
+                .into_iter()
+                .filter(|result| {
+                    matches!(&result.identity, IdentityStatus::Resolved(identity)
+                        if identity.observation == ordering.observation)
+                })
+                .collect();
+            Some(Origin::of(metadata, Some(named), results))
+        }
+        DeliveryKind::OrderEvent => {
+            let Some(order) = row.order else {
+                return Err(Error::Corruption);
+            };
+            let machines: Vec<String> = db
+                .prepare("SELECT machine FROM machine_orders WHERE destination=?1 AND order_id=?2 ORDER BY machine LIMIT 2")?
+                .query_map(params![named.as_str(), order], |r| r.get(0))?
+                .collect::<Result<_, _>>()?;
+            let [machine] = machines.as_slice() else {
+                return Ok(Some(None));
+            };
+            Some(Origin {
+                machine: Identifier::new(machine).map_err(|_| Error::Corruption)?,
+                connection: None,
+                sample: order_sample(db, named.as_str(), &order)?,
+                destination: Some(named),
+                results: Vec::new(),
+            })
+        }
+    }))
+}
+
+/// The origin of an item about transfer `target`: none when no such transfer
+/// exists; `Some(None)` when it ended before a receipt was kept.
+fn transfer_origin(db: &Connection, target: &str) -> Result<Option<Option<Origin>>, Error> {
+    let transfer: Option<Option<String>> = db
+        .query_row("SELECT receipt FROM transfers WHERE id=?1", [target], |r| {
+            r.get(0)
+        })
+        .optional()?;
+    let Some(receipt) = transfer else {
+        return Ok(None);
+    };
+    let metadata = receipt
+        .map(|receipt| metadata(db, &receipt))
+        .transpose()?
+        .flatten();
+    Ok(Some(
+        metadata.map(|metadata| Origin::of(metadata, None, Vec::new())),
+    ))
+}
+
+/// The origin of an item about machine order number `target`, if one exists.
+fn order_origin(db: &Connection, target: &str) -> Result<Option<Origin>, Error> {
+    let Ok(order) = target.parse::<i64>() else {
+        return Ok(None);
+    };
+    let machine_order: Option<(String, String, String)> = db
+        .query_row(
+            "SELECT machine,destination,order_id FROM machine_orders WHERE id=?1",
+            [order],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()?;
+    machine_order
+        .map(|(machine, named, order)| {
+            Ok(Origin {
+                machine: Identifier::new(&machine).map_err(|_| Error::Corruption)?,
+                connection: None,
+                sample: order_sample(db, &named, &order)?,
+                destination: Some(Identifier::new(&named).map_err(|_| Error::Corruption)?),
+                results: Vec::new(),
             })
         })
         .transpose()

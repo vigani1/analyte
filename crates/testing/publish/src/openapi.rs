@@ -48,10 +48,13 @@ fn notice() -> Value {
         "An item from a machine waits for review in Analyte (opened), or staff settled it there (closed), with the same item reference. Show it to staff; never decide from it: the decision stays in Analyte. It carries the sample ID and the machine's test codes, never a raw message or a value.",
         "ReviewNotice",
     );
-    let answers = &mut call["responses"];
-    answers["404"] = json!({ "description": "The app takes no Needs review notices. Analyte stops sending them to this lab app, shows that on its lab app page and asks again after it restarts. Results are not affected." });
-    answers["501"] =
-        json!({ "description": "Same as 404: the app takes no Needs review notices." });
+    if let Some(answers) = call.get_mut("responses").and_then(Value::as_object_mut) {
+        answers.insert("404".into(), json!({ "description": "The app takes no Needs review notices. Analyte stops sending them to this lab app, shows that on its lab app page and asks again after it restarts. Results are not affected." }));
+        answers.insert(
+            "501".into(),
+            json!({ "description": "Same as 404: the app takes no Needs review notices." }),
+        );
+    }
     call
 }
 

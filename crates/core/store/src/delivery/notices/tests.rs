@@ -13,7 +13,7 @@ fn machines() -> Result<Vec<Identifier>, analyte_model::TextError> {
 
 /// A store whose lab app `app` takes notices, holding one result without an
 /// identity, which Analyte parks for review.
-fn held(path: &std::path::Path) -> Result<(Store, ReceiptId), Box<dyn std::error::Error>> {
+fn held(path: &Path) -> Result<(Store, ReceiptId), Box<dyn std::error::Error>> {
     let mut store = open(path)?;
     store.configure_review_notices(&[app()?])?;
     let metadata = receipt(b"held")?;

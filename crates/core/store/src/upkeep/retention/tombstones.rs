@@ -26,17 +26,6 @@ pub(super) fn remove_delete_guards(db: &Connection) -> Result<Vec<String>, Error
     }
     Ok(guards)
 }
-/// The parked items linked to receipt `?1` (a stored key) or to one of its
-/// deliveries.
-macro_rules! receipt_items {
-    () => {
-        concat!(
-            "SELECT p.id FROM parked p WHERE EXISTS(SELECT 1 FROM json_each(p.evidence,'$.targets') t ",
-            "WHERE t.value=json_extract(?1,'$') OR t.value IN (SELECT json_extract(o.id,'$') FROM outbox o WHERE o.receipt=?1))"
-        )
-    };
-}
-
 pub(super) fn purge(
     db: &Connection,
     credential: &DigestKey,
@@ -77,32 +66,6 @@ pub(super) fn purge(
         [&receipt_key],
         |r| r.get(0),
     )?;
-    // The Needs review notices about the receipt's items name its sample and
-    // test codes, so they go with it (ADR 0038). The items themselves stay.
-    for sql in [
-        concat!(
-            "DELETE FROM review_notices_open WHERE item IN (",
-            receipt_items!(),
-            ")"
-        ),
-        concat!(
-            "DELETE FROM attempts WHERE delivery IN (SELECT id FROM outbox WHERE kind='review_notice' AND ordering_key IN (SELECT CAST(id AS TEXT) FROM (",
-            receipt_items!(),
-            ")))"
-        ),
-        concat!(
-            "DELETE FROM review_notices WHERE item IN (",
-            receipt_items!(),
-            ")"
-        ),
-        concat!(
-            "DELETE FROM outbox WHERE kind='review_notice' AND ordering_key IN (SELECT CAST(id AS TEXT) FROM (",
-            receipt_items!(),
-            "))"
-        ),
-    ] {
-        db.execute(sql, [&receipt_key])?;
-    }
     for sql in [
         "DELETE FROM attempts WHERE delivery IN (SELECT id FROM outbox WHERE receipt=?1)",
         "DELETE FROM outbox WHERE receipt=?1",

@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Optional Needs review notices to the lab app (ADR 0038): with "Send Needs
+  review notices: yes" on Setup → Lab apps (or `analyte lab-apps set <name>
+  --review-notices yes`), Analyte sends `POST /review-notices` when an item
+  from a machine waits for review, and again when staff settle it, with the
+  same item reference and the outcome. Off by default. Notices use the outbox,
+  signing and retry rules of results; they name the machine, model, sample ID,
+  test codes and a reason category, never a raw message or a value. A lab app
+  that answers 404 or 501 gets no more notices, shown on its page; its results
+  are not affected. The lab app never decides. Contract v1 gains the call as
+  an additive, optional part, with its schema, OpenAPI entry, vectors,
+  reference receiver route and contract-check cases. The store schema moves
+  to version 21.
+
 - An HL7 v2 upload whose MSH-12 version Analyte does not recognise is still
   stored and parked for review, and the analyzer now gets a rejection with the
   reason instead of no answer: AR (CR in enhanced mode) with ERR code 203,

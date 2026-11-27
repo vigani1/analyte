@@ -550,6 +550,30 @@ async fn test_listens_on_the_saved_port_and_sends_nothing() -> Result<(), Error>
     Ok(())
 }
 
+// ADR 0038: "Send Needs review notices" is off by default and goes through
+// the one save path; yes writes it, no removes it again, and the other values
+// stay as they were.
+#[tokio::test(flavor = "multi_thread")]
+async fn lab_apps_turn_review_notices_on_and_off() -> Result<(), Error> {
+    let install = install()?;
+    install.set_up().await?;
+    let path = install.root.join("lab-apps.toml");
+    let file = || std::fs::read_to_string(&path).unwrap_or_default();
+    assert!(!file().contains("review_notices"), "{}", file());
+    let on = ["set", "demo", "--review-notices", "yes"];
+    assert_eq!(install.lab_apps(&on, ["", ""]).await?, Outcome::Done);
+    assert!(file().contains("review_notices = true"), "{}", file());
+    assert!(file().contains("https://lab.example.invalid"), "{}", file());
+    let off = ["set", "demo", "--review-notices", "no"];
+    assert_eq!(install.lab_apps(&off, ["", ""]).await?, Outcome::Done);
+    assert!(!file().contains("review_notices"), "{}", file());
+    assert!(
+        LabAppsCli::try_parse_from(["lab-apps", "set", "demo", "--review-notices", "maybe"])
+            .is_err()
+    );
+    Ok(())
+}
+
 // Owner request 2026-11-21 (command line): the Lab apps page's refusals hold
 // here too and change nothing: a new lab app needs both keys and a plain name,
 // keys for an unknown lab app are refused, and one a machine uses stays.

@@ -72,6 +72,26 @@ app itself. Neither action contacts a machine, answers a machine query or resend
 an order. A timeout can leave an action committed: inspect its audit and retained
 versions before deciding whether to repeat it.
 
+### Needs review notices
+
+A lab app whose setting "Send Needs review notices" is yes (`review_notices =
+true` in `lab-apps.toml`, or `analyte lab-apps set <name> --review-notices
+yes`) is told about Needs review items with `POST /review-notices`
+([ADR 0038](../../docs/adr/0038-needs-review-notices.md)). Every five seconds
+the engine reads the items parked since the last read and the items it told
+the lab app about that staff have since settled. It queues one opening and one
+closing notice per item in the outbox, each with its own delivery ID kept on
+every retry, and the lab app's delivery worker sends them with its results. An
+item goes to the lab app it names (a delivery, an order) or else to its
+machine's lab app. A notice carries the machine, its model, the sample ID, the
+test codes and a reason category, never a raw message or a value. The lab app
+never decides: staff still settle the item here.
+
+If the lab app answers 404 or 501, its notices are declined: nothing more is
+queued, nothing is parked or paused, results go on, and the lab app's Setup
+page says so. The engine asks again after its next start. Settings take effect
+at engine start; a lab app is told about items parked from then on.
+
 Each machine has one supervised owner. TCP servers accept one session at a time;
 TCP clients reconnect without carrying writes between sessions. Serial ports run
 on dedicated joined threads. Every session loop (TCP server, TCP client, serial
