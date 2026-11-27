@@ -51,10 +51,12 @@ text_sql!(DeliveryState,
     Self::Parked => "parked" => Self::Parked,
     Self::Paused => "paused" => Self::Paused,
     Self::Conflict => "conflict" => Self::Conflict,
+    Self::Declined => "declined" => Self::Declined,
 );
 text_sql!(DeliveryKind,
     Self::Result => "result" => Self::Result,
     Self::OrderEvent => "order_event" => Self::OrderEvent,
+    Self::ReviewNotice => "review_notice" => Self::ReviewNotice,
 );
 
 #[derive(Debug, Clone, Copy)]

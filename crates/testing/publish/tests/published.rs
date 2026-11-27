@@ -83,6 +83,14 @@ fn valid_vectors_match_the_schema() -> TestResult {
         errors(&body("OrderEvent")?, &vector("event.json")?),
         Vec::<String>::new()
     );
+    // ADR 0038: both notice vectors are valid notice bodies.
+    for name in ["review-notice.json", "review-notice-closed.json"] {
+        assert_eq!(
+            errors(&body("ReviewNotice")?, &vector(name)?),
+            Vec::<String>::new(),
+            "{name}"
+        );
+    }
 
     let status = body("StatusBody")?;
     let error = body("ErrorBody")?;
@@ -261,11 +269,12 @@ fn spelled<T: serde::Serialize>(values: &[T]) -> Vec<String> {
         .collect()
 }
 
-// ADR 0033: the OpenAPI document covers the three calls, with bearer
+// ADR 0033, ADR 0038: the OpenAPI document covers the four calls (the notice
+// call is optional for a lab app), with bearer
 // authentication and the Standard Webhooks headers, and each body reference
 // names a definition of the schema file.
 #[test]
-fn openapi_covers_the_three_calls_and_its_references_resolve() -> TestResult {
+fn openapi_covers_every_call_and_its_references_resolve() -> TestResult {
     let openapi = repository_file("docs/contract/openapi.json")?;
     let schema = repository_file("docs/contract/contract-v1.schema.json")?;
     assert_eq!(openapi["openapi"], "3.1.1");
@@ -283,7 +292,12 @@ fn openapi_covers_the_three_calls_and_its_references_resolve() -> TestResult {
         .collect::<Vec<_>>();
     assert_eq!(
         paths,
-        ["get /orders", "post /order-events", "post /results"]
+        [
+            "get /orders",
+            "post /order-events",
+            "post /results",
+            "post /review-notices"
+        ]
     );
     assert_eq!(
         openapi["components"]["securitySchemes"]["bearer"]["scheme"],
@@ -297,7 +311,7 @@ fn openapi_covers_the_three_calls_and_its_references_resolve() -> TestResult {
         headers,
         ["webhook-id", "webhook-timestamp", "webhook-signature"]
     );
-    for post in ["/results", "/order-events"] {
+    for post in ["/results", "/order-events", "/review-notices"] {
         assert_eq!(
             openapi["paths"][post]["post"]["parameters"]
                 .as_array()
@@ -322,6 +336,17 @@ fn openapi_covers_the_three_calls_and_its_references_resolve() -> TestResult {
     }
     for name in analyte_contract::schema::BODIES {
         assert!(schema["$defs"].get(name).is_some(), "{name}");
+    }
+    // ADR 0038: a lab app that answers 404 or 501 takes no notices; it is not
+    // a wrong address there, as it is for results.
+    let notice = &openapi["paths"]["/review-notices"]["post"]["responses"];
+    for status in ["404", "501"] {
+        assert!(
+            notice[status]["description"]
+                .as_str()
+                .is_some_and(|text| text.contains("takes no Needs review notices")),
+            "{status}"
+        );
     }
     Ok(())
 }

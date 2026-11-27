@@ -50,6 +50,39 @@ pub enum ResponseAction {
         /// Retry-After seconds.
         after: Option<u64>,
     },
+    /// The app does not take Needs review notices: stop sending them to it,
+    /// without pausing it or parking anything (ADR 0038). Only
+    /// [`classify_notice_response`] gives this.
+    Declined {
+        /// Operator-visible cause.
+        reason: &'static str,
+    },
+}
+
+/// The reason kept when a lab app answers 404 for /review-notices.
+pub const NOTICES_NOT_FOUND: &str = "the lab app has no /review-notices endpoint (404); Analyte stopped sending it Needs review notices";
+/// The reason kept when a lab app answers 501 for /review-notices.
+pub const NOTICES_NOT_IMPLEMENTED: &str = "the lab app does not implement /review-notices (501); Analyte stopped sending it Needs review notices";
+
+/// Classifies an answer to `POST /review-notices`. Notices are optional for a
+/// lab app, so 404 and 501 mean it takes none: [`ResponseAction::Declined`].
+/// Every other answer means what it means for any delivery
+/// ([`classify_response`]), so a wrong key still pauses the lab app.
+#[must_use]
+pub fn classify_notice_response(
+    status: u16,
+    body: &[u8],
+    retry_after: Option<&str>,
+) -> ResponseAction {
+    match status {
+        404 => ResponseAction::Declined {
+            reason: NOTICES_NOT_FOUND,
+        },
+        501 => ResponseAction::Declined {
+            reason: NOTICES_NOT_IMPLEMENTED,
+        },
+        _ => classify_response(status, body, retry_after),
+    }
 }
 /// Why the response rules park a delivery when the reason is not the app's
 /// own `detail`. Its `Display` is the stored reason, so spellings never change.

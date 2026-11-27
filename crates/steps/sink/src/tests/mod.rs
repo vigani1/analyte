@@ -17,6 +17,7 @@ mod bounds;
 mod delivery;
 mod diagnostics;
 mod freshness;
+mod notices;
 mod workers;
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 

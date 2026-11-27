@@ -21,6 +21,10 @@ pub enum DeliveryState {
     Paused,
     /// App reported conflicting content under this delivery identity.
     Conflict,
+    /// The app does not take this kind of delivery: a Needs review notice it
+    /// answered with 404 or 501, or one queued for it after that. Finished,
+    /// like Done, but never accepted (ADR 0038).
+    Declined,
 }
 
 impl DeliveryState {
@@ -57,7 +61,8 @@ pub struct StoredDelivery {
 pub enum DeliveryFilter {
     /// Every delivery.
     All,
-    /// Every delivery the app has not accepted yet: every state but done.
+    /// Every delivery the app has not accepted yet: every state but the
+    /// finished ones, done and declined.
     Undelivered,
 }
 
@@ -124,7 +129,7 @@ impl Store {
             .db
             .prepare(concat!(
                 "SELECT destination,sum(state IN (?1,?2)),sum(state IN (?3,?4,?5)) FROM outbox ",
-                "WHERE state!=?6 GROUP BY destination ORDER BY destination LIMIT ?7"
+                "WHERE state NOT IN (?6,?8) GROUP BY destination ORDER BY destination LIMIT ?7"
             ))?
             .query_map(
                 params![
@@ -135,7 +140,8 @@ impl Store {
                     DeliveryState::Conflict,
                     DeliveryState::Done,
                     i64::try_from(self.limits.page_rows)
-                        .map_err(|_| Error::InvalidDeliveryInput)?
+                        .map_err(|_| Error::InvalidDeliveryInput)?,
+                    DeliveryState::Declined,
                 ],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )?
@@ -267,14 +273,15 @@ impl Store {
         );
         let rows: Vec<Row> = self
             .db
-            .prepare("SELECT o.sequence,o.id,o.destination,o.state,o.kind,o.enqueued_at,o.enqueue_time_backfilled,(SELECT evidence FROM interpretations i WHERE i.receipt=o.receipt AND i.version=o.version) FROM outbox o WHERE o.sequence>?1 AND (?2=0 OR o.state!=?3) ORDER BY o.sequence LIMIT ?4")?
+            .prepare("SELECT o.sequence,o.id,o.destination,o.state,o.kind,o.enqueued_at,o.enqueue_time_backfilled,(SELECT evidence FROM interpretations i WHERE i.receipt=o.receipt AND i.version=o.version) FROM outbox o WHERE o.sequence>?1 AND (?2=0 OR o.state NOT IN (?3,?5)) ORDER BY o.sequence LIMIT ?4")?
             .query_map(
                 params![
                     after,
                     filter == DeliveryFilter::Undelivered,
                     DeliveryState::Done,
                     i64::try_from(limit.min(self.limits.page_rows))
-                        .map_err(|_| Error::InvalidDeliveryInput)?
+                        .map_err(|_| Error::InvalidDeliveryInput)?,
+                    DeliveryState::Declined,
                 ],
                 |r| {
                     Ok((
@@ -340,8 +347,8 @@ impl Store {
     /// Reports database failures and corrupt counts.
     pub fn delivery_counts(&self) -> Result<DeliveryCounts, Error> {
         let (all, undelivered): (i64, Option<i64>) = self.db.query_row(
-            "SELECT count(*),sum(state!=?1) FROM outbox",
-            [DeliveryState::Done],
+            "SELECT count(*),sum(state NOT IN (?1,?2)) FROM outbox",
+            [DeliveryState::Done, DeliveryState::Declined],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
         Ok(DeliveryCounts {
@@ -394,7 +401,10 @@ impl Store {
             .optional()?;
         let (state, kind, ordering, receipt, version) = row.ok_or(Error::UnknownDelivery)?;
         match state {
-            DeliveryState::Done | DeliveryState::Parked | DeliveryState::Paused => {}
+            DeliveryState::Done
+            | DeliveryState::Parked
+            | DeliveryState::Paused
+            | DeliveryState::Declined => {}
             DeliveryState::Pending | DeliveryState::InFlight | DeliveryState::Conflict => {
                 return Err(Error::ResendState);
             }
@@ -410,7 +420,7 @@ impl Store {
                     return Err(Error::SupersededDelivery);
                 }
             }
-            DeliveryKind::OrderEvent => {}
+            DeliveryKind::OrderEvent | DeliveryKind::ReviewNotice => {}
         }
         tx.execute(
             "UPDATE outbox SET state=?2,next_attempt=0 WHERE id=?1",
@@ -431,6 +441,7 @@ impl std::fmt::Display for DeliveryState {
             Self::Parked => "Parked",
             Self::Paused => "Paused",
             Self::Conflict => "Conflict",
+            Self::Declined => "Declined",
         })
     }
 }
@@ -444,6 +455,7 @@ fn delivery_state_spellings_are_compatible() {
         (DeliveryState::Parked, "Parked"),
         (DeliveryState::Paused, "Paused"),
         (DeliveryState::Conflict, "Conflict"),
+        (DeliveryState::Declined, "Declined"),
     ] {
         assert_eq!(value.to_string(), expected);
     }

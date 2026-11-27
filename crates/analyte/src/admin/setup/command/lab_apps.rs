@@ -81,6 +81,10 @@ pub struct Settings {
     /// How long to wait for its answer, in whole seconds.
     #[arg(long)]
     request_timeout_seconds: Option<String>,
+    /// Whether to send it Needs review notices: `yes` or `no` (ADR 0038). A
+    /// new lab app gets none unless this says yes.
+    #[arg(long, value_parser = ["yes", "no"])]
+    review_notices: Option<String>,
 }
 
 impl Settings {
@@ -94,6 +98,9 @@ impl Settings {
         }
         if let Some(seconds) = self.request_timeout_seconds {
             entered.request_timeout_seconds = seconds;
+        }
+        if let Some(choice) = self.review_notices {
+            entered.review_notices = choice;
         }
         entered
     }
@@ -271,6 +278,10 @@ fn list(setup: &Setup) -> Result<Outcome, Failure> {
         say(&format!(
             "  Request wait: {} s",
             settings.request_timeout_seconds
+        ))?;
+        say(&format!(
+            "  Send Needs review notices: {}",
+            crate::admin::setup::lab_apps::change::notices_word(settings.review_notices)
         ))?;
         say(&format!(
             "  Used by: {}",

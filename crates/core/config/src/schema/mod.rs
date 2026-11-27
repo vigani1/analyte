@@ -562,6 +562,11 @@ pub struct Destination {
     pub api_key_name: Identifier,
     /// Host signing credential reference.
     pub signing_key_name: Identifier,
+    /// Whether Analyte tells this lab app about Needs review items with
+    /// `POST /review-notices` (ADR 0038). Off unless written; left out of the
+    /// snapshot while off, so existing snapshot bytes do not change.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub review_notices: bool,
 }
 
 impl Destination {

@@ -35,6 +35,21 @@ fn seconds(text: &str, default: u64, what: &'static str) -> Result<u64, SetupErr
     text.parse().map_err(|_| SetupError::InvalidNumber(what))
 }
 
+/// "Send Needs review notices" as entered: `yes` or `no`, empty meaning no,
+/// the default (ADR 0038).
+pub(in crate::admin::setup) fn notices(text: &str) -> Result<bool, SetupError> {
+    match text.trim() {
+        "yes" => Ok(true),
+        "" | "no" => Ok(false),
+        _ => Err(SetupError::ReviewNoticesChoice),
+    }
+}
+
+/// The entered spelling of a "Send Needs review notices" value.
+pub(in crate::admin::setup) const fn notices_word(on: bool) -> &'static str {
+    if on { "yes" } else { "no" }
+}
+
 /// Results and order messages the lab app has not accepted yet, by lab app name.
 pub(in crate::admin::setup) async fn waiting(
     store: &analyte_store::Handle,
@@ -65,6 +80,8 @@ pub(in crate::admin::setup) struct Entered {
     pub(in crate::admin::setup) base_url: String,
     pub(in crate::admin::setup) freshness_seconds: String,
     pub(in crate::admin::setup) request_timeout_seconds: String,
+    /// `yes` or `no`; empty is no.
+    pub(in crate::admin::setup) review_notices: String,
     pub(in crate::admin::setup) api_key: String,
     pub(in crate::admin::setup) signing_key: String,
 }
@@ -78,6 +95,7 @@ impl Entered {
             base_url: known.base_url.as_str().to_owned(),
             freshness_seconds: known.freshness_seconds.to_string(),
             request_timeout_seconds: known.request_timeout_seconds.to_string(),
+            review_notices: notices_word(known.review_notices).to_owned(),
             api_key: String::new(),
             signing_key: String::new(),
         }
@@ -106,6 +124,7 @@ fn settings(
         base_url: HttpsUrl::parse(posted.base_url.trim()).map_err(SetupError::InvalidUrl)?,
         api_key_name,
         signing_key_name,
+        review_notices: notices(&posted.review_notices)?,
     })
 }
 

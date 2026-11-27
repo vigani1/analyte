@@ -117,6 +117,11 @@ pub(super) struct LabApp {
     pub(super) address: String,
     pub(super) freshness: String,
     pub(super) timeout: String,
+    /// Send Needs review notices: yes (true) or no (ADR 0038).
+    pub(super) notices: bool,
+    /// What Analyte knows about those notices now: the lab app declined them,
+    /// or the store could not be read. None when there is nothing to say.
+    pub(super) notices_status: Option<String>,
     /// "The defaults suit most labs: 30 and 10 seconds."
     pub(super) defaults: String,
     pub(super) senders: Vec<Sender>,

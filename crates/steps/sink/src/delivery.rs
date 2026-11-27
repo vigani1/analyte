@@ -1,6 +1,6 @@
 //! Delivers results while preserving delivery identities across retries.
 use crate::{DeliveryError, Destination, SecretsSource, body, deadline};
-use analyte_contract::{ResponseAction, classify_response};
+use analyte_contract::{ResponseAction, classify_notice_response, classify_response};
 use analyte_model::{DeliveryId, Identifier, IdentityStatus, ReceiptMetadata, ResultContent};
 use analyte_store::{Attempt, DeliveryKind, Handle};
 use std::time::Duration;
@@ -67,6 +67,31 @@ pub fn encode_order_event(
     })
 }
 
+/// Freezes a validated Needs review notice for the outbox (ADR 0038). Its
+/// delivery ID, the notice ID, is kept on every retry.
+/// # Errors
+/// Refuses oversized bytes or a delivery ID that is not a version 7 UUID.
+pub fn encode_review_notice(
+    notice: &analyte_contract::ReviewNotice,
+    destination: Identifier,
+    item: i64,
+    phase: analyte_store::ReviewPhase,
+) -> Result<analyte_store::ReviewNoticeDelivery, DeliveryError> {
+    let payload = serde_json::to_vec(notice)?;
+    if payload.len() > analyte_contract::MAX_DOCUMENT_BYTES {
+        return Err(DeliveryError::PayloadTooLarge);
+    }
+    let id = DeliveryId::try_from(uuid::Uuid::parse_str(notice.fields().delivery_id.as_str())?)?;
+    Ok(analyte_store::ReviewNoticeDelivery {
+        id,
+        destination,
+        item,
+        phase,
+        payload,
+        contract_version: 1,
+    })
+}
+
 /// Outcome durably recorded before returning to the host.
 #[derive(Debug, PartialEq, Eq)]
 pub enum DeliveryOutcome {
@@ -80,6 +105,8 @@ pub enum DeliveryOutcome {
     Paused,
     /// Same immutable delivery scheduled for a later attempt.
     RetryAt(i64),
+    /// The app takes no Needs review notices; none more are sent to it.
+    Declined,
 }
 
 /// Claims and delivers in order; the host owns scheduling and cancellation.
@@ -175,6 +202,9 @@ impl<'a> Worker<'a> {
             ResponseAction::PauseForSetup { reason: detail } => {
                 (Attempt::Paused(reason(detail)), DeliveryOutcome::Paused)
             }
+            ResponseAction::Declined { reason: detail } => {
+                (Attempt::Declined(reason(detail)), DeliveryOutcome::Declined)
+            }
             ResponseAction::Retry { after } => {
                 let delay = i64::try_from(backoff(destination, claim.earlier_attempts, after))?;
                 let next = now
@@ -219,6 +249,12 @@ impl<'a> Worker<'a> {
         let path = match claim.kind {
             DeliveryKind::Result => "results",
             DeliveryKind::OrderEvent => "order-events",
+            DeliveryKind::ReviewNotice => "review-notices",
+        };
+        // Notices are optional for a lab app: 404 and 501 say it takes none.
+        let classify = match claim.kind {
+            DeliveryKind::Result | DeliveryKind::OrderEvent => classify_response,
+            DeliveryKind::ReviewNotice => classify_notice_response,
         };
         let response = destination
             .client
@@ -240,12 +276,12 @@ impl<'a> Worker<'a> {
         // These actions need no body. In particular, a stalled error body must
         // not discard Retry-After or delay a setup pause.
         if matches!(status, 300..=399 | 401 | 403 | 404 | 408 | 413 | 429 | 500..=599) {
-            return Ok((classify_response(status, &[], retry.as_deref()), None));
+            return Ok((classify(status, &[], retry.as_deref()), None));
         }
         let bytes = match body(response, DeliveryError::ResponseTooLarge).await {
             Ok(bytes) => bytes,
             Err(DeliveryError::ResponseTooLarge) => {
-                return Ok((classify_response(status, &[], retry.as_deref()), None));
+                return Ok((classify(status, &[], retry.as_deref()), None));
             }
             Err(error) => return Err(error),
         };
@@ -257,7 +293,7 @@ impl<'a> Worker<'a> {
         } else {
             None
         };
-        Ok((classify_response(status, &bytes, retry.as_deref()), detail))
+        Ok((classify(status, &bytes, retry.as_deref()), detail))
     }
 
     /// Stops claiming on cancellation and drains the current attempt within `budget`.

@@ -296,6 +296,11 @@ async fn prepare_service(
         );
         crate::runtime::delivery::recover(&store).await?;
         crate::runtime::delivery::report_unconfigured(&store, &reach.configured).await?;
+        crate::runtime::review_notices::configure(
+            &store,
+            &crate::runtime::review_notices::plans(program),
+        )
+        .await?;
         super::recovery::run(program, &store).await?;
         crate::admin::prepare(
             program,
@@ -705,6 +710,18 @@ fn start_alerts(
             alert_owners.spawn(async move {
                 let _component = component;
                 crate::runtime::retention::run(store, policies, stop).await
+            });
+        }
+    }
+    {
+        let plans = crate::runtime::review_notices::plans(program);
+        if !plans.is_empty() {
+            let store = store.clone();
+            let stop = stopping.clone();
+            let component = watchdog.component("review-notices".into());
+            alert_owners.spawn(async move {
+                let _component = component;
+                crate::runtime::review_notices::run(store, plans, stop).await
             });
         }
     }

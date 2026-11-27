@@ -11,7 +11,7 @@ published test vectors; `generate.py` writes them.
 | File | What it is |
 | --- | --- |
 | [contract-v1.schema.json](contract-v1.schema.json) | JSON Schema (draft 2020-12) of every request and answer body |
-| [openapi.json](openapi.json) | OpenAPI 3.1 document of `POST /results`, `POST /order-events` and `GET /orders`, with the key and signature headers |
+| [openapi.json](openapi.json) | OpenAPI 3.1 document of `POST /results`, `POST /order-events`, the optional `POST /review-notices` and `GET /orders`, with the key and signature headers |
 | [machines.json](machines.json) | The machine catalog: each shipped model's id (`source.model`), name, vendor, protocol, evidence level, ready or blocked, and code systems |
 | [machines.schema.json](machines.schema.json) | JSON Schema of the catalog |
 
@@ -48,7 +48,7 @@ command-line arguments and never printed.
 
 | Name | Value |
 | --- | --- |
-| `ANALYTE_APP_URL` | Base URL; the checker calls `results`, `order-events` and `orders` under it. HTTPS with a certificate the system trusts, or `http://` to a literal loopback address (`127.0.0.1`, `[::1]`) for local development. |
+| `ANALYTE_APP_URL` | Base URL; the checker calls `results`, `order-events`, `review-notices` and `orders` under it; an app that answers 404 or 501 for `review-notices` takes no notices and those cases are skipped. HTTPS with a certificate the system trusts, or `http://` to a literal loopback address (`127.0.0.1`, `[::1]`) for local development. |
 | `ANALYTE_API_KEY` | The bearer key your app expects. |
 | `ANALYTE_SIGNING_SECRET` | The `whsec_…` Standard Webhooks secret your app trusts. |
 | `ANALYTE_REQUEST_TIMEOUT_SECONDS` | Optional, 1 to 120, default 10: the deadline for each whole request, as in Analyte. |

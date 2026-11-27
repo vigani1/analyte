@@ -1529,6 +1529,237 @@
       },
       "type": "object"
     },
+    "ReviewChange": {
+      "description": "What a notice says about its item: it now waits for review, or staff settled it.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The item waits for review in Analyte.",
+          "properties": {
+            "opened": {
+              "$ref": "#/$defs/ReviewOpened"
+            }
+          },
+          "required": [
+            "opened"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Staff settled the item in Analyte.",
+          "properties": {
+            "closed": {
+              "$ref": "#/$defs/ReviewClosed"
+            }
+          },
+          "required": [
+            "closed"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ReviewClosed": {
+      "description": "Version 1 ReviewClosed; unknown fields are ignored.",
+      "properties": {
+        "outcome": {
+          "$ref": "#/$defs/ReviewOutcome",
+          "description": "The outcome value, defined in docs/contract/v1.md."
+        },
+        "resolved_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "The resolved_at value, defined in docs/contract/v1.md."
+        }
+      },
+      "required": [
+        "outcome",
+        "resolved_at"
+      ],
+      "type": "object"
+    },
+    "ReviewNotice": {
+      "description": "The body of POST /review-notices: an item from a machine waits for review in Analyte (opened), or staff settled it there (closed). Optional for a lab app; the decision stays in Analyte. It never carries a raw message or a value.",
+      "properties": {
+        "contract_version": {
+          "$ref": "#/$defs/VersionOne",
+          "description": "The contract_version value, defined in docs/contract/v1.md."
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "The created_at value, defined in docs/contract/v1.md."
+        },
+        "delivery_id": {
+          "$ref": "#/$defs/Uuid7",
+          "description": "The delivery_id value, defined in docs/contract/v1.md."
+        },
+        "item": {
+          "$ref": "#/$defs/Identifier",
+          "description": "The item value, defined in docs/contract/v1.md.\nThe Needs review item's stable reference in Analyte; the same in its\nopening and closing notice."
+        },
+        "notice": {
+          "$ref": "#/$defs/ReviewChange",
+          "description": "The notice value, defined in docs/contract/v1.md."
+        },
+        "source": {
+          "$ref": "#/$defs/Source",
+          "description": "The source value, defined in docs/contract/v1.md."
+        }
+      },
+      "required": [
+        "contract_version",
+        "delivery_id",
+        "created_at",
+        "source",
+        "item",
+        "notice"
+      ],
+      "type": "object"
+    },
+    "ReviewOpened": {
+      "description": "Version 1 ReviewOpened; unknown fields are ignored.",
+      "properties": {
+        "parked_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The parked_at value, defined in docs/contract/v1.md.\nWhen the item was parked; null when Analyte did not record it."
+        },
+        "reason": {
+          "$ref": "#/$defs/ReviewReason",
+          "description": "The reason value, defined in docs/contract/v1.md."
+        },
+        "sample_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SampleId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The sample_id value, defined in docs/contract/v1.md.\nThe sample exactly as received, when the item concerns exactly one."
+        },
+        "tests": {
+          "description": "The tests value, defined in docs/contract/v1.md.\nThe machine's own test codes the item concerns, each once.",
+          "items": {
+            "$ref": "#/$defs/NamespacedId"
+          },
+          "maxItems": 256,
+          "type": "array"
+        }
+      },
+      "required": [
+        "reason",
+        "tests"
+      ],
+      "type": "object"
+    },
+    "ReviewOutcome": {
+      "description": "Explicit ReviewOutcome alternatives.",
+      "oneOf": [
+        {
+          "const": "resend",
+          "description": "Resend",
+          "type": "string"
+        },
+        {
+          "const": "rerun",
+          "description": "Rerun",
+          "type": "string"
+        },
+        {
+          "const": "supersede",
+          "description": "Supersede",
+          "type": "string"
+        },
+        {
+          "const": "reprocess",
+          "description": "Reprocess",
+          "type": "string"
+        },
+        {
+          "const": "dismissed",
+          "description": "Dismissed",
+          "type": "string"
+        },
+        {
+          "const": "resolved",
+          "description": "Resolved",
+          "type": "string"
+        }
+      ]
+    },
+    "ReviewReason": {
+      "description": "Explicit ReviewReason alternatives.",
+      "oneOf": [
+        {
+          "const": "unresolved_identity",
+          "description": "UnresolvedIdentity",
+          "type": "string"
+        },
+        {
+          "const": "repeated_result",
+          "description": "RepeatedResult",
+          "type": "string"
+        },
+        {
+          "const": "result_conflict",
+          "description": "ResultConflict",
+          "type": "string"
+        },
+        {
+          "const": "result_review",
+          "description": "ResultReview",
+          "type": "string"
+        },
+        {
+          "const": "parse_failed",
+          "description": "ParseFailed",
+          "type": "string"
+        },
+        {
+          "const": "mapping_finding",
+          "description": "MappingFinding",
+          "type": "string"
+        },
+        {
+          "const": "incomplete_transfer",
+          "description": "IncompleteTransfer",
+          "type": "string"
+        },
+        {
+          "const": "delivery_refused",
+          "description": "DeliveryRefused",
+          "type": "string"
+        },
+        {
+          "const": "delivery_conflict",
+          "description": "DeliveryConflict",
+          "type": "string"
+        },
+        {
+          "const": "cancel_conflict",
+          "description": "CancelConflict",
+          "type": "string"
+        },
+        {
+          "const": "order_query_uncertain",
+          "description": "OrderQueryUncertain",
+          "type": "string"
+        },
+        {
+          "const": "order_event_model_unknown",
+          "description": "OrderEventModelUnknown",
+          "type": "string"
+        }
+      ]
+    },
     "Revision": {
       "description": "Analyte-assigned revision number; zero is a valid first revision.",
       "format": "uint64",

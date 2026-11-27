@@ -36,6 +36,7 @@ impl Answer {
             ResponseAction::Parked { reason } => format!("parked: {}", one_line(&reason)),
             ResponseAction::PauseForSetup { reason } => format!("destination paused: {reason}"),
             ResponseAction::Retry { .. } => "retried later".into(),
+            ResponseAction::Declined { reason } => format!("notices stopped: {reason}"),
         }
     }
 

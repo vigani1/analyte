@@ -25,7 +25,8 @@ macro_rules! outbox_owners {
 }
 pub(crate) use outbox_owners;
 
-/// Counts `destination`'s items the app has not accepted yet: every state but done.
+/// Counts `destination`'s items the app has not accepted yet: every state but
+/// done and declined, the two finished ones.
 pub(crate) fn count_undelivered(
     db: &rusqlite::Connection,
     destination: &Identifier,
@@ -56,7 +57,7 @@ impl Store {
         destination: &Identifier,
     ) -> Result<Option<Claim>, Error> {
         let tx = self.db.transaction()?;
-        let found = tx.query_row("SELECT id,payload,destination,contract,kind,(SELECT count(*) FROM attempts a WHERE a.delivery=o.id) FROM outbox o WHERE state=?2 AND next_attempt<=?1 AND o.destination=?5 AND NOT EXISTS(SELECT 1 FROM outbox older WHERE older.destination=o.destination AND older.kind=o.kind AND older.ordering_key=o.ordering_key AND older.sequence<o.sequence AND older.state!=?3) AND NOT EXISTS(SELECT 1 FROM outbox paused WHERE paused.destination=o.destination AND paused.state=?4) ORDER BY sequence LIMIT 1", params![now, DeliveryState::Pending, DeliveryState::Done, DeliveryState::Paused, destination.as_str()], |r| Ok((r.get::<_,String>(0)?,r.get::<_,Vec<u8>>(1)?,r.get::<_,String>(2)?,r.get::<_,u32>(3)?,r.get::<_,DeliveryKind>(4)?,r.get::<_,i64>(5)?))).optional()?;
+        let found = tx.query_row("SELECT id,payload,destination,contract,kind,(SELECT count(*) FROM attempts a WHERE a.delivery=o.id) FROM outbox o WHERE state=?2 AND next_attempt<=?1 AND o.destination=?5 AND NOT EXISTS(SELECT 1 FROM outbox older WHERE older.destination=o.destination AND older.kind=o.kind AND older.ordering_key=o.ordering_key AND older.sequence<o.sequence AND older.state NOT IN (?3,?6)) AND NOT EXISTS(SELECT 1 FROM outbox paused WHERE paused.destination=o.destination AND paused.state=?4) ORDER BY sequence LIMIT 1", params![now, DeliveryState::Pending, DeliveryState::Done, DeliveryState::Paused, destination.as_str(), DeliveryState::Declined], |r| Ok((r.get::<_,String>(0)?,r.get::<_,Vec<u8>>(1)?,r.get::<_,String>(2)?,r.get::<_,u32>(3)?,r.get::<_,DeliveryKind>(4)?,r.get::<_,i64>(5)?))).optional()?;
         let result =
             if let Some((id, payload, destination, contract_version, kind, earlier_attempts)) =
                 found
@@ -102,9 +103,15 @@ impl Store {
             Attempt::Parked(_) => (DeliveryState::Parked, 0),
             Attempt::Paused(_) => (DeliveryState::Paused, 0),
             Attempt::Conflict(_) => (DeliveryState::Conflict, 0),
+            Attempt::Declined(_) => (DeliveryState::Declined, 0),
         };
         let tx = self.db.transaction()?;
         let id = key(&id)?;
+        if matches!(outcome, Attempt::Declined(_))
+            && !crate::delivery::notices::is_notice(&tx, &id)?
+        {
+            return Err(Error::InvalidDeliveryInput);
+        }
         if tx.execute(
             "UPDATE outbox SET state=?2,next_attempt=?3 WHERE id=?1 AND state=?4",
             params![id, state, next, DeliveryState::InFlight],
@@ -127,13 +134,17 @@ impl Store {
                             Attempt::Done
                             | Attempt::Interrupted
                             | Attempt::RetryAt(_)
-                            | Attempt::Paused(_) => return Err(Error::InvalidDeliveryInput),
+                            | Attempt::Paused(_)
+                            | Attempt::Declined(_) => return Err(Error::InvalidDeliveryInput),
                         },
                         &serde_json::from_str::<String>(&id)?,
                         reason.as_str(),
                         None,
                     )?],
                 )?;
+            }
+            Attempt::Declined(reason) => {
+                crate::delivery::notices::decline(&tx, &id, reason, now)?;
             }
             Attempt::Done | Attempt::Interrupted | Attempt::RetryAt(_) | Attempt::Paused(_) => {}
         }
