@@ -5,7 +5,7 @@
 {%- import "components/forms.html" as forms %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("", "Deliveries", crate::admin::more::page::deliveries_lede()) %}
+{% call layout::intro_head("", analyte_i18n::text("admin-deliveries"), crate::admin::more::page::deliveries_lede()) %}
 <nav class="chips" aria-label="{{ analyte_i18n::text("admin-show") }}">
 {%- for chip in chips %}{% call forms::chip(chip) %}{% endcall %}{% endfor -%}
 </nav>

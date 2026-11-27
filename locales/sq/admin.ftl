@@ -1387,10 +1387,6 @@ admin-no-set-up-machine-sends-here = Asnjë pajisje konfigurimi nuk dërgon kët
 
 admin-its-keys-are-set-now-analyte-uses-them-after = Tastet e tij janë vendosur tani; Analyte i përdor ato pasi të riniset.
 
-admin-set-on-d-b = Cakto në %-d %b
-
-admin-set-on-d-b-y = Vendoseni në %-d %b %Y
-
 admin-scheduled-on-the-machine = Planifikuar në pajisje
 
 admin-in-progress-on-the-machine = Në progres në pajisje
@@ -1986,3 +1982,99 @@ admin-message-cut-off = Mesazhi u ndërpre
 admin-report-reload = Rifresko faqen; nëse kjo vazhdon të ndodhë, jepni detajet më poshtë për të mbështetur.
 
 admin-report-reload-after = { $reason } { admin-report-reload }
+
+admin-set-on-date = Vendosur më { $day } { $month }
+
+admin-set-on-date-year = Vendosur më { $day } { $month } { $year }
+
+admin-duration-seconds = { $number } s
+
+admin-duration-minutes = { $number } min
+
+admin-duration-hours = { $number } orë
+
+admin-ago = { $duration } më parë
+
+admin-clock-this-year = { $day } { $month } { $time }
+
+admin-date-line = { $weekday } { $day } { $month } · { $time }
+
+admin-feed-day-today = Sot · { $weekday } { $day } { $month }
+
+admin-feed-day = { $weekday } { $day } { $month }
+
+admin-feed-day-year = { $weekday } { $day } { $month } { $year }
+
+admin-support-link = Lidhja: { $link }
+
+admin-item-number = Elementi { $index }
+
+admin-namespace = Hapësira e emrave { $namespace }
+
+admin-execution-nothing = Asgjë
+
+admin-support-delivery = Dërgesa { $id }
+
+admin-order-recorded = Regjistruar: { $recorded }
+
+admin-hold-reason = Arsyeja: { $reason }
+
+admin-hold-message = Mesazhi { $id }
+
+admin-reason-lead = Arsyeja:{ " " }
+
+admin-raw-receipt-offset = pamja e papërpunuar e marrjes nuk pranon zhvendosje kuadri
+
+admin-raw-cursor-outside = kursori i pamjes së papërpunuar është jashtë provave të ruajtura
+
+admin-raw-cursor-overflow = kursori i pamjes së papërpunuar tejkaloi kufirin
+
+admin-raw-corrupt = provat e ruajtura janë të dëmtuara
+
+admin-raw-continued = { $what }, vazhdim
+
+admin-removed-machine-name = Pajisja { $machines }
+
+admin-removed-machine-names = Pajisjet { $machines }
+
+admin-recorded-as-new = i ri
+
+admin-recorded-as-correction = korrigjim
+
+admin-lab-app-answer-unreadable = Përgjigjja e aplikacionit të laboratorit nuk u lexua
+
+admin-page-could-not-be-shown = Kjo faqe nuk mund të shfaqej
+
+admin-activity-from = { $rest } – nga { $machine }
+
+admin-activity-a-machine = Një pajisje
+
+admin-warning = Paralajmërim
+
+admin-read-results = Lexuar · { $results }
+
+admin-senders-from = Nga { $machines }
+
+admin-software-version-not-checked = Versioni i softuerit nuk është kontrolluar me një manual
+
+admin-error-alert-snapshot-too-large = pamja e alarmeve aktive kalon 4096 rreshta
+
+admin-error-alert-retry-endpoint-missing = pika e ripërpjekjes së alarmit nuk është konfiguruar
+
+admin-error-receipt-machine-missing = pajisja e marrjes mungon në konfigurimin aktual
+
+admin-error-receipt-page-lost-cursor = faqja e marrjeve humbi kursorin
+
+admin-error-unknown-receipt = marrja nuk ekziston
+
+admin-alert-unknown-number-waits = pret një numër i panjohur rezultatesh ose mesazhesh porosie
+
+admin-alert-count-waits =
+    { $count ->
+        [one] pret { $number } rezultat ose mesazh porosie
+       *[other] presin { $number } rezultate ose mesazhe porosie
+    }
+
+admin-alert-cannot-deliver-not-configured = Nuk mund të dërgohet: asnjë pajisje dhe asnjë aplikacion laboratori nuk përdor destinacionin { $destination }; { $waiting }. Shtoni aplikacionin e laboratorit { $destination } në faqen Aplikacionet e laboratorit dhe rinisni, ose riktheni cilësimet e tij; rezultatet ruhen dhe do të dërgohen sapo të konfigurohet.
+
+admin-alert-cannot-deliver-keys-missing = Nuk mund të dërgohet: mungon çelësi API ose çelësi i nënshkrimit për destinacionin e aplikacionit të laboratorit { $destination }; { $waiting }, në pauzë. Vendosni çelësin API dhe çelësin e nënshkrimit për aplikacionin e laboratorit { $destination } në faqen Aplikacionet e laboratorit ose në mjedisin e shërbimit, pastaj rinisni; rezultatet ruhen dhe do të dërgohen sapo të vendosen çelësat.

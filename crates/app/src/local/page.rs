@@ -108,9 +108,9 @@ pub(super) fn render(off: &Off, zone: &TimeZone, now: Timestamp) -> Result<Strin
 fn facts(off: &Off, zone: &TimeZone, now: Timestamp) -> Vec<(&'static str, String)> {
     let mut rows = vec![
         (
-            "Last reached",
+            tr("desktop-last-reached"),
             off.last_answer.map_or_else(
-                || "Not since the app started".to_owned(),
+                || tr("desktop-not-since-the-app-started").to_owned(),
                 |(at, _)| moment(at, zone, now),
             ),
         ),
@@ -163,7 +163,14 @@ fn moment(at: Timestamp, zone: &TimeZone, now: Timestamp) -> String {
             [("time", then.strftime("%H:%M").to_string().into())],
         )
     } else {
-        then.strftime("%-d %b %H:%M").to_string()
+        tr_args(
+            "desktop-clock-day",
+            [
+                ("day", then.day().to_string().into()),
+                ("month", analyte_i18n::month_short(then.month()).into()),
+                ("time", then.strftime("%H:%M").to_string().into()),
+            ],
+        )
     }
 }
 

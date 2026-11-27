@@ -5,7 +5,7 @@
 {%- import "components/forms.html" as forms %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("", "Setup", "Add a machine, or choose one to set its connection and pick its lab app. Changes apply after Analyte restarts.") %}
+{% call layout::intro_head("", analyte_i18n::text("admin-setup"), analyte_i18n::text("setup-index-lede")) %}
 {% call forms::icon_button("/setup/add", crate::admin::view::icon::Icon::Plus, crate::admin::view::format::add_machine(), "btn--primary") %}{% endcall %}
 {% endcall %}
 <section class="card card--pad stack" aria-labelledby="st-labs">

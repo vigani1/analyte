@@ -239,7 +239,14 @@ fn moment(at: Timestamp, now: Timestamp, zone: &TimeZone) -> String {
     if then.date() == Zoned::new(now, zone.clone()).date() {
         then.strftime("%H:%M").to_string()
     } else {
-        then.strftime("%-d %b %H:%M").to_string()
+        tr_args(
+            "desktop-clock-day",
+            [
+                ("day", then.day().to_string().into()),
+                ("month", analyte_i18n::month_short(then.month()).into()),
+                ("time", then.strftime("%H:%M").to_string().into()),
+            ],
+        )
     }
 }
 

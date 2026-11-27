@@ -6,7 +6,7 @@
 //! `[choices]`. The config loader checks them, as it checks every layer.
 use super::SetupError;
 use super::wizard::Draft;
-use crate::machine::software_version::UNCHECKED_WARNING;
+use crate::machine::software_version::unchecked_warning;
 use analyte_config::{
     ChoiceKind, ChoiceLabel, ChoiceName, ChoiceSelections, Chosen, MachineChoice, VersionEvidence,
 };
@@ -116,7 +116,13 @@ pub(in crate::admin::setup) fn value_words(
 ) -> String {
     match evidence {
         VersionEvidence::Checked => label.as_str().to_owned(),
-        VersionEvidence::Unchecked => format!("{} ({UNCHECKED_WARNING})", label.as_str()),
+        VersionEvidence::Unchecked => tr_args(
+            "setup-choice-unchecked",
+            [
+                ("label", label.as_str().into()),
+                ("warning", unchecked_warning().into()),
+            ],
+        ),
     }
 }
 

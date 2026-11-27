@@ -9,16 +9,16 @@ pub enum Error {
     #[error(transparent)]
     OrderCommand(#[from] crate::orders::CommandError),
     /// The operator action or snapshot cannot proceed.
-    #[error("active alert snapshot exceeds 4096 rows")]
+    #[error("{}", analyte_i18n::text("admin-error-alert-snapshot-too-large"))]
     AlertSnapshotTooLarge,
     /// The operator action or snapshot cannot proceed.
-    #[error("alert retry endpoint is not configured")]
+    #[error("{}", analyte_i18n::text("admin-error-alert-retry-endpoint-missing"))]
     AlertRetryEndpointIsNotConfigured,
     /// The operator action or snapshot cannot proceed.
-    #[error("receipt machine is absent from current configuration")]
+    #[error("{}", analyte_i18n::text("admin-error-receipt-machine-missing"))]
     ReceiptMachineMissing,
     /// The operator action or snapshot cannot proceed.
-    #[error("receipt page lost cursor")]
+    #[error("{}", analyte_i18n::text("admin-error-receipt-page-lost-cursor"))]
     ReceiptPageLostCursor,
     /// Preserves the original operator dependency failure.
     #[error(transparent)]
@@ -48,7 +48,7 @@ pub enum Error {
     #[error(transparent)]
     Capture(#[from] super::captures::CaptureError),
     /// The selected retained receipt does not exist.
-    #[error("receipt does not exist")]
+    #[error("{}", analyte_i18n::text("admin-error-unknown-receipt"))]
     UnknownReceipt,
     /// Preserves the original operator dependency failure.
     #[error(transparent)]

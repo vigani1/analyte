@@ -351,3 +351,171 @@ cli-named-by-analyte-config = named by ANALYTE_CONFIG
 cli-in-the-current-folder = in the current folder
 
 cli-the-installed-program-file = the installed program file
+
+cli-log-path = Log: { $path }
+
+cli-choice-write-name-value = write NAME=VALUE, such as protocol_mode=alternate
+
+cli-token-missing = admin token file is missing; run analyte admin token --rotate
+
+cli-token-invalid = admin token file must contain one base64-encoded 256-bit token
+
+cli-token-permissions = admin token file must be a protected regular file (Unix mode 0600)
+
+cli-token-access = admin token file: { $error }
+
+cli-token-random = admin token OS random source failed: { $error }
+
+cli-token-io = admin token { $operation } failed: { $error }
+
+cli-token-op-inspect = inspect credential
+
+cli-token-op-read = read credential
+
+cli-token-op-create-staging = create protected staging file
+
+cli-token-op-write-staging = write staging file
+
+cli-token-op-flush-staging = flush staging file
+
+cli-token-op-install = install credential
+
+cli-token-op-flush-directory = flush credential directory
+
+cli-setup-settings-do-not-load = Analyte's settings do not load: { $error }
+
+cli-setup-store-not-opened = Analyte's stored data could not be opened: { $error }
+
+cli-setup-ports-failed = listing serial ports failed: { $error }
+
+cli-setup-console-failed = the console could not be used: { $error }
+
+cli-setup-no-actor = name who makes this change with --actor <name>; it is recorded in the audit trail
+
+cli-setup-not-confirmed = nothing was saved: it was not confirmed
+
+cli-setup-engine-stopped = the keys can be stored only by the Analyte engine, which is not running ({ $error })
+
+cli-setup-keys-not-sent = the keys were not sent: { $error }
+
+cli-setup-engine-no-answer = whether the engine stored the change is unknown: { $error }
+
+cli-advice-run-as-service-account = Run this command as the account the Analyte service runs as, or set the keys on the Lab apps page.
+
+cli-advice-remove-anyway = To remove it regardless, run the command again with --anyway.
+
+cli-advice-same-analyzer = If it is the same analyzer, run the command again with --same-analyzer.
+
+cli-advice-check-config = See what is wrong with: analyte check-config <file>.
+
+cli-advice-start-engine = Start the engine with Start-Service Analyte in an administrator PowerShell, then run this command again.
+
+cli-advice-check-lab-apps-list = Check with analyte lab-apps list before running the command again.
+
+cli-setup-engine-runs-unknown = What the engine runs is unknown ({ $why }), so every machine in the settings counts as running.
+
+cli-setup-ask-actor = Your name for the audit record
+
+cli-setup-restart-note = { $restart } On Windows run Restart-Service Analyte in an administrator PowerShell, or press Restart now on the Setup page.
+
+cli-fix-this = Fix this: { $reason }
+
+cli-nothing-was-changed = Nothing was changed.
+
+cli-reason-character-cannot-be-recorded = The reason holds a character that cannot be recorded.
+
+cli-captures-patient-data = These recordings contain patient data. Keep them on this PC; before sharing one, make a de-identified copy with captures de-identify and review it (docs/develop/adding-a-machine.md, "Capture, de-identify and replay").
+
+cli-captures-machine-name = a machine name uses only letters, digits, - and _: { $name }
+
+cli-captures-file-name = name one recording as captures list shows it (a file name ending .rec.jsonl), not a path: { $name }
+
+cli-captures-missing = machine { $machine } has no recording called { $file }
+
+cli-captures-no-folder = the folder { $path } does not exist; create it first
+
+cli-captures-exists = { $path } already exists; nothing was overwritten
+
+cli-captures-too-many = machine { $machine } has more than 4096 recordings; move older ones out first
+
+cli-captures-format = the recording cannot be read: { $error }
+
+cli-captures-io = { $operation } { $path } failed: { $error }
+
+cli-captures-op-read = read
+
+cli-captures-op-open = open
+
+cli-captures-op-flush = flush
+
+cli-captures-op-create = create
+
+cli-captures-op-encode = encode
+
+cli-captures-op-write = write
+
+cli-captures-stopped-early = { " " }(capture stopped early: incomplete)
+
+cli-captures-modified-unknown = unknown
+
+cli-deidentify-checklist = Review the copy before sharing; free-text fields were replaced.
+
+cli-deidentify-unsupported = de-identify is not supported for { $protocol } recordings; nothing was written
+
+cli-deidentify-unknown-stack = the recording names a protocol stack Analyte does not know; nothing was written
+
+cli-deidentify-unparsed = event { $event }: { $reason }; Analyte cannot tell where every patient field is, so nothing was written
+
+cli-deidentify-checksum = event { $event }: { $reason }; nothing was written
+
+cli-deidentify-deadline = de-identifying took longer than { $seconds } seconds; nothing was written
+
+cli-deidentify-random = the system random source failed: { $error }
+
+cli-deidentify-limit = a de-identification bound was exceeded; nothing was written
+
+cli-deidentify-checksum-not-hex = the original checksum is not two hex digits
+
+cli-deidentify-checksum-case-unknown = the letter case of this checksum cannot be told from the recording; run again with --checksum-case upper or lower, as the machine's settings say
+
+cli-deidentify-checksum-not-sum = the original checksum is not a three-digit sum modulo 256
+
+cli-deidentify-astm-outside-frames = bytes outside ASTM frames
+
+cli-deidentify-astm-repeat-differs = a repeated ASTM frame differs from the frame it repeats
+
+cli-deidentify-astm-header-delimiters = an ASTM header without four distinct delimiters
+
+cli-deidentify-astm-record-before-header = an ASTM record before its header
+
+cli-deidentify-astm-record-no-delimiter = an ASTM record type without a field delimiter
+
+cli-deidentify-astm-manufacturer-record = a manufacturer (M) record, whose fields only the manufacturer defines
+
+cli-deidentify-astm-unknown-record = an unknown ASTM record type
+
+cli-deidentify-autolyser-host-outside = host bytes outside an Autolyser exchange
+
+cli-deidentify-autolyser-unasked = machine bytes Analyte did not ask for
+
+cli-deidentify-autolyser-short-record = an Autolyser record shorter than its patient code
+
+cli-deidentify-field-escape = a patient field holds an escape sequence that could spell patient text
+
+cli-deidentify-hl7-outside-blocks = bytes outside MLLP blocks
+
+cli-deidentify-hl7-msh-encoding = an MSH without distinct encoding characters
+
+cli-deidentify-hl7-segment-before-msh = an HL7 segment before its MSH
+
+cli-deidentify-hl7-segment-no-separator = an HL7 segment name without a field separator
+
+cli-deidentify-hl7-segment-no-rules = an HL7 segment Analyte has no patient-field rules for
+
+cli-deidentify-vidas-foreign-byte = a byte VIDAS packets never carry
+
+cli-deidentify-vidas-outside-packets = bytes outside VIDAS packets
+
+cli-program-file-not-found = no program file found; looked for { $looked }. Pass --config <file> or set { $variable }
+
+cli-program-file-unreadable = cannot check { $path }: { $error }. The installed program file is readable only by administrators: run the command as administrator (an elevated PowerShell on Windows, sudo on Linux), or pass --config <file>

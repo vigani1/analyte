@@ -284,7 +284,11 @@ pub(super) fn look(state: OrderState, recorded: &analyte_model::SourceText) -> L
         icon: look.icon,
         word: look.word,
         exact: state.to_string(),
-        note: matches!(state, OrderState::Uncertain | OrderState::Rejected)
-            .then(|| format!("Recorded: {}", recorded.as_str())),
+        note: matches!(state, OrderState::Uncertain | OrderState::Rejected).then(|| {
+            tr_args(
+                "admin-order-recorded",
+                [("recorded", recorded.as_str().into())],
+            )
+        }),
     }
 }

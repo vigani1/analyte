@@ -11,6 +11,17 @@
   `--lang`, `LC_ALL` and `LANG`. The admin pages use the user's browser
   preference and fall back to English.
 
+- The remaining operator text now comes from the Fluent catalogs too: page
+  titles and ledes, Setup's connection-test advice, lab app key states, the
+  setup commands' prompts and "Fix this" refusals with their advice, the
+  `captures` and de-identify refusals, `admin token` errors, settings file
+  refusals from `check-config`, undeliverable-destination alerts, durations,
+  and the weekday and month names in dates (new `locales/en/dates.ftl`).
+  English output is unchanged. Logs, audit reasons, machine data, protocol
+  tokens, wire text, file contents and command names stay as they are.
+  Albanian covers every new message, machine-translated and awaiting native
+  review like the rest of `locales/sq/`.
+
 - Optional Needs review notices to the lab app (ADR 0038): with "Send Needs
   review notices: yes" on Setup → Lab apps (or `analyte lab-apps set <name>
   --review-notices yes`), Analyte sends `POST /review-notices` when an item

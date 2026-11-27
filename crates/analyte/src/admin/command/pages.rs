@@ -228,7 +228,7 @@ pub(super) async fn cancelled(
     }
     for item in &items {
         let title = item.sample.as_ref().map_or_else(
-            || format!("Order {}", item.order),
+            || tr_args("admin-order-2", [("number", item.order.to_string().into())]),
             |sample| {
                 tr_args(
                     "cli-sample-order",

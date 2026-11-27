@@ -364,9 +364,9 @@ fn startup_timeout<'de, D: serde::Deserializer<'de>>(
 ) -> Result<Duration, D::Error> {
     let seconds = u64::deserialize(deserializer)?;
     if !(30..=3600).contains(&seconds) {
-        return Err(serde::de::Error::custom(
-            "store.startup_timeout_seconds must be between 30 and 3600 seconds",
-        ));
+        return Err(serde::de::Error::custom(analyte_i18n::text(
+            "setup-config-startup-timeout-range",
+        )));
     }
     Ok(Duration::from_secs(seconds))
 }

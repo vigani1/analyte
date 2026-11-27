@@ -228,7 +228,7 @@ pub(super) async fn list(installation: &Installation, json: bool) -> Result<Outc
             "setup-live-state-unknown",
             [(
                 "answer",
-                (reason.as_deref().unwrap_or("no answer"))
+                (reason.as_deref().unwrap_or(tr("setup-no-answer")))
                     .to_string()
                     .into(),
             )],
@@ -258,20 +258,30 @@ pub(super) async fn list(installation: &Installation, json: bool) -> Result<Outc
 fn print_machine(machine: &Listed, engine: bool) -> std::io::Result<()> {
     let not = format::not_applicable();
     say(&format!("{}:", machine.id))?;
-    say(&format!(
-        "  Model: {}",
-        match (&machine.model, &machine.definition) {
-            (Some(model), Some(path)) if model != path => format!("{model} ({path})"),
-            (Some(model), _) => model.clone(),
-            (None, _) => "none chosen yet".to_owned(),
-        }
+    say(&tr_args(
+        "setup-list-model",
+        [(
+            "model",
+            match (&machine.model, &machine.definition) {
+                (Some(model), Some(path)) if model != path => format!("{model} ({path})"),
+                (Some(model), _) => model.clone(),
+                (None, _) => tr("setup-list-none-chosen-yet").to_owned(),
+            }
+            .into(),
+        )],
     ))?;
-    say(&format!(
-        "  Connection: {}",
-        machine.connection.as_deref().unwrap_or(not)
+    say(&tr_args(
+        "setup-list-connection",
+        [(
+            "connection",
+            machine.connection.as_deref().unwrap_or(not).into(),
+        )],
     ))?;
     if let Some(cable) = &machine.cable {
-        say(&format!("  Cable: {}", cable.words))?;
+        say(&tr_args(
+            "setup-list-cable",
+            [("cable", cable.words.as_str().into())],
+        ))?;
     }
     if let Some(words) = &machine.choices_words {
         say(&tr_args(
@@ -301,14 +311,11 @@ fn print_machine(machine: &Listed, engine: bool) -> std::io::Result<()> {
             .into(),
         )],
     ))?;
-    say(&format!(
-        "  Setup: {}",
-        if machine.set_up {
-            "set up"
-        } else {
-            "not set up yet"
-        }
-    ))?;
+    say(if machine.set_up {
+        tr("setup-list-set-up")
+    } else {
+        tr("setup-list-not-set-up-yet")
+    })?;
     say(&tr_args(
         "setup-settings-version",
         [(
@@ -321,7 +328,7 @@ fn print_machine(machine: &Listed, engine: bool) -> std::io::Result<()> {
     match &machine.live {
         Some(row) => print_live(row),
         None if engine => say(tr("setup-state-the-engine-does-not-report-it")),
-        None => say("  State: unknown"),
+        None => say(tr("setup-list-state-unknown")),
     }
 }
 
@@ -356,7 +363,7 @@ fn print_live(row: &live::Row) -> std::io::Result<()> {
         [(
             "exact",
             (row.last_data.as_ref().map_or_else(
-                || "nothing received since the start".to_owned(),
+                || tr("setup-list-nothing-received").to_owned(),
                 |at| format!("{} ({})", at.shown, at.exact),
             ))
             .to_string()
@@ -383,9 +390,9 @@ fn print_live(row: &live::Row) -> std::io::Result<()> {
 /// other links.
 pub(in super::super) fn devices_line(machine: &Listed) -> Option<String> {
     match (&machine.allowed_peers, machine.open_to_any_device) {
-        (Some(peers), _) => Some(format!(
-            "  Devices: {}",
-            format::only_devices(peers.join(", "))
+        (Some(peers), _) => Some(tr_args(
+            "setup-list-devices",
+            [("devices", format::only_devices(peers.join(", ")).into())],
         )),
         (None, true) => Some(tr_args(
             "setup-devices-warning-accept-only-the-analyzer-with-analyte-machines",

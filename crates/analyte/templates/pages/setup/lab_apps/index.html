@@ -6,7 +6,7 @@
 {%- import "components/icon.html" as draw %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("", "Lab apps", "The lab software that receives results and sends orders. Each machine picks one in its setup; changes apply after a restart.") %}
+{% call layout::intro_head("", analyte_i18n::text("admin-lab-apps-2"), analyte_i18n::text("setup-lab-apps-index-lede")) %}
 {%- if add %}
 {% call forms::icon_button("/setup/lab-apps/new", crate::admin::view::icon::Icon::Plus, crate::admin::setup::add_lab_app_label(), "btn--primary") %}{% endcall %}
 {%- endif %}

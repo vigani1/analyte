@@ -132,7 +132,7 @@ impl Tone {
     pub(super) fn word(self) -> &'static str {
         match self {
             Self::Good => tr("admin-good"),
-            Self::Attention => "Warning",
+            Self::Attention => tr("admin-warning"),
             Self::Problem => tr("admin-problem"),
             Self::Neutral => tr("admin-note"),
         }

@@ -57,19 +57,13 @@ pub struct Found {
 #[derive(thiserror::Error)]
 pub enum LocateError {
     /// Nothing named a file and no usual place holds one.
-    #[error(
-        "no program file found; looked for {}. Pass --config <file> or set {ENVIRONMENT}",
-        looked_at(.looked)
-    )]
+    #[error("{}", analyte_i18n::message("cli-program-file-not-found", [("looked", (looked_at(.looked)).to_string().into()), ("variable", (ENVIRONMENT).to_string().into())]))]
     NotFound {
         /// Every place looked, in order.
         looked: Vec<PathBuf>,
     },
     /// A usual place holds something this account cannot check.
-    #[error(
-        "cannot check {}: {source}. The installed program file is readable only by administrators: run the command as administrator (an elevated PowerShell on Windows, sudo on Linux), or pass --config <file>",
-        .path.display()
-    )]
+    #[error("{}", analyte_i18n::message("cli-program-file-unreadable", [("path", (.path.display()).to_string().into()), ("error", (source).to_string().into())]))]
     Unreadable {
         /// The place that refused.
         path: PathBuf,

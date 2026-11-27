@@ -351,3 +351,171 @@ cli-named-by-analyte-config = emëruar nga ANALYTE_CONFIG
 cli-in-the-current-folder = në dosjen aktuale
 
 cli-the-installed-program-file = skedarin e programit të instaluar
+
+cli-log-path = Regjistri: { $path }
+
+cli-choice-write-name-value = shkruani NAME=VALUE, për shembull protocol_mode=alternate
+
+cli-token-missing = skedari i tokenit të administratorit mungon; ekzekutoni analyte admin token --rotate
+
+cli-token-invalid = skedari i tokenit të administratorit duhet të përmbajë një token 256-bit të koduar në base64
+
+cli-token-permissions = skedari i tokenit të administratorit duhet të jetë skedar i rregullt i mbrojtur (Unix mode 0600)
+
+cli-token-access = skedari i tokenit të administratorit: { $error }
+
+cli-token-random = burimi i rastësisë së sistemit dështoi për tokenin e administratorit: { $error }
+
+cli-token-io = tokeni i administratorit: { $operation } dështoi: { $error }
+
+cli-token-op-inspect = kontrollimi i kredencialit
+
+cli-token-op-read = leximi i kredencialit
+
+cli-token-op-create-staging = krijimi i skedarit të përkohshëm të mbrojtur
+
+cli-token-op-write-staging = shkrimi i skedarit të përkohshëm
+
+cli-token-op-flush-staging = ruajtja në disk e skedarit të përkohshëm
+
+cli-token-op-install = instalimi i kredencialit
+
+cli-token-op-flush-directory = ruajtja në disk e dosjes së kredencialit
+
+cli-setup-settings-do-not-load = Cilësimet e Analyte nuk ngarkohen: { $error }
+
+cli-setup-store-not-opened = Të dhënat e ruajtura të Analyte nuk mund të hapeshin: { $error }
+
+cli-setup-ports-failed = listimi i porteve serike dështoi: { $error }
+
+cli-setup-console-failed = konsola nuk mund të përdorej: { $error }
+
+cli-setup-no-actor = tregoni kush e bën këtë ndryshim me --actor <name>; regjistrohet në historikun e auditimit
+
+cli-setup-not-confirmed = asgjë nuk u ruajt: nuk u konfirmua
+
+cli-setup-engine-stopped = çelësat mund t'i ruajë vetëm motori i Analyte, i cili nuk po punon ({ $error })
+
+cli-setup-keys-not-sent = çelësat nuk u dërguan: { $error }
+
+cli-setup-engine-no-answer = nuk dihet nëse motori e ruajti ndryshimin: { $error }
+
+cli-advice-run-as-service-account = Ekzekutojeni këtë komandë si llogaria me të cilën punon shërbimi Analyte, ose vendosni çelësat në faqen Aplikacionet e laboratorit.
+
+cli-advice-remove-anyway = Për ta hequr gjithsesi, ekzekutojeni përsëri komandën me --anyway.
+
+cli-advice-same-analyzer = Nëse është i njëjti analizator, ekzekutojeni përsëri komandën me --same-analyzer.
+
+cli-advice-check-config = Shihni çfarë nuk shkon me: analyte check-config <file>.
+
+cli-advice-start-engine = Nisni motorin me Start-Service Analyte në një PowerShell administratori, pastaj ekzekutojeni përsëri këtë komandë.
+
+cli-advice-check-lab-apps-list = Kontrolloni me analyte lab-apps list para se ta ekzekutoni përsëri komandën.
+
+cli-setup-engine-runs-unknown = Nuk dihet çfarë po ekzekuton motori ({ $why }), kështu që çdo pajisje në cilësime llogaritet si në punë.
+
+cli-setup-ask-actor = Emri juaj për regjistrin e auditimit
+
+cli-setup-restart-note = { $restart } Në Windows ekzekutoni Restart-Service Analyte në një PowerShell administratori, ose shtypni Rinis tani në faqen Konfigurimi.
+
+cli-fix-this = Rregulloni këtë: { $reason }
+
+cli-nothing-was-changed = Asgjë nuk u ndryshua.
+
+cli-reason-character-cannot-be-recorded = Arsyeja përmban një karakter që nuk mund të regjistrohet.
+
+cli-captures-patient-data = Këto regjistrime përmbajnë të dhëna pacientësh. Mbajini në këtë kompjuter; para se të ndani një të tillë, bëni një kopje të anonimizuar me captures de-identify dhe rishikojeni (docs/develop/adding-a-machine.md, "Capture, de-identify and replay").
+
+cli-captures-machine-name = emri i një pajisjeje përdor vetëm shkronja, shifra, - dhe _: { $name }
+
+cli-captures-file-name = emërtoni një regjistrim siç e tregon captures list (një emër skedari që mbaron me .rec.jsonl), jo një shteg: { $name }
+
+cli-captures-missing = pajisja { $machine } nuk ka regjistrim me emrin { $file }
+
+cli-captures-no-folder = dosja { $path } nuk ekziston; krijojeni më parë
+
+cli-captures-exists = { $path } ekziston tashmë; asgjë nuk u mbishkrua
+
+cli-captures-too-many = pajisja { $machine } ka më shumë se 4096 regjistrime; zhvendosni më parë ato më të vjetrat
+
+cli-captures-format = regjistrimi nuk mund të lexohet: { $error }
+
+cli-captures-io = { $operation } { $path } dështoi: { $error }
+
+cli-captures-op-read = leximi i
+
+cli-captures-op-open = hapja e
+
+cli-captures-op-flush = ruajtja në disk e
+
+cli-captures-op-create = krijimi i
+
+cli-captures-op-encode = kodimi i
+
+cli-captures-op-write = shkrimi i
+
+cli-captures-stopped-early = { " " }(regjistrimi ndaloi herët: i paplotë)
+
+cli-captures-modified-unknown = e panjohur
+
+cli-deidentify-checklist = Rishikojeni kopjen para se ta ndani; fushat me tekst të lirë u zëvendësuan.
+
+cli-deidentify-unsupported = anonimizimi nuk mbështetet për regjistrimet { $protocol }; asgjë nuk u shkrua
+
+cli-deidentify-unknown-stack = regjistrimi emërton një grup protokollesh që Analyte nuk e njeh; asgjë nuk u shkrua
+
+cli-deidentify-unparsed = ngjarja { $event }: { $reason }; Analyte nuk mund të dallojë ku është çdo fushë pacienti, kështu që asgjë nuk u shkrua
+
+cli-deidentify-checksum = ngjarja { $event }: { $reason }; asgjë nuk u shkrua
+
+cli-deidentify-deadline = anonimizimi zgjati më shumë se { $seconds } sekonda; asgjë nuk u shkrua
+
+cli-deidentify-random = burimi i rastësisë së sistemit dështoi: { $error }
+
+cli-deidentify-limit = u tejkalua një kufi i anonimizimit; asgjë nuk u shkrua
+
+cli-deidentify-checksum-not-hex = shuma kontrolluese origjinale nuk është dy shifra heksadecimale
+
+cli-deidentify-checksum-case-unknown = madhësia e shkronjave të kësaj shume kontrolluese nuk dallohet nga regjistrimi; ekzekutojeni përsëri me --checksum-case upper ose lower, siç thonë cilësimet e pajisjes
+
+cli-deidentify-checksum-not-sum = shuma kontrolluese origjinale nuk është një shumë treshifrore modulo 256
+
+cli-deidentify-astm-outside-frames = bajte jashtë kuadrove ASTM
+
+cli-deidentify-astm-repeat-differs = një kuadër ASTM i përsëritur ndryshon nga kuadri që përsërit
+
+cli-deidentify-astm-header-delimiters = një kokë ASTM pa katër ndarës të ndryshëm
+
+cli-deidentify-astm-record-before-header = një regjistrim ASTM para kokës së tij
+
+cli-deidentify-astm-record-no-delimiter = një lloj regjistrimi ASTM pa ndarës fushe
+
+cli-deidentify-astm-manufacturer-record = një regjistrim prodhuesi (M), fushat e të cilit i përcakton vetëm prodhuesi
+
+cli-deidentify-astm-unknown-record = një lloj i panjohur regjistrimi ASTM
+
+cli-deidentify-autolyser-host-outside = bajte të hostit jashtë një shkëmbimi Autolyser
+
+cli-deidentify-autolyser-unasked = bajte të pajisjes që Analyte nuk i kërkoi
+
+cli-deidentify-autolyser-short-record = një regjistrim Autolyser më i shkurtër se kodi i pacientit
+
+cli-deidentify-field-escape = një fushë pacienti mban një sekuencë escape që mund të shkruajë tekst pacienti
+
+cli-deidentify-hl7-outside-blocks = bajte jashtë blloqeve MLLP
+
+cli-deidentify-hl7-msh-encoding = një MSH pa karaktere kodimi të ndryshme
+
+cli-deidentify-hl7-segment-before-msh = një segment HL7 para MSH-së së tij
+
+cli-deidentify-hl7-segment-no-separator = një emër segmenti HL7 pa ndarës fushe
+
+cli-deidentify-hl7-segment-no-rules = një segment HL7 për të cilin Analyte nuk ka rregulla për fushat e pacientit
+
+cli-deidentify-vidas-foreign-byte = një bajt që paketat VIDAS nuk e mbajnë kurrë
+
+cli-deidentify-vidas-outside-packets = bajte jashtë paketave VIDAS
+
+cli-program-file-not-found = nuk u gjet skedar programi; u kërkua në { $looked }. Jepni --config <file> ose vendosni { $variable }
+
+cli-program-file-unreadable = nuk mund të kontrollohet { $path }: { $error }. Skedari i instaluar i programit lexohet vetëm nga administratorët: ekzekutojeni komandën si administrator (një PowerShell me të drejta të ngritura në Windows, sudo në Linux), ose jepni --config <file>

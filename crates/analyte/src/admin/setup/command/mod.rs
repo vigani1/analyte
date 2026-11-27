@@ -20,7 +20,7 @@ fn saved_without_audit(error: &impl std::fmt::Display) -> io::Result<()> {
     )))
 }
 
-use analyte_i18n::message as tr_args;
+use analyte_i18n::{message as tr_args, text as tr};
 #[cfg(test)]
 mod tests;
 
@@ -76,25 +76,25 @@ impl From<Outcome> for ExitCode {
 enum Failure {
     #[error("{0}")]
     Setup(#[from] SetupError),
-    #[error("Analyte's settings do not load: {0}")]
+    #[error("{}", analyte_i18n::message("cli-setup-settings-do-not-load", [("error", (.0).to_string().into())]))]
     Settings(#[source] crate::installation::config::Error),
-    #[error("Analyte's stored data could not be opened: {0}")]
+    #[error("{}", analyte_i18n::message("cli-setup-store-not-opened", [("error", (.0).to_string().into())]))]
     Store(#[source] crate::runtime::Error),
-    #[error("listing serial ports failed: {0}")]
+    #[error("{}", analyte_i18n::message("cli-setup-ports-failed", [("error", (.0).to_string().into())]))]
     Ports(#[source] io::Error),
-    #[error("the console could not be used: {0}")]
+    #[error("{}", analyte_i18n::message("cli-setup-console-failed", [("error", (.0).to_string().into())]))]
     Console(#[from] io::Error),
-    #[error("name who makes this change with --actor <name>; it is recorded in the audit trail")]
+    #[error("{}", analyte_i18n::text("cli-setup-no-actor"))]
     NoActor,
     #[error(transparent)]
     BadActor(#[from] crate::admin::ActorError),
-    #[error("nothing was saved: it was not confirmed")]
+    #[error("{}", analyte_i18n::text("cli-setup-not-confirmed"))]
     NotConfirmed,
     /// ADR 0028: the engine is not running and this account may not write the locked keys file.
-    #[error("the keys can be stored only by the Analyte engine, which is not running ({0})")]
+    #[error("{}", analyte_i18n::message("cli-setup-engine-stopped", [("error", (.0).to_string().into())]))]
     EngineStopped(#[source] crate::installation::credentials::CredentialError),
     /// The engine could not be asked; nothing was sent.
-    #[error("the keys were not sent: {0}")]
+    #[error("{}", analyte_i18n::message("cli-setup-keys-not-sent", [("error", (.0).to_string().into())]))]
     EngineUnreachable(String),
     /// The engine refused the change with the Lab apps page's reason.
     #[error("{0}")]
@@ -103,7 +103,7 @@ enum Failure {
     #[error("{0}")]
     EngineKeysNotStored(String),
     /// The request may have reached the engine, but no answer came.
-    #[error("whether the engine stored the change is unknown: {0}")]
+    #[error("{}", analyte_i18n::message("cli-setup-engine-no-answer", [("error", (.0).to_string().into())]))]
     EngineNoAnswer(String),
 }
 
@@ -111,22 +111,14 @@ impl Failure {
     /// What to do next, when the reason alone does not say it.
     fn advice(&self) -> Option<&'static str> {
         match self {
-            Self::Setup(SetupError::Credentials(_) | SetupError::KeysNotStored(_)) => Some(
-                "Run this command as the account the Analyte service runs as, or set the keys on the Lab apps page.",
-            ),
-            Self::Setup(SetupError::UnfinishedWork(..)) => {
-                Some("To remove it regardless, run the command again with --anyway.")
+            Self::Setup(SetupError::Credentials(_) | SetupError::KeysNotStored(_)) => {
+                Some(tr("cli-advice-run-as-service-account"))
             }
-            Self::Setup(SetupError::HistoryNotConfirmed(_)) => {
-                Some("If it is the same analyzer, run the command again with --same-analyzer.")
-            }
-            Self::Settings(_) => Some("See what is wrong with: analyte check-config <file>."),
-            Self::EngineStopped(_) => Some(
-                "Start the engine with Start-Service Analyte in an administrator PowerShell, then run this command again.",
-            ),
-            Self::EngineNoAnswer(_) => {
-                Some("Check with analyte lab-apps list before running the command again.")
-            }
+            Self::Setup(SetupError::UnfinishedWork(..)) => Some(tr("cli-advice-remove-anyway")),
+            Self::Setup(SetupError::HistoryNotConfirmed(_)) => Some(tr("cli-advice-same-analyzer")),
+            Self::Settings(_) => Some(tr("cli-advice-check-config")),
+            Self::EngineStopped(_) => Some(tr("cli-advice-start-engine")),
+            Self::EngineNoAnswer(_) => Some(tr("cli-advice-check-lab-apps-list")),
             Self::Setup(_)
             | Self::Store(_)
             | Self::Ports(_)
@@ -182,8 +174,9 @@ impl Installation {
                 setup.keep_running(|_| false);
                 None
             }
-            live::Live::Unknown(why) => Some(format!(
-                "What the engine runs is unknown ({why}), so every machine in the settings counts as running."
+            live::Live::Unknown(why) => Some(tr_args(
+                "cli-setup-engine-runs-unknown",
+                [("why", why.to_string().into())],
             )),
         };
         let setup = Arc::new(setup);
@@ -218,7 +211,7 @@ fn actor(given: Option<Identifier>, ask: ask::Ask) -> Result<Identifier, Failure
     if let Some(actor) = given {
         return Ok(actor);
     }
-    let Some(name) = ask.line("Your name for the audit record")? else {
+    let Some(name) = ask.line(tr("cli-setup-ask-actor"))? else {
         return Err(Failure::NoActor);
     };
     Ok(crate::admin::command_line_actor(&name)?)
@@ -254,10 +247,9 @@ fn problem(text: &str) -> io::Result<()> {
 
 /// How changes take effect, said after every change, as the page says it.
 fn restart_note() -> io::Result<()> {
-    say(&format!(
-        "{} On Windows run Restart-Service Analyte in an administrator PowerShell, \
-         or press Restart now on the Setup page.",
-        super::restart_required()
+    say(&tr_args(
+        "cli-setup-restart-note",
+        [("restart", super::restart_required().into())],
     ))
 }
 
@@ -275,9 +267,9 @@ fn finish(result: Result<Outcome, Failure>) -> Outcome {
         Ok(outcome) => outcome,
         Err(failure) => {
             // A closed console cannot be told either; the exit code still says it.
-            let _ = problem(&format!(
-                "Fix this: {}",
-                format::sentence(&failure.to_string())
+            let _ = problem(&tr_args(
+                "cli-fix-this",
+                [("reason", format::sentence(&failure.to_string()).into())],
             ));
             if let Some(advice) = failure.advice() {
                 let _ = problem(advice);
@@ -285,7 +277,7 @@ fn finish(result: Result<Outcome, Failure>) -> Outcome {
             if failure.after_writing() {
                 Outcome::Partly
             } else {
-                let _ = problem("Nothing was changed.");
+                let _ = problem(tr("cli-nothing-was-changed"));
                 Outcome::Refused
             }
         }

@@ -68,7 +68,10 @@ pub(in crate::admin) fn senders(machines: &[&str]) -> String {
     if machines.is_empty() {
         tr("admin-no-set-up-machine-sends-here").into()
     } else {
-        format!("From {}", machines.join(", "))
+        tr_args(
+            "admin-senders-from",
+            [("machines", machines.join(", ").into())],
+        )
     }
 }
 
@@ -103,12 +106,23 @@ fn set_on_in(set_at: i64, now: Timestamp, zone: &TimeZone) -> String {
         );
     };
     let at = at.to_zoned(zone.clone());
-    let pattern = if at.year() == now.to_zoned(zone.clone()).year() {
-        tr("admin-set-on-d-b")
+    let day = at.day().to_string();
+    let month = analyte_i18n::month_short(at.month());
+    if at.year() == now.to_zoned(zone.clone()).year() {
+        tr_args(
+            "admin-set-on-date",
+            [("day", day.into()), ("month", month.into())],
+        )
     } else {
-        tr("admin-set-on-d-b-y")
-    };
-    at.strftime(pattern).to_string()
+        tr_args(
+            "admin-set-on-date-year",
+            [
+                ("day", day.into()),
+                ("month", month.into()),
+                ("year", at.year().to_string().into()),
+            ],
+        )
+    }
 }
 
 /// A key whose value the service environment holds, which wins over a stored one.

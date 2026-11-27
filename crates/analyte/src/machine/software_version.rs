@@ -4,7 +4,9 @@ use analyte_config::software_version::{Check, ExpectedVersions, Selector, report
 use analyte_model::{Digest, Identifier};
 
 /// The warning for a software version outside the definition's manual coverage.
-pub(crate) const UNCHECKED_WARNING: &str = "Software version not checked against a manual";
+pub(crate) fn unchecked_warning() -> &'static str {
+    analyte_i18n::text("admin-software-version-not-checked")
+}
 
 /// Returns a wire warning when an active comparison finds unexpected or unknown
 /// metadata. Unchecked settings have no comparison and use their own warning.

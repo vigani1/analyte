@@ -132,7 +132,13 @@ fn transfers(lane: &Lane) -> Result<Vec<Vec<Frame>>, Error> {
                 }
                 index = index.saturating_add(1);
             }
-            0x20..=0x7E => return Err(unparsed(lane, index, "bytes outside ASTM frames")),
+            0x20..=0x7E => {
+                return Err(unparsed(
+                    lane,
+                    index,
+                    analyte_i18n::text("cli-deidentify-astm-outside-frames"),
+                ));
+            }
             ACK | NAK | CR | LF | 0..=0x1F | 0x7F..=0xFF => index = index.saturating_add(1),
         }
     }
@@ -166,7 +172,7 @@ fn assemble(
                 return Err(unparsed(
                     lane,
                     frame.text.start,
-                    "a repeated ASTM frame differs from the frame it repeats",
+                    analyte_i18n::text("cli-deidentify-astm-repeat-differs"),
                 ));
             }
             if let Some((_, lanes)) = transfer.pieces.last_mut() {
@@ -234,7 +240,7 @@ fn records(lane: &Lane, index: usize, transfer: &Transfer, plan: &mut Plan) -> R
                 unparsed(
                     lane,
                     at(start),
-                    "an ASTM header without four distinct delimiters",
+                    analyte_i18n::text("cli-deidentify-astm-header-delimiters"),
                 )
             })?);
             parent = b'H';
@@ -244,14 +250,14 @@ fn records(lane: &Lane, index: usize, transfer: &Transfer, plan: &mut Plan) -> R
             return Err(unparsed(
                 lane,
                 at(start),
-                "an ASTM record before its header",
+                analyte_i18n::text("cli-deidentify-astm-record-before-header"),
             ));
         };
         if bytes.len() > 1 && bytes.get(1) != Some(&field) {
             return Err(unparsed(
                 lane,
                 at(start),
-                "an ASTM record type without a field delimiter",
+                analyte_i18n::text("cli-deidentify-astm-record-no-delimiter"),
             ));
         }
         match kind {
@@ -260,10 +266,16 @@ fn records(lane: &Lane, index: usize, transfer: &Transfer, plan: &mut Plan) -> R
                 return Err(unparsed(
                     lane,
                     at(start),
-                    "a manufacturer (M) record, whose fields only the manufacturer defines",
+                    analyte_i18n::text("cli-deidentify-astm-manufacturer-record"),
                 ));
             }
-            _ => return Err(unparsed(lane, at(start), "an unknown ASTM record type")),
+            _ => {
+                return Err(unparsed(
+                    lane,
+                    at(start),
+                    analyte_i18n::text("cli-deidentify-astm-unknown-record"),
+                ));
+            }
         }
         for (number, range) in pieces(bytes, field).into_iter().enumerate() {
             let Some((select, value)) = rule(kind, number, parent == b'R') else {

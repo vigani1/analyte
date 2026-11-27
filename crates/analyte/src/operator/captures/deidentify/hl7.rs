@@ -126,7 +126,13 @@ fn blocks(lane: &Lane) -> Result<Vec<Range<usize>>, Error> {
                 };
             }
             CR | LF | b' ' | b'\t' => index = index.saturating_add(1),
-            _ => return Err(unparsed(lane, index, "bytes outside MLLP blocks")),
+            _ => {
+                return Err(unparsed(
+                    lane,
+                    index,
+                    analyte_i18n::text("cli-deidentify-hl7-outside-blocks"),
+                ));
+            }
         }
     }
     Ok(found)
@@ -151,25 +157,33 @@ fn message(lane: &Lane, index: usize, block: Range<usize>, plan: &mut Plan) -> R
         let name = bytes.get(..3).unwrap_or(bytes);
         if name == b"MSH" {
             delimiters = Some(header(bytes).ok_or_else(|| {
-                unparsed(lane, at, "an MSH without distinct encoding characters")
+                unparsed(
+                    lane,
+                    at,
+                    analyte_i18n::text("cli-deidentify-hl7-msh-encoding"),
+                )
             })?);
             continue;
         }
         let Some((field, delimiters)) = delimiters else {
-            return Err(unparsed(lane, at, "an HL7 segment before its MSH"));
+            return Err(unparsed(
+                lane,
+                at,
+                analyte_i18n::text("cli-deidentify-hl7-segment-before-msh"),
+            ));
         };
         if bytes.len() > 3 && bytes.get(3) != Some(&field) {
             return Err(unparsed(
                 lane,
                 at,
-                "an HL7 segment name without a field separator",
+                analyte_i18n::text("cli-deidentify-hl7-segment-no-separator"),
             ));
         }
         let rules = rules(name).ok_or_else(|| {
             unparsed(
                 lane,
                 at,
-                "an HL7 segment Analyte has no patient-field rules for",
+                analyte_i18n::text("cli-deidentify-hl7-segment-no-rules"),
             )
         })?;
         for (number, range) in pieces(bytes, field).into_iter().enumerate() {

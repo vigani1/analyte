@@ -68,7 +68,7 @@ pub(super) fn scan(lanes: &Lanes, plan: &mut Plan, clock: &Clock) -> Result<(), 
                         return Err(unparsed(
                             lane,
                             index,
-                            "host bytes outside an Autolyser exchange",
+                            analyte_i18n::text("cli-deidentify-autolyser-host-outside"),
                         ));
                     }
                     (Host::Sent, _) | (Host::Request(_), _) => {
@@ -105,7 +105,7 @@ pub(super) fn scan(lanes: &Lanes, plan: &mut Plan, clock: &Clock) -> Result<(), 
                         return Err(unparsed(
                             lane,
                             index,
-                            "machine bytes Analyte did not ask for",
+                            analyte_i18n::text("cli-deidentify-autolyser-unasked"),
                         ));
                     }
                 };
@@ -146,7 +146,7 @@ fn record(
             unparsed(
                 bytes,
                 start,
-                "an Autolyser record shorter than its patient code",
+                analyte_i18n::text("cli-deidentify-autolyser-short-record"),
             )
         })?;
     plan.value(

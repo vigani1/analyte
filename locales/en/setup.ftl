@@ -1045,3 +1045,271 @@ setup-reload-advice = reload the page
 setup-restart-required = Analyte uses these settings after it restarts.
 
 setup-settings-unchanged = The settings were already the same; no file was written.
+
+setup-index-lede = Add a machine, or choose one to set its connection and pick its lab app. Changes apply after Analyte restarts.
+
+setup-lab-apps-index-lede = The lab software that receives results and sends orders. Each machine picks one in its setup; changes apply after a restart.
+
+setup-api-key = API key
+
+setup-signing-key = Signing key
+
+setup-keys-file = Keys file: { $error }
+
+setup-key-hint-environment-wins = The service environment’s key wins over one stored here.
+
+setup-key-stored-at = { $name }, stored { $time }
+
+setup-key-hint-leave-empty = Leave it empty to keep the stored key.
+
+setup-key-missing = Missing
+
+setup-key-cannot-be-checked = Cannot be checked
+
+setup-keys-kept-locked = Its keys stay stored, locked.
+
+setup-keys-none-kept = No key is stored for it, so none is kept.
+
+setup-keys-kept-unknown = Whether keys are stored for it cannot be checked; any that are stay locked.
+
+setup-key-owner-lab-app = Lab app { $name }
+
+setup-key-owner-alert-target = Alert target { $target }
+
+setup-paste-the-key = Paste the { $key }
+
+setup-no-answer = no answer
+
+setup-list-model = { "  " }Model: { $model }
+
+setup-list-none-chosen-yet = none chosen yet
+
+setup-list-connection = { "  " }Connection: { $connection }
+
+setup-list-cable = { "  " }Cable: { $cable }
+
+setup-list-set-up = { "  " }Setup: set up
+
+setup-list-not-set-up-yet = { "  " }Setup: not set up yet
+
+setup-list-state-unknown = { "  " }State: unknown
+
+setup-list-nothing-received = nothing received since the start
+
+setup-summary-model = Model: { $model }
+
+setup-save-question = Save?
+
+setup-no-lab-app-yet-add-one = No lab app is set up yet. Add one with: analyte lab-apps add <name> --address <https://...>
+
+setup-no-machine-yet = no machine yet
+
+setup-ask-https-address = Its HTTPS address, such as https://lab.example.org
+
+setup-no-lab-app-yet-add-one-first = There is no lab app yet; add one first with: analyte lab-apps add <name> --address <https://...>
+
+setup-ask-recording-mode = Step 2, Recording: { $mode }?
+
+setup-unknown-adapter = unknown adapter
+
+setup-test-connected-listening = Connected; listening.
+
+setup-number-default-one = Number [1]
+
+setup-confirm-yes-no = { $question } [y/N]
+
+setup-verdict-listens-set-host = Analyte listens { $listens }. Set the machine’s host (LIS) address to { $target } and its host port to { $port }, then ask it to send a result again. If it still does not connect, a firewall may block it: { $firewall }
+
+setup-verdict-not-connected-yet = Not connected to the machine yet
+
+setup-verdict-could-not-connect = Could not connect to the machine
+
+setup-verdict-trying-to-reach = Analyte is trying to reach the machine at { $address }, port { $port }. Check that the machine is switched on and on the network, that this address and port match its own network settings, and that no firewall between this PC and the machine blocks it.
+
+setup-verdict-firewall-windows = the installer lets machines on this PC’s own network through Windows Firewall with the rule “{ $rule }”. A machine on another network or VLAN, or a firewall between the two, needs your IT department.
+
+setup-verdict-firewall-linux = this PC’s firewall (firewalld or ufw) must allow TCP port { $port }; Analyte does not change it. A machine on another network or VLAN needs your IT department.
+
+setup-flow-hardware = Hardware (RTS/CTS)
+
+setup-flow-software = Software (XON/XOFF)
+
+setup-list-devices = { "  " }Devices: { $devices }
+
+setup-edit-lab-app = Edit { $name }
+
+setup-remove-unlinked-items-not-counted = Items to review that are not linked to one machine are not counted.
+
+setup-start-again-from-the-setup-page = start again from the setup page
+
+setup-step-of-four = Step { $number } of 4
+
+setup-test-closed = Closed
+
+setup-definition-read-failed = reading the machine definition { $path } failed: { $error }
+
+setup-definition-invalid = the machine definition is invalid: { $error }
+
+setup-definition-is-capture-profile = { $path } is a capture profile; use it as record.toml, not machine.toml
+
+setup-definition-is-complete = { $path } is a complete definition; use it as machine.toml, not record.toml
+
+setup-definitions-folder-missing = the machine models folder { $path } is missing; copy the machines folder from the release next to Analyte's settings file
+
+setup-definitions-too-many = more than 256 machine models are installed
+
+setup-definitions-list-failed = listing the machine models in { $path } failed: { $error }
+
+setup-form-too-many-fields = too many fields
+
+setup-form-unknown-field = unknown field `{ $name }`
+
+setup-form-duplicate-field = duplicate field `{ $name }`
+
+setup-form-csrf-once = the csrf field is required once
+
+setup-test-action-listen = listen
+
+setup-test-action-accept = accept
+
+setup-test-action-connect = connect
+
+setup-test-action-read = read
+
+setup-written-in-site-file = [destination] in the machine's site file; saving the machine moves it to lab-apps.toml
+
+setup-written-in-program-file = [[retired_destinations]] in the program file; saving it here moves it to lab-apps.toml
+
+setup-choice-unchecked = { $label } ({ $warning })
+
+setup-config-astm-checksum-hex-only = ASTM receive dialog currently supports strict checksum hex only
+
+setup-config-admin-address-loopback = admin address must be 127.0.0.1
+
+setup-config-admin-port-range = admin port must be between 1 and 65535
+
+setup-config-capture-machine-id = capture machine ID must be one directory component
+
+setup-config-too-large = configuration exceeds 1 MiB
+
+setup-config-no-parent-directory = configuration has no parent directory
+
+setup-config-duplicate-machine-identity = duplicate machine identity
+
+setup-config-too-many-retired-destinations = at most 128 retired destinations are supported
+
+setup-config-invalid-program-limits = invalid program version, machine count or storage limits
+
+setup-config-invalid-signing-rotation = invalid signing rotation references or count
+
+setup-config-receive-timeout-too-long = receive transport operation timeout cannot exceed 60000 ms
+
+setup-config-store-record-limit-too-small = store record limit is smaller than machine message or effective config
+
+setup-config-definition-outside-model-folder = { $definition }: a machine definition must sit in a <vendor>/<model>/ folder, such as machines/roche/cobas-e411/machine.toml, so results can name the machine model: { $error }
+
+setup-config-setup-needs-admin = a machine listed without a definition waits for the setup page; enable [admin] or add its definition
+
+setup-config-awaiting-setup-with-settings = a machine listed without a definition cannot have capture or overrides until it is set up
+
+setup-config-no-machines = the program lists no machines; enable [admin] so the setup page can add one, or add a [[machines]] entry
+
+setup-config-shared-connection = machines { $first } and { $second } both use { $what }; give each machine its own connection
+
+setup-config-conflicting-lab-app = lab app { $name } is written differently in { $first } and in { $second }; make both the same (or give one another name), then start again
+
+setup-config-name-clash = { $what } "{ $first }" and "{ $second }" clash: both would use the key name { $variable }. Rename one so the names differ by more than letter case or - versus _, in the file that defines it (lab-apps.toml, a site file or the program file)
+
+setup-config-duplicate-retired-destination = retired destination { $name } is listed twice; keep one [[retired_destinations]] table per name
+
+setup-config-clashing-lab-apps = Lab apps
+
+setup-config-clashing-keys = Keys
+
+setup-alerts-interval = alert interval must be between 1 and 3600 seconds
+
+setup-alerts-too-many = at most 128 alert policies are supported
+
+setup-alerts-unknown-machine = alert references an unknown machine
+
+setup-alerts-duplicate = duplicate alert kind and machine selector
+
+setup-alerts-unknown-kind = unknown alert kind
+
+setup-alerts-responder = responder must be nonempty, single-line and at most 256 bytes
+
+setup-alerts-threshold = invalid alert threshold
+
+setup-alerts-machine = invalid alert machine selector
+
+setup-webhooks-too-many = at most 8 alert endpoints are supported
+
+setup-webhooks-duplicate = duplicate alert endpoint identity
+
+setup-webhooks-url = invalid alert endpoint HTTPS URL
+
+setup-webhooks-reminder = alert reminder interval must be between 60 and 86400 seconds
+
+setup-webhooks-capacity = alert queue capacity must be between 1 and 4096
+
+setup-webhooks-timeout = alert request timeout must be between 1 and 300 seconds
+
+setup-webhooks-backoff = alert retry delays must satisfy 1 <= minimum <= maximum <= 86400 seconds
+
+setup-webhooks-attempts = alert attempt budget must be between 1 and 100
+
+setup-shared-serial-port = serial port { $port }
+
+setup-shared-usb-serial = USB serial number { $serial }
+
+setup-shared-network-address = network address { $address }
+
+setup-shared-folder = folder { $folder }
+
+setup-credentials-exposed = credentials { $path } must be owned by the service account and readable by no one else (folder mode 0700, file mode 0600)
+
+setup-credentials-access = credentials { $path }: { $error }
+
+setup-credentials-not-regular-file = credentials file { $path } is not a regular file
+
+setup-credentials-too-large = credentials file exceeds 64 KiB or 32 keys
+
+setup-credentials-malformed = credentials file is not a valid version 1 credentials file; replace the keys on the setup page
+
+setup-credentials-invalid-value = credential { $name } must be 1 to 4096 printable ASCII characters
+
+setup-credentials-not-service-account = the locked keys file does not exist yet and only the account the Analyte service runs as may create it
+
+setup-credentials-io = credentials { $operation } failed: { $error }
+
+setup-credentials-op-inspect-folder = inspect folder
+
+setup-credentials-op-inspect-file = inspect file
+
+setup-credentials-op-read-file = read file
+
+setup-credentials-op-inspect-data-directory = inspect data directory
+
+setup-credentials-op-identify-the-service-account = identify the service account
+
+setup-credentials-op-remove-stale-staging-file = remove stale staging file
+
+setup-credentials-op-install-file = install file
+
+setup-credentials-op-flush-folder = flush folder
+
+setup-credentials-op-create-staging-file = create staging file
+
+setup-credentials-op-write-staging-file = write staging file
+
+setup-credentials-op-flush-staging-file = flush staging file
+
+setup-credentials-op-create-folder = create folder
+
+setup-credentials-op-inspect-protection = inspect protection
+
+setup-secret-missing = credential { $name } is missing or empty
+
+setup-secret-invalid = credential { $name } is invalid
+
+setup-config-startup-timeout-range = store.startup_timeout_seconds must be between 30 and 3600 seconds

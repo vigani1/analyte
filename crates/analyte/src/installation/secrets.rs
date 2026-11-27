@@ -8,10 +8,10 @@ use std::collections::BTreeMap;
 #[derive(Debug, thiserror::Error)]
 pub enum SecretError {
     /// The named variable is missing, empty or not Unicode.
-    #[error("credential {0} is missing or empty")]
+    #[error("{}", analyte_i18n::message("setup-secret-missing", [("name", (.0).to_string().into())]))]
     Missing(String),
     /// A present credential violates its encoding or length bounds.
-    #[error("credential {0} is invalid")]
+    #[error("{}", analyte_i18n::message("setup-secret-invalid", [("name", (.0).to_string().into())]))]
     Invalid(String),
     /// The locked credentials file is exposed, malformed or unreadable.
     #[error(transparent)]

@@ -67,7 +67,7 @@ pub(super) async fn test(
         let view = session.view();
         if view.connected.is_some() && !told.0 {
             told.0 = true;
-            say("Connected; listening.")?;
+            say(tr("setup-test-connected-listening"))?;
         }
         if view.closed && !told.1 {
             told.1 = true;

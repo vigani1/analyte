@@ -831,7 +831,10 @@ fn same(a: &Audit, b: &Audit) -> bool {
 /// Exact IDs and stored values, for support: `reason` is the stored reason
 /// and what goes with it.
 fn support(read: &ItemRead, reason: Vec<String>, settled: Option<&Audit>) -> Vec<String> {
-    let mut lines = vec![format!("Item {}", read.id)];
+    let mut lines = vec![tr_args(
+        "admin-item-number",
+        [("index", read.id.to_string().into())],
+    )];
     lines.push(tr_args(
         "admin-category-as-stored",
         [("kind", (read.parked.kind.as_str()).to_string().into())],

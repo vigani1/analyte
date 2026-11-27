@@ -118,33 +118,21 @@ pub(crate) fn message(state: &AlertState) -> Option<String> {
         return None;
     };
     let destination = destination.as_str();
-    let waiting = match state.value {
-        Some(1) => "1 result or order message waits".to_owned(),
-        Some(count) => format!("{count} results or order messages wait"),
-        None => "an unknown number of results or order messages wait".to_owned(),
-    };
+    let waiting = state.value.map_or_else(
+        || analyte_i18n::text("admin-alert-unknown-number-waits").to_owned(),
+        |count| analyte_i18n::count("admin-alert-count-waits", count),
+    );
+    let args = [
+        ("destination", destination.into()),
+        ("waiting", waiting.into()),
+    ];
     Some(match reason {
-        Undeliverable::NotConfigured => format!(
-            concat!(
-                "Cannot deliver: no machine and no lab app uses destination ",
-                "{destination}; {waiting}. Add lab app {destination} on the Lab apps page ",
-                "and restart, or restore its settings; the results are kept and will be sent ",
-                "once it is configured."
-            ),
-            destination = destination,
-            waiting = waiting
-        ),
-        Undeliverable::CredentialsMissing => format!(
-            concat!(
-                "Cannot deliver: the API key or signing key for lab app destination ",
-                "{destination} is missing; {waiting}, paused. Enter the API key and signing ",
-                "key for lab app {destination} on the Lab apps page or in the service ",
-                "environment, then restart; the results are kept and will be sent once the ",
-                "keys are set."
-            ),
-            destination = destination,
-            waiting = waiting
-        ),
+        Undeliverable::NotConfigured => {
+            analyte_i18n::message("admin-alert-cannot-deliver-not-configured", args)
+        }
+        Undeliverable::CredentialsMissing => {
+            analyte_i18n::message("admin-alert-cannot-deliver-keys-missing", args)
+        }
     })
 }
 

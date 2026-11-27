@@ -240,3 +240,9 @@ desktop-error-invalid = { $path } nuk është i vlefshëm: { $source }
 desktop-error-port-zero = { $path } jep portën e administratorit 0, e cila nuk është port
 
 desktop-clock-today = { $time } sot
+
+desktop-clock-day = { $day } { $month } { $time }
+
+desktop-last-reached = Arritur për herë të fundit
+
+desktop-not-since-the-app-started = Jo që kur nisi aplikacioni

@@ -193,7 +193,13 @@ fn wizard(id: &str, model: Option<String>, current: Option<Step>) -> Wizard {
         id: id.to_owned(),
         model,
         steps: marks(current),
-        count: format!("Step {} of 4", current.unwrap_or(Step::Save).number()),
+        count: tr_args(
+            "setup-step-of-four",
+            [(
+                "number",
+                current.unwrap_or(Step::Save).number().to_string().into(),
+            )],
+        ),
         cancel: current.is_some(),
     }
 }
@@ -279,7 +285,7 @@ async fn serve(
             &state,
             Some(&session),
             Some(&id),
-            &SetupError::IncompleteForm(START_AGAIN),
+            &SetupError::IncompleteForm(start_again()),
         );
     };
     let (machine, kept, owner) = (id.clone(), draft.clone(), session.clone());
@@ -546,7 +552,9 @@ fn tested(
 type PostedForm = Result<Form<Posted>, axum::extract::rejection::FormRejection>;
 
 /// What to do after a step's form could not be read.
-const START_AGAIN: &str = "start again from the setup page";
+fn start_again() -> &'static str {
+    tr("setup-start-again-from-the-setup-page")
+}
 
 /// The refusal of a step's form that could not be read.
 fn unread(state: &Context, session: &Session, id: &str) -> Response {
@@ -554,7 +562,7 @@ fn unread(state: &Context, session: &Session, id: &str) -> Response {
         state,
         Some(session),
         Some(id),
-        &SetupError::IncompleteForm(START_AGAIN),
+        &SetupError::IncompleteForm(start_again()),
     )
 }
 

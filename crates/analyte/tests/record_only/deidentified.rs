@@ -1,6 +1,6 @@
 //! De-identifies a real record-only capture through the audited command and replays the copy (ADR 0034, ADR 0037).
 use super::{Error, Recorder};
-use analyte::operator::captures::deidentify::{CHECKLIST, MARK};
+use analyte::operator::captures::deidentify::{MARK, checklist};
 use analyte_transport::recording::{self, Direction, Evidence, Exception};
 use std::time::Duration;
 
@@ -98,7 +98,7 @@ async fn captured_conversation_de_identifies_through_the_command_and_replays() -
         String::from_utf8_lossy(&output.stderr)
     );
     let said = String::from_utf8(output.stdout)?;
-    assert!(said.contains(CHECKLIST), "{said}");
+    assert!(said.contains(checklist()), "{said}");
     assert!(said.contains("contain patient data"), "{said}");
     for value in VALUES {
         assert!(!said.contains(value), "the command never prints values");

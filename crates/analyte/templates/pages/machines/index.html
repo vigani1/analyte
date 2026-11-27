@@ -6,7 +6,7 @@
 {%- import "components/icon.html" as draw %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("", "Machines", summary) %}
+{% call layout::intro_head("", analyte_i18n::text("admin-machines"), summary) %}
 {% call forms::icon_button("/setup/add", crate::admin::view::icon::Icon::Plus, crate::admin::view::format::add_machine(), "btn--primary") %}{% endcall %}
 {% endcall %}
 {%- for notice in problems %}

@@ -354,7 +354,10 @@ async fn open(
     };
     let dialog = ResendDialog {
         form,
-        support: vec![format!("Delivery {}", uuid::Uuid::from(id))],
+        support: vec![tr_args(
+            "admin-support-delivery",
+            [("id", uuid::Uuid::from(id).to_string().into())],
+        )],
         superseded,
     };
     let html = list(
@@ -428,7 +431,10 @@ pub(in crate::admin) async fn resend(
                 alert: tr("admin-the-delivery-is-queued-to-send-again").into(),
                 text: tr("admin-it-goes-to-the-lab-app-unchanged-with-the").into(),
             },
-            vec![format!("Delivery {}", uuid::Uuid::from(id))],
+            vec![tr_args(
+                "admin-support-delivery",
+                [("id", uuid::Uuid::from(id).to_string().into())],
+            )],
         ),
         Err(error) => Problem::Refused(error.to_string()).page(&state, Some(&session), section),
     }

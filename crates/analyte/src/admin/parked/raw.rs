@@ -41,16 +41,16 @@ pub enum RawError {
     #[error(transparent)]
     Integer(#[from] std::num::TryFromIntError),
     /// Receipt pages do not support a frame offset.
-    #[error("receipt raw view does not accept a frame offset")]
+    #[error("{}", analyte_i18n::text("admin-raw-receipt-offset"))]
     ReceiptOffsetNotAllowed,
     /// The cursor lies outside retained bytes.
-    #[error("raw view cursor is outside retained evidence")]
+    #[error("{}", analyte_i18n::text("admin-raw-cursor-outside"))]
     RawCursorOutsideEvidence,
     /// The next cursor cannot be represented.
-    #[error("raw view cursor overflow")]
+    #[error("{}", analyte_i18n::text("admin-raw-cursor-overflow"))]
     RawCursorOverflow,
     /// A retained frame sequence is invalid.
-    #[error("stored evidence is corrupt")]
+    #[error("{}", analyte_i18n::text("admin-raw-corrupt"))]
     Corruption,
 }
 impl From<analyte_store::WorkerError> for RawError {
@@ -316,7 +316,7 @@ fn shown_page(
         ),
         head: Section::NeedsReview(Some(id)).head(crate::admin::view::format::original_message()),
         what: if continued {
-            format!("{what}, continued")
+            tr_args("admin-raw-continued", [("what", what.into())])
         } else {
             what.to_owned()
         },

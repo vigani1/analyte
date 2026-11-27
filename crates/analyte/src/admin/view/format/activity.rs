@@ -33,12 +33,37 @@ pub(in crate::admin) fn feed_day(at: Timestamp, now: Timestamp) -> String {
 fn feed_day_in(at: Timestamp, now: Timestamp, zone: &TimeZone) -> String {
     let at = at.to_zoned(zone.clone());
     let now = now.to_zoned(zone.clone());
+    let weekday = analyte_i18n::weekday(at.weekday().to_monday_one_offset());
+    let day = at.day().to_string();
+    let month = analyte_i18n::month(at.month());
     if at.date() == now.date() {
-        format!("Today · {}", at.strftime("%A %-d %B"))
+        tr_args(
+            "admin-feed-day-today",
+            [
+                ("weekday", weekday.into()),
+                ("day", day.into()),
+                ("month", month.into()),
+            ],
+        )
     } else if at.year() == now.year() {
-        at.strftime("%A %-d %B").to_string()
+        tr_args(
+            "admin-feed-day",
+            [
+                ("weekday", weekday.into()),
+                ("day", day.into()),
+                ("month", month.into()),
+            ],
+        )
     } else {
-        at.strftime("%A %-d %B %Y").to_string()
+        tr_args(
+            "admin-feed-day-year",
+            [
+                ("weekday", weekday.into()),
+                ("day", day.into()),
+                ("month", month.into()),
+                ("year", at.year().to_string().into()),
+            ],
+        )
     }
 }
 
@@ -117,7 +142,10 @@ pub(in crate::admin) fn said(
     headline: impl FnOnce(&analyte_store::Parked) -> (String, Tone),
 ) -> Said {
     let from = |rest: String| match machine {
-        Some(machine) => format!("{rest} – from {}", machine.label()),
+        Some(machine) => tr_args(
+            "admin-activity-from",
+            [("rest", rest.into()), ("machine", machine.label().into())],
+        ),
         None => rest,
     };
     match what {
@@ -241,7 +269,7 @@ fn stored(reading: Option<&RecentOutcome>, machine: Option<Named<'_>>) -> Said {
         Some(RecentOutcome::Failed) => (
             Tone::Attention,
             Icon::Warning,
-            "Warning",
+            tr("admin-warning"),
             tr("admin-message-stored-could-not-be-read"),
         ),
         None => (
@@ -251,7 +279,7 @@ fn stored(reading: Option<&RecentOutcome>, machine: Option<Named<'_>>) -> Said {
             tr("admin-message-stored-not-read-yet"),
         ),
     };
-    let (head, aside) = headed(machine, "A machine");
+    let (head, aside) = headed(machine, tr("admin-activity-a-machine"));
     Said {
         head,
         rest: format!("{aside}{}– {outcome}", carried(reading)),
@@ -266,7 +294,7 @@ fn stored(reading: Option<&RecentOutcome>, machine: Option<Named<'_>>) -> Said {
 /// whose outcome is unknown or that was rejected links to Machine orders.
 fn ordered(order: &str, state: OrderState, machine: Option<Named<'_>>) -> Said {
     let look = order_look(state);
-    let (head, aside) = headed(machine, "A machine");
+    let (head, aside) = headed(machine, tr("admin-activity-a-machine"));
     Said {
         head,
         rest: format!("{aside}{order}– {}", lower_first(look.word)),

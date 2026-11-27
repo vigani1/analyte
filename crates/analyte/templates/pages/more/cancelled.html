@@ -6,7 +6,7 @@
 {%- import "components/icon.html" as draw %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("", "Cancelled by machine", crate::admin::more::page::cancelled_lede()) %}{% endcall %}
+{% call layout::intro_head("", analyte_i18n::text("admin-cancelled-by-machine"), crate::admin::more::page::cancelled_lede()) %}{% endcall %}
 {%- if cards.is_empty() %}
 {% call feedback::empty_card(analyte_i18n::text("admin-no-order-was-cancelled-by-a-machine"), analyte_i18n::text("admin-order-items-a-machine-cancels-on-its-own-are")) %}{% endcall %}
 {%- else %}

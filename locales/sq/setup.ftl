@@ -1045,3 +1045,271 @@ setup-reload-advice = ringarkoni faqen
 setup-restart-required = Analyte përdor këto cilësime pasi të riniset.
 
 setup-settings-unchanged = Cilësimet ishin tashmë të njëjta; nuk është shkruar asnjë dosje.
+
+setup-index-lede = Shtoni një pajisje, ose zgjidhni një për t'i vendosur lidhjen dhe për t'i zgjedhur aplikacionin e laboratorit. Ndryshimet zbatohen pasi të riniset Analyte.
+
+setup-lab-apps-index-lede = Softueri i laboratorit që merr rezultatet dhe dërgon porositë. Çdo pajisje zgjedh një në konfigurimin e saj; ndryshimet zbatohen pas një rinisjeje.
+
+setup-api-key = Çelësi API
+
+setup-signing-key = Çelësi i nënshkrimit
+
+setup-keys-file = Skedari i çelësave: { $error }
+
+setup-key-hint-environment-wins = Çelësi në mjedisin e shërbimit ka përparësi ndaj atij që ruhet këtu.
+
+setup-key-stored-at = { $name }, ruajtur { $time }
+
+setup-key-hint-leave-empty = Lëreni bosh për të mbajtur çelësin e ruajtur.
+
+setup-key-missing = Mungon
+
+setup-key-cannot-be-checked = Nuk mund të kontrollohet
+
+setup-keys-kept-locked = Çelësat e tij mbeten të ruajtur, të kyçur.
+
+setup-keys-none-kept = Nuk ka çelës të ruajtur për të, kështu që nuk mbahet asnjë.
+
+setup-keys-kept-unknown = Nuk mund të kontrollohet nëse ka çelësa të ruajtur për të; ata që ka mbeten të kyçur.
+
+setup-key-owner-lab-app = Aplikacioni i laboratorit { $name }
+
+setup-key-owner-alert-target = Marrësi i alarmit { $target }
+
+setup-paste-the-key = Ngjitni { $key }
+
+setup-no-answer = pa përgjigje
+
+setup-list-model = { "  " }Modeli: { $model }
+
+setup-list-none-chosen-yet = ende asnjë i zgjedhur
+
+setup-list-connection = { "  " }Lidhja: { $connection }
+
+setup-list-cable = { "  " }Kablli: { $cable }
+
+setup-list-set-up = { "  " }Konfigurimi: i konfiguruar
+
+setup-list-not-set-up-yet = { "  " }Konfigurimi: ende i pakonfiguruar
+
+setup-list-state-unknown = { "  " }Gjendja: e panjohur
+
+setup-list-nothing-received = asgjë e marrë që nga nisja
+
+setup-summary-model = Modeli: { $model }
+
+setup-save-question = Të ruhet?
+
+setup-no-lab-app-yet-add-one = Ende nuk është konfiguruar asnjë aplikacion laboratori. Shtoni një me: analyte lab-apps add <name> --address <https://...>
+
+setup-no-machine-yet = ende asnjë pajisje
+
+setup-ask-https-address = Adresa e tij HTTPS, për shembull https://lab.example.org
+
+setup-no-lab-app-yet-add-one-first = Ende nuk ka aplikacion laboratori; shtoni një më parë me: analyte lab-apps add <name> --address <https://...>
+
+setup-ask-recording-mode = Hapi 2, Regjistrimi: { $mode }?
+
+setup-unknown-adapter = përshtatës i panjohur
+
+setup-test-connected-listening = U lidh; po dëgjon.
+
+setup-number-default-one = Numri [1]
+
+setup-confirm-yes-no = { $question } [y/N]
+
+setup-verdict-listens-set-host = Analyte dëgjon { $listens }. Vendosni adresën e hostit (LIS) të pajisjes në { $target } dhe portin e hostit në { $port }, pastaj kërkojini të dërgojë përsëri një rezultat. Nëse ende nuk lidhet, mund ta bllokojë një firewall: { $firewall }
+
+setup-verdict-not-connected-yet = Ende nuk është lidhur me pajisjen
+
+setup-verdict-could-not-connect = Nuk mund të lidhej me pajisjen
+
+setup-verdict-trying-to-reach = Analyte po përpiqet të arrijë pajisjen në { $address }, porti { $port }. Kontrolloni që pajisja të jetë e ndezur dhe në rrjet, që kjo adresë dhe ky port të përputhen me cilësimet e saj të rrjetit, dhe që asnjë firewall midis këtij kompjuteri dhe pajisjes të mos e bllokojë.
+
+setup-verdict-firewall-windows = instaluesi i lejon pajisjet në rrjetin e këtij kompjuteri të kalojnë përmes Windows Firewall me rregullin “{ $rule }”. Një pajisje në një rrjet ose VLAN tjetër, ose një firewall midis të dyve, kërkon departamentin tuaj të IT-së.
+
+setup-verdict-firewall-linux = firewall-i i këtij kompjuteri (firewalld ose ufw) duhet të lejojë portin TCP { $port }; Analyte nuk e ndryshon atë. Një pajisje në një rrjet ose VLAN tjetër kërkon departamentin tuaj të IT-së.
+
+setup-flow-hardware = Harduer (RTS/CTS)
+
+setup-flow-software = Softuer (XON/XOFF)
+
+setup-list-devices = { "  " }Pajisjet lidhëse: { $devices }
+
+setup-edit-lab-app = Ndrysho { $name }
+
+setup-remove-unlinked-items-not-counted = Elementet për shqyrtim që nuk lidhen me një pajisje nuk numërohen.
+
+setup-start-again-from-the-setup-page = filloni përsëri nga faqja e konfigurimit
+
+setup-step-of-four = Hapi { $number } nga 4
+
+setup-test-closed = Mbyllur
+
+setup-definition-read-failed = leximi i përkufizimit të pajisjes { $path } dështoi: { $error }
+
+setup-definition-invalid = përkufizimi i pajisjes është i pavlefshëm: { $error }
+
+setup-definition-is-capture-profile = { $path } është profil regjistrimi; përdoreni si record.toml, jo si machine.toml
+
+setup-definition-is-complete = { $path } është përkufizim i plotë; përdoreni si machine.toml, jo si record.toml
+
+setup-definitions-folder-missing = dosja e modeleve të pajisjeve { $path } mungon; kopjoni dosjen machines nga versioni i publikuar pranë skedarit të cilësimeve të Analyte
+
+setup-definitions-too-many = janë instaluar më shumë se 256 modele pajisjesh
+
+setup-definitions-list-failed = listimi i modeleve të pajisjeve në { $path } dështoi: { $error }
+
+setup-form-too-many-fields = shumë fusha
+
+setup-form-unknown-field = fushë e panjohur `{ $name }`
+
+setup-form-duplicate-field = fushë e përsëritur `{ $name }`
+
+setup-form-csrf-once = fusha csrf kërkohet një herë
+
+setup-test-action-listen = dëgjimi
+
+setup-test-action-accept = pranimi
+
+setup-test-action-connect = lidhja
+
+setup-test-action-read = leximi
+
+setup-written-in-site-file = [destination] në skedarin e vendit të pajisjes; ruajtja e pajisjes e zhvendos në lab-apps.toml
+
+setup-written-in-program-file = [[retired_destinations]] në skedarin e programit; ruajtja këtu e zhvendos në lab-apps.toml
+
+setup-choice-unchecked = { $label } ({ $warning })
+
+setup-config-astm-checksum-hex-only = dialogu i marrjes ASTM mbështet aktualisht vetëm shumë kontrolluese heksadecimale strikte
+
+setup-config-admin-address-loopback = adresa e administrimit duhet të jetë 127.0.0.1
+
+setup-config-admin-port-range = porti i administrimit duhet të jetë nga 1 deri në 65535
+
+setup-config-capture-machine-id = ID-ja e pajisjes për regjistrim duhet të jetë një pjesë e vetme dosjeje
+
+setup-config-too-large = konfigurimi kalon 1 MiB
+
+setup-config-no-parent-directory = konfigurimi nuk ka dosje mëmë
+
+setup-config-duplicate-machine-identity = identitet i përsëritur pajisjeje
+
+setup-config-too-many-retired-destinations = mbështeten të shumtën 128 destinacione të tërhequra
+
+setup-config-invalid-program-limits = version programi, numër pajisjesh ose kufij ruajtjeje të pavlefshëm
+
+setup-config-invalid-signing-rotation = referenca ose numër i pavlefshëm për rrotullimin e nënshkrimit
+
+setup-config-receive-timeout-too-long = afati i operacionit të transportit të marrjes nuk mund të kalojë 60000 ms
+
+setup-config-store-record-limit-too-small = kufiri i regjistrimit në ruajtje është më i vogël se mesazhi i pajisjes ose konfigurimi efektiv
+
+setup-config-definition-outside-model-folder = { $definition }: një përkufizim pajisjeje duhet të jetë në një dosje <vendor>/<model>/, për shembull machines/roche/cobas-e411/machine.toml, që rezultatet të emërtojnë modelin e pajisjes: { $error }
+
+setup-config-setup-needs-admin = një pajisje e listuar pa përkufizim pret faqen e konfigurimit; aktivizoni [admin] ose shtoni përkufizimin e saj
+
+setup-config-awaiting-setup-with-settings = një pajisje e listuar pa përkufizim nuk mund të ketë regjistrim ose mbishkrime derisa të konfigurohet
+
+setup-config-no-machines = programi nuk liston asnjë pajisje; aktivizoni [admin] që faqja e konfigurimit të shtojë një, ose shtoni një hyrje [[machines]]
+
+setup-config-shared-connection = pajisjet { $first } dhe { $second } përdorin të dyja { $what }; jepini çdo pajisjeje lidhjen e vet
+
+setup-config-conflicting-lab-app = aplikacioni i laboratorit { $name } është shkruar ndryshe në { $first } dhe në { $second }; bëjini të njëjtë (ose jepini njërit emër tjetër), pastaj nisni përsëri
+
+setup-config-name-clash = { $what } "{ $first }" dhe "{ $second }" përplasen: të dy do të përdornin emrin e çelësit { $variable }. Riemërtoni njërin që emrat të ndryshojnë më shumë se në madhësinë e shkronjave ose - kundrejt _, në skedarin që e përkufizon (lab-apps.toml, një skedar vendi ose skedari i programit)
+
+setup-config-duplicate-retired-destination = destinacioni i tërhequr { $name } është listuar dy herë; mbani një tabelë [[retired_destinations]] për çdo emër
+
+setup-config-clashing-lab-apps = Aplikacionet e laboratorit
+
+setup-config-clashing-keys = Çelësat
+
+setup-alerts-interval = intervali i alarmit duhet të jetë nga 1 deri në 3600 sekonda
+
+setup-alerts-too-many = mbështeten të shumtën 128 politika alarmi
+
+setup-alerts-unknown-machine = alarmi i referohet një pajisjeje të panjohur
+
+setup-alerts-duplicate = lloj alarmi dhe përzgjedhës pajisjeje të përsëritur
+
+setup-alerts-unknown-kind = lloj alarmi i panjohur
+
+setup-alerts-responder = përgjegjësi duhet të jetë jo bosh, në një rresht dhe të shumtën 256 bajte
+
+setup-alerts-threshold = prag alarmi i pavlefshëm
+
+setup-alerts-machine = përzgjedhës pajisjeje i pavlefshëm për alarmin
+
+setup-webhooks-too-many = mbështeten të shumtën 8 pika alarmi
+
+setup-webhooks-duplicate = identitet i përsëritur i pikës së alarmit
+
+setup-webhooks-url = URL HTTPS e pavlefshme e pikës së alarmit
+
+setup-webhooks-reminder = intervali i kujtesës së alarmit duhet të jetë nga 60 deri në 86400 sekonda
+
+setup-webhooks-capacity = kapaciteti i radhës së alarmeve duhet të jetë nga 1 deri në 4096
+
+setup-webhooks-timeout = afati i kërkesës së alarmit duhet të jetë nga 1 deri në 300 sekonda
+
+setup-webhooks-backoff = vonesat e ripërpjekjes së alarmit duhet të plotësojnë 1 <= minimumi <= maksimumi <= 86400 sekonda
+
+setup-webhooks-attempts = numri i përpjekjeve të alarmit duhet të jetë nga 1 deri në 100
+
+setup-shared-serial-port = portin serik { $port }
+
+setup-shared-usb-serial = numrin serik USB { $serial }
+
+setup-shared-network-address = adresën e rrjetit { $address }
+
+setup-shared-folder = dosjen { $folder }
+
+setup-credentials-exposed = kredencialet { $path } duhet të jenë në pronësi të llogarisë së shërbimit dhe të palexueshme nga kushdo tjetër (folder mode 0700, file mode 0600)
+
+setup-credentials-access = kredencialet { $path }: { $error }
+
+setup-credentials-not-regular-file = skedari i kredencialeve { $path } nuk është skedar i rregullt
+
+setup-credentials-too-large = skedari i kredencialeve kalon 64 KiB ose 32 çelësa
+
+setup-credentials-malformed = skedari i kredencialeve nuk është skedar i vlefshëm kredencialesh versioni 1; zëvendësoni çelësat në faqen e konfigurimit
+
+setup-credentials-invalid-value = kredenciali { $name } duhet të ketë 1 deri në 4096 karaktere ASCII të printueshme
+
+setup-credentials-not-service-account = skedari i kyçur i çelësave nuk ekziston ende dhe mund ta krijojë vetëm llogaria me të cilën punon shërbimi Analyte
+
+setup-credentials-io = kredencialet: { $operation } dështoi: { $error }
+
+setup-credentials-op-inspect-folder = kontrollimi i dosjes
+
+setup-credentials-op-inspect-file = kontrollimi i skedarit
+
+setup-credentials-op-read-file = leximi i skedarit
+
+setup-credentials-op-inspect-data-directory = kontrollimi i dosjes së të dhënave
+
+setup-credentials-op-identify-the-service-account = identifikimi i llogarisë së shërbimit
+
+setup-credentials-op-remove-stale-staging-file = heqja e skedarit të vjetër të përkohshëm
+
+setup-credentials-op-install-file = instalimi i skedarit
+
+setup-credentials-op-flush-folder = ruajtja në disk e dosjes
+
+setup-credentials-op-create-staging-file = krijimi i skedarit të përkohshëm
+
+setup-credentials-op-write-staging-file = shkrimi i skedarit të përkohshëm
+
+setup-credentials-op-flush-staging-file = ruajtja në disk e skedarit të përkohshëm
+
+setup-credentials-op-create-folder = krijimi i dosjes
+
+setup-credentials-op-inspect-protection = kontrollimi i mbrojtjes
+
+setup-secret-missing = kredenciali { $name } mungon ose është bosh
+
+setup-secret-invalid = kredenciali { $name } është i pavlefshëm
+
+setup-config-startup-timeout-range = store.startup_timeout_seconds duhet të jetë nga 30 deri në 3600 sekonda

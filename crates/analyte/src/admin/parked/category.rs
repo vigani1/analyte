@@ -90,7 +90,7 @@ impl Category {
 /// position in words with the exact text on hover.
 fn as_stored(stored: &str) -> Why {
     Why {
-        lead: "Reason: ",
+        lead: tr("admin-reason-lead"),
         text: match format::reason_words(stored) {
             Some(shown) => Hover {
                 shown,

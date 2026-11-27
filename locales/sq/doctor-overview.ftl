@@ -491,3 +491,5 @@ doctor-overview-signal-path-flow = — pajisja → Analyte → aplikacione të l
 doctor-overview-disk-alerts-section = 04 · Disku dhe sinjalizimet
 
 doctor-overview-lab-app-key-advice = futni çelësat e tij në faqen e aplikacioneve të laboratorit dhe më pas rinisni motorin
+
+doctor-overview-orders-section = 03 · Porositë

@@ -87,6 +87,16 @@ pub(in crate::admin::setup) struct Key {
     pub(super) entry: Entry,
 }
 
+impl Key {
+    /// The empty field's prompt: "Paste the api key".
+    pub(super) fn placeholder(&self) -> String {
+        tr_args(
+            "setup-paste-the-key",
+            [("key", self.label.to_lowercase().into())],
+        )
+    }
+}
+
 /// How a lab app's form takes a value for one key.
 pub(super) enum Entry {
     /// A new lab app: the key is asked for.

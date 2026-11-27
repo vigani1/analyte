@@ -181,7 +181,7 @@ fn test_state(view: &listen::View, connection: &Connection, id: &str, now: Times
     let (tone, word, note) = match &view.end {
         None if view.closed => (
             Tone::Neutral,
-            "Closed",
+            tr("setup-test-closed"),
             tr_args(
                 "setup-the-machine-closed-the-connection-the-test-ends-in",
                 [(
@@ -212,7 +212,7 @@ fn test_state(view: &listen::View, connection: &Connection, id: &str, now: Times
         ),
         Some(listen::End::Closed) => (
             Tone::Neutral,
-            "Closed",
+            tr("setup-test-closed"),
             tr("setup-the-machine-closed-the-connection-the-bytes-were-discarded").into(),
         ),
         Some(listen::End::Failed(_)) => (

@@ -19,8 +19,8 @@ use change::{
     Change, Entered, Saved, add_blocking, blockers, count, reason, remove_blocking, removed_reason,
     save_blocking, waiting,
 };
-pub(super) use keys::{API_KEY, KeySource, SIGNING_KEY, missing_keys};
 pub(in crate::admin) use keys::{Found, key_sources};
+pub(super) use keys::{KeySource, api_key, missing_keys, signing_key};
 use scan::Known;
 pub(super) use scan::{
     Scan, SiteLabApp, conflict_sentence, scan, scan_with_site, site_lab_app, where_written,
@@ -358,7 +358,12 @@ fn form_page(
     let settings = existing.map(|known| &known.settings);
     let title = settings.map_or_else(
         || crate::admin::setup::add_lab_app_label().to_owned(),
-        |settings| format!("Edit {}", settings.name.as_str()),
+        |settings| {
+            tr_args(
+                "setup-edit-lab-app",
+                [("name", settings.name.as_str().into())],
+            )
+        },
     );
     let mut head = Section::LabApps(None).head(title.clone());
     head.crumbs
@@ -420,7 +425,7 @@ fn form_page(
             .map(|known| known.sites.join(", ")),
         keys: match (settings, source) {
             (Some(settings), Some(source)) => source.keys(settings, now),
-            (Some(_) | None, _) => vec![new(API_KEY), new(SIGNING_KEY)],
+            (Some(_) | None, _) => vec![new(api_key()), new(signing_key())],
         },
         remove: settings
             .map(|settings| format!("{}/remove", format::lab_app_href(settings.name.as_str()))),
@@ -941,7 +946,7 @@ signing_key_name = '{name}-signing'
             environment: |_| None,
             stored: Err(CredentialError::Exposed("credentials.toml".into())),
         };
-        let unchecked = unreadable.key(API_KEY, &other.settings.api_key_name, now);
+        let unchecked = unreadable.key(api_key(), &other.settings.api_key_name, now);
         assert_eq!(
             (unchecked.tone, unchecked.word.as_str()),
             (Tone::Attention, "Cannot be checked")
