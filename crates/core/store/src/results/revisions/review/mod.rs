@@ -15,6 +15,8 @@ use serde::Serialize;
 pub const RESEND_MEASUREMENT_ACTION: &str = "parked-measurement-resend";
 /// Audit action for an asserted rerun.
 pub const RERUN_MEASUREMENT_ACTION: &str = "parked-measurement-rerun";
+/// Audit action for an asserted correction.
+pub const CORRECTION_MEASUREMENT_ACTION: &str = "parked-measurement-correction";
 /// Audit action for a superseded missing-ID receipt.
 pub const SUPERSEDE_SAMPLE_ACTION: &str = "parked-sample-superseded";
 
@@ -25,6 +27,8 @@ pub enum MeasurementDecision {
     Resend,
     /// Assign an audited host measurement identity and queue one delivery.
     Rerun,
+    /// Deliver the held reading as the next revision of the earlier result.
+    Correction,
     /// Close the missing-sample finding in favor of the later receipt.
     Supersede,
 }
@@ -34,6 +38,7 @@ impl MeasurementDecision {
         match self {
             Self::Resend => RESEND_MEASUREMENT_ACTION,
             Self::Rerun => RERUN_MEASUREMENT_ACTION,
+            Self::Correction => CORRECTION_MEASUREMENT_ACTION,
             Self::Supersede => SUPERSEDE_SAMPLE_ACTION,
         }
     }
@@ -64,6 +69,9 @@ pub struct MeasurementReview {
     pub other: Vec<ResultContent>,
     /// Whether the comparison is a later receipt with a sample ID.
     pub suggestion: bool,
+    /// Whether the held reading differs clinically from the retained one, so
+    /// it can be confirmed as that result's next revision.
+    pub correctable: bool,
     /// Exact snapshot the operator must confirm.
     pub snapshot: String,
 }
@@ -134,6 +142,7 @@ impl Store {
             .ok_or(Error::ReviewChanged)?;
         if comparison.view.snapshot != snapshot
             || comparison.view.suggestion != matches!(decision, MeasurementDecision::Supersede)
+            || (matches!(decision, MeasurementDecision::Correction) && !comparison.view.correctable)
             || reason.as_str().trim().is_empty()
         {
             return Err(Error::ReviewChanged);
@@ -149,16 +158,19 @@ impl Store {
         if encoded.len() > self.limits.record_bytes {
             return Err(Error::InvalidInterpretationInput);
         }
-        if matches!(decision, MeasurementDecision::Rerun) {
-            write_rerun(&tx, self, comparison, &encoded, delivery)?;
-        } else {
-            Self::capacity_on(
-                &tx,
-                &self.path,
-                &self.limits,
-                &*self.space,
-                encoded.len().saturating_mul(2),
-            )?;
+        match decision {
+            MeasurementDecision::Rerun | MeasurementDecision::Correction => {
+                write_decided(&tx, self, comparison, decision, &encoded, delivery)?;
+            }
+            MeasurementDecision::Resend | MeasurementDecision::Supersede => {
+                Self::capacity_on(
+                    &tx,
+                    &self.path,
+                    &self.limits,
+                    &*self.space,
+                    encoded.len().saturating_mul(2),
+                )?;
+            }
         }
         if tx.execute(
             "UPDATE parked SET resolution=?2 WHERE id=?1 AND resolution IS NULL",
@@ -245,7 +257,7 @@ fn comparison(
         |r| r.get(0),
     )?;
     let metadata: ReceiptMetadata = serde_json::from_str(&metadata)?;
-    let (index, held, other, suggestion) = match item.context {
+    let (index, held, other, suggestion, correctable) = match item.context {
         Some(ParkingContext::Result {
             version: Some(parked_version),
             index,
@@ -272,7 +284,8 @@ fn comparison(
             {
                 return Ok(None);
             }
-            (index, vec![held.clone()], vec![other], false)
+            let correctable = clinical_digest(held)? != clinical_digest(&other)?;
+            (index, vec![held.clone()], vec![other], false, correctable)
         }
         None if item.details.kind.as_str() == crate::ParkedKind::MappingFinding.as_str()
             && item.details.reason.as_str().ends_with("}: MissingSample")
@@ -290,7 +303,7 @@ fn comparison(
             let Some(other) = suggestion::suggested(db, &receipt, &metadata, results, rows)? else {
                 return Ok(None);
             };
-            (0, results.clone(), other, true)
+            (0, results.clone(), other, true, false)
         }
         Some(ParkingContext::Result { .. } | ParkingContext::Interpretation { .. }) | None => {
             return Ok(None);
@@ -307,6 +320,7 @@ fn comparison(
             held,
             other,
             suggestion,
+            correctable,
             snapshot,
         },
         version,
@@ -355,10 +369,17 @@ fn unchanged_result(
         && original_results.get(index) == results.get(index))
 }
 
-fn write_rerun<F>(
+/// Writes the new reading and its one delivery for a rerun or a correction.
+///
+/// A rerun gets a host-assigned run, so it is a new result at revision zero.
+/// A correction keeps the machine's identity key, so the reading becomes the
+/// next revision of the retained result and the lab app replaces that value.
+/// The audit passed in marks either as an operator's decision.
+fn write_decided<F>(
     tx: &rusqlite::Transaction<'_>,
     store: &Store,
     mut comparison: Comparison,
+    decision: MeasurementDecision,
     audit: &str,
     delivery: F,
 ) -> Result<(), Error>
@@ -372,15 +393,27 @@ where
         return Err(Error::Corruption);
     };
     let mut observation = prior.observation.clone();
-    // Source recipes encode length-prefixed fields. This prefix marks a
-    // host-assigned identity and cannot collide with a recipe's source run.
     let receipt = first(&comparison.view.held)?.receipt;
-    observation.run = SourceText::new(&format!(
-        "operator:{}:{}",
-        uuid::Uuid::from(receipt),
-        comparison.index,
-    ))
-    .map_err(StorageError::Text)?;
+    let expected = match decision {
+        MeasurementDecision::Rerun => {
+            // Source recipes encode length-prefixed fields. This prefix marks a
+            // host-assigned identity and cannot collide with a recipe's source run.
+            observation.run = SourceText::new(&format!(
+                "operator:{}:{}",
+                uuid::Uuid::from(receipt),
+                comparison.index,
+            ))
+            .map_err(StorageError::Text)?;
+            RevisionOutcome::New(Revision(0))
+        }
+        MeasurementDecision::Correction => RevisionOutcome::Correction(Revision(
+            prior.revision.0.checked_add(1).ok_or(Error::Conflict)?,
+        )),
+        MeasurementDecision::Resend | MeasurementDecision::Supersede => {
+            return Err(Error::Corruption);
+        }
+    };
+    let correction = matches!(decision, MeasurementDecision::Correction);
     let Reading::Results(results) = &mut comparison.evidence.outcome else {
         return Err(Error::Corruption);
     };
@@ -397,13 +430,12 @@ where
         rows: store.limits.page_rows,
         lifecycle: None,
         edit_guard: None,
-        // The host-assigned run is a new key; the operator already decided.
+        // The operator already decided; asking again would only hold it again.
         repeats: super::RepeatPolicy::Automatic,
     };
     let mut batch = super::assignment::RevisionBatch::default();
-    reconciler.assign_result(result, receipt, false, &mut batch)?;
-    if batch.outcomes != [RevisionOutcome::New(Revision(0))] || !result.may_deliver_to_production()
-    {
+    reconciler.assign_result(result, receipt, correction, &mut batch)?;
+    if batch.outcomes != [expected] || !result.may_deliver_to_production() {
         return Err(Error::ReviewChanged);
     }
     let queued = delivery(result, &comparison.metadata)?;

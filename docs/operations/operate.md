@@ -82,8 +82,11 @@ sample IDs.
 Open **Compare measurements** on an eligible Needs review item. Check the
 two retained records, including their written values and analyzer times.
 Choose **This is a resend** to record a duplicate of the earlier measurement,
-or **This is a rerun** to queue the held result as a new measurement. Enter
-a reason for the choice.
+or **This is a rerun** to queue the held result as a new measurement. When
+the machine changed a value without marking it as a correction, **This is a
+correction** queues the held result as the next revision of the earlier one,
+so the lab app replaces the earlier value. It shows both values again and
+asks you to confirm first. Enter a reason for the choice.
 
 A missing-tube-ID item may show a later matching receipt with a tube ID.
 Check the analyzer history and choose **Resolve held item** only if the later

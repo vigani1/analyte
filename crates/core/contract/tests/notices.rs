@@ -24,6 +24,14 @@ fn notice_vectors_open_and_close_the_same_item() -> TestResult {
     assert!(matches!(opened.fields().notice, ReviewChange::Opened(_)));
     assert!(matches!(closed.fields().notice, ReviewChange::Closed(_)));
     assert_ne!(opened.fields().delivery_id, closed.fields().delivery_id);
+    // ADR 0035 (2026-11-27): staff can close an item as a correction.
+    let corrected: ReviewNotice = decode(include_bytes!(
+        "../../../../docs/contract/vectors/review-notice-closed-correction.json"
+    ))?;
+    assert!(matches!(
+        &corrected.fields().notice,
+        ReviewChange::Closed(closed) if closed.outcome == analyte_contract::ReviewOutcome::Correction
+    ));
     Ok(())
 }
 

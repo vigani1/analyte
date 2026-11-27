@@ -1,4 +1,8 @@
 //! Shows the audited comparison and accepts the signed-in operator's explicit decision.
+//!
+//! A correction replaces a value in the lab app, so its button first draws a
+//! confirmation over the comparison with the earlier and new values side by
+//! side; only the confirmation's own post records the decision.
 use crate::admin::server::{
     Context,
     sessions::{Session, signed_in},
@@ -33,6 +37,10 @@ struct Page {
     sample: Option<String>,
     held: Evidence,
     other: Evidence,
+    /// Whether the held reading may be confirmed as the next revision.
+    correctable: bool,
+    /// The correction confirmation drawn over the page, with the typed reason.
+    confirm: Option<String>,
 }
 
 struct Evidence {
@@ -95,8 +103,21 @@ pub(in crate::admin) async fn show(
     let Some(session) = signed_in(session.as_ref()) else {
         return Problem::SignIn.page(&state, None, section);
     };
+    compared(&state, id, session, None).await
+}
+
+/// The audited comparison, with the correction confirmation over it when
+/// `confirm` holds the submitted snapshot and reason. A confirmation whose
+/// snapshot no longer matches is refused, so nobody confirms changed values.
+async fn compared(
+    state: &Context,
+    id: i64,
+    session: &Session,
+    confirm: Option<(&str, String)>,
+) -> Response {
+    let section = Section::NeedsReview(Some(id));
     let Some(actor) = session.actor().cloned() else {
-        return Problem::SignIn.page(&state, None, section);
+        return Problem::SignIn.page(state, None, section);
     };
     let review = match measurement::review(&state.store, id, actor).await {
         Ok(Some(review)) => review,
@@ -104,10 +125,10 @@ pub(in crate::admin) async fn show(
             return Problem::Failed(
                 tr("admin-no-eligible-measurement-comparison-is-available").into(),
             )
-            .page(&state, Some(session), section);
+            .page(state, Some(session), section);
         }
         Err(error) => {
-            return Problem::Failed(error.to_string()).page(&state, Some(session), section);
+            return Problem::Failed(error.to_string()).page(state, Some(session), section);
         }
     };
     let (Ok(Some(held)), Ok(Some(other))) = (
@@ -115,8 +136,14 @@ pub(in crate::admin) async fn show(
         Evidence::from_results(&review.other),
     ) else {
         return Problem::Failed(tr("admin-the-retained-results-could-not-be-displayed").into())
-            .page(&state, Some(session), section);
+            .page(state, Some(session), section);
     };
+    if let Some((snapshot, _)) = &confirm
+        && (*snapshot != review.snapshot || !review.correctable)
+    {
+        return Problem::Failed(analyte_store::ReconciliationError::ReviewChanged.to_string())
+            .page(state, Some(session), section);
+    }
     let sample = if review.suggestion {
         other.sample.clone()
     } else {
@@ -124,7 +151,7 @@ pub(in crate::admin) async fn show(
     };
     let page = Page {
         frame: Frame::new(
-            &state,
+            state,
             Tab::NeedsReview,
             crate::admin::view::format::compare_measurements(),
             None,
@@ -137,14 +164,10 @@ pub(in crate::admin) async fn show(
         sample,
         held,
         other,
+        correctable: review.correctable && !review.suggestion,
+        confirm: confirm.map(|(_, reason)| reason),
     };
-    respond(
-        &state,
-        Some(session),
-        section,
-        StatusCode::OK,
-        page.render(),
-    )
+    respond(state, Some(session), section, StatusCode::OK, page.render())
 }
 
 #[derive(Deserialize)]
@@ -152,6 +175,7 @@ pub(in crate::admin) async fn show(
 enum Decision {
     Resend,
     Rerun,
+    Correction,
     Supersede,
 }
 
@@ -162,6 +186,9 @@ pub(in crate::admin) struct DecisionForm {
     snapshot: String,
     decision: Decision,
     reason: String,
+    /// `yes` only from the correction confirmation drawn over the comparison.
+    #[serde(default)]
+    confirm: String,
 }
 
 pub(in crate::admin) async fn decide(
@@ -180,10 +207,18 @@ pub(in crate::admin) async fn decide(
     let decision = match form.decision {
         Decision::Resend => MeasurementDecision::Resend,
         Decision::Rerun => MeasurementDecision::Rerun,
+        Decision::Correction => MeasurementDecision::Correction,
         Decision::Supersede => MeasurementDecision::Supersede,
     };
+    // The lab app will replace a value: ask before recording a correction.
+    if matches!(decision, MeasurementDecision::Correction) && form.confirm != "yes" {
+        return compared(&state, id, &session, Some((&form.snapshot, form.reason))).await;
+    }
     let result: Result<(), crate::admin::Error> = async {
-        let program = if matches!(decision, MeasurementDecision::Rerun) {
+        let program = if matches!(
+            decision,
+            MeasurementDecision::Rerun | MeasurementDecision::Correction
+        ) {
             Some(
                 super::program_for_store(state.setup.config().to_owned(), state.directory.clone())
                     .await?,

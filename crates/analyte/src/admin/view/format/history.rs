@@ -87,6 +87,10 @@ pub(in crate::admin) fn settled_words(action: &str) -> Words {
         analyte_store::RERUN_MEASUREMENT_ACTION => {
             Words::of(tr("admin-rerun-queued"), tr("admin-rerun-queued-in-line"))
         }
+        analyte_store::CORRECTION_MEASUREMENT_ACTION => Words::of(
+            tr("admin-correction-queued"),
+            tr("admin-correction-queued-in-line"),
+        ),
         analyte_store::SUPERSEDE_SAMPLE_ACTION => Words::of(
             tr("admin-superseded-by-the-receipt-with-a-tube-id"),
             tr("admin-superseded-by-the-receipt-with-a-tube-id-in-line"),

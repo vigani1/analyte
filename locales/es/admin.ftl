@@ -417,6 +417,8 @@ admin-resolve-the-held-item = . ¿Resolver el elemento retenido?
 
 admin-choose-resend-to-record-a-duplicate-without-sending-another = Elija reenvío para registrar un duplicado sin enviar otro resultado. Elija repetición para enviar una nueva medición a la aplicación del laboratorio.
 
+admin-choose-correction-to-replace = Elija corrección cuando el valor retenido sustituya al anterior: la aplicación del laboratorio lo recibe como la siguiente revisión del mismo resultado.
+
 admin-held-measurement = Medición retenida
 
 admin-later-measurement = Medición posterior
@@ -428,6 +430,18 @@ admin-resolve-held-item = Resolver el elemento retenido
 admin-this-is-a-resend = Es un reenvío
 
 admin-this-is-a-rerun = Es una repetición
+
+admin-this-is-a-correction = Es una corrección
+
+admin-replace-the-earlier-value = ¿Sustituir el valor anterior en la aplicación del laboratorio?
+
+admin-correction-dialog-text = La aplicación del laboratorio recibe el resultado retenido como la siguiente revisión del resultado anterior y sustituye el valor anterior. El resultado anterior y ambos mensajes se mantienen en Analyte tal como se recibieron. Se registran su nombre, la hora y el motivo.
+
+admin-earlier-value = Valor anterior
+
+admin-new-value = Valor nuevo
+
+admin-send-as-correction = Enviar como corrección
 
 admin-help-what-each-choice-means = Qué significa cada opción
 
@@ -445,13 +459,15 @@ admin-help-case-correction = Corrección
 
 admin-help-case-correction-text = El equipo cambió un resultado que ya había enviado.
 
-admin-help-correction-note = Ningún botón envía un cambio retenido como corrección. Una corrección que el equipo marca como tal va sola a la aplicación del laboratorio, como nueva revisión del resultado, salvo que el equipo esté en «Preguntarme siempre». Si aquí espera un resultado cambiado, compruebe en el equipo qué valor es el correcto antes de elegir.
+admin-help-correction-note = Una corrección que el equipo marca como tal va sola a la aplicación del laboratorio, como nueva revisión del resultado, salvo que el equipo esté en «Preguntarme siempre». Si el equipo cambió un resultado sin marcarlo, espera aquí. Compruebe en el equipo qué valor es el correcto antes de elegir; elija «Es una corrección» solo si el valor nuevo sustituye al anterior.
 
 admin-help-buttons = Qué hace cada botón:
 
 admin-help-resend-does = Registra el resultado retenido como el mismo resultado que el anterior. No se envía nada nuevo a la aplicación del laboratorio.
 
 admin-help-rerun-does = Envía una vez el resultado retenido a la aplicación del laboratorio, como resultado nuevo. El resultado anterior se mantiene; la aplicación del laboratorio decide qué valor informar.
+
+admin-help-correction-does = Envía una vez el resultado retenido a la aplicación del laboratorio, como la siguiente revisión del resultado anterior, para que la aplicación del laboratorio sustituya el valor anterior. Analyte le pide confirmarlo antes. Ambos mensajes se mantienen tal como se recibieron.
 
 admin-help-resolve-held-does = Se ofrece cuando un resultado retenido sin ID de muestra coincide con un mensaje posterior del mismo equipo que sí lo tiene. Cuenta el mensaje posterior y no se envía nada más.
 
@@ -1426,6 +1442,10 @@ admin-recorded-as-a-resend-in-line = registrado como reenvío
 admin-rerun-queued = Repetición en cola
 
 admin-rerun-queued-in-line = repetición en cola
+
+admin-correction-queued = Corrección en cola
+
+admin-correction-queued-in-line = corrección en cola
 
 admin-superseded-by-the-receipt-with-a-tube-id = Sustituido por la recepción con ID del tubo
 

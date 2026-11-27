@@ -232,6 +232,7 @@ enum Parked {
 enum MeasurementChoice {
     Resend,
     Rerun,
+    Correction,
     Supersede,
 }
 
@@ -670,6 +671,7 @@ async fn measurement_command(
             let decision = match decision {
                 MeasurementChoice::Resend => MeasurementDecision::Resend,
                 MeasurementChoice::Rerun => MeasurementDecision::Rerun,
+                MeasurementChoice::Correction => MeasurementDecision::Correction,
                 MeasurementChoice::Supersede => MeasurementDecision::Supersede,
             };
             Some(

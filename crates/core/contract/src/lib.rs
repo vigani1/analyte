@@ -157,6 +157,7 @@ choices!(ReviewReason {
 choices!(ReviewOutcome {
     Resend,
     Rerun,
+    Correction,
     Supersede,
     Reprocess,
     Dismissed,

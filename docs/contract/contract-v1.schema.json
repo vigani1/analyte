@@ -1674,6 +1674,11 @@
           "type": "string"
         },
         {
+          "const": "correction",
+          "description": "Correction",
+          "type": "string"
+        },
+        {
           "const": "supersede",
           "description": "Supersede",
           "type": "string"

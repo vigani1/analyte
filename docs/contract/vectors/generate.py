@@ -44,6 +44,9 @@ notice=dict(contract_version=1,delivery_id='019ab000-0000-7000-8000-000000000020
 write('review-notice.json',notice)
 closed=dict(notice,delivery_id='019ab000-0000-7000-8000-000000000021',created_at='2026-11-15T12:30:05Z',notice=dict(closed=dict(outcome='rerun',resolved_at='2026-11-15T12:30:00Z')))
 write('review-notice-closed.json',closed)
+# ADR 0035 (2026-11-27): staff confirmed a held change as a correction.
+corrected=dict(notice,delivery_id='019ab000-0000-7000-8000-000000000022',created_at='2026-11-15T12:30:05Z',notice=dict(closed=dict(outcome='correction',resolved_at='2026-11-15T12:30:00Z')))
+write('review-notice-closed-correction.json',corrected)
 # What Analyte does with each answer to a notice: 404 and 501 decline notices.
 write('review-notice-responses.json',[dict(status=s,expected=e) for s,e in [(200,'done'),(404,'declined'),(501,'declined'),(401,'pause'),(403,'pause'),(302,'pause'),(413,'pause'),(409,'conflict'),(422,'parked'),(500,'retry'),(503,'retry'),(429,'retry')]])
 order=dict(id='order-1',version=1,state='requested',sample_id='000Ab12',tests=[code('TEST')],priority='routine',target_analyzers=None,expires_at=None,tombstone=False)

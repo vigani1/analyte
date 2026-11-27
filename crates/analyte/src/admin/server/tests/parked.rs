@@ -904,55 +904,73 @@ async fn a_slow_action_answers_before_the_connection_closes() -> Result<(), Erro
     stop(state, stopper, owner, store).await
 }
 
+/// The value both synthetic measurements of `held_change` carry.
+const VALUE: &str = "synthetic-held-payload-6281";
+/// The tube the synthetic measurements of `held_change` name by default.
+const SAMPLE: &str = "000123-SYN-HELD-COMPARISON";
+
+/// Stores two measurements of tube `sample` under the same identity key, with
+/// the two source statuses, and returns the item holding the second.
+/// Different statuses are a same-key change; equal ones a byte-equal repeat,
+/// which only `RepeatPolicy::AlwaysAsk` holds.
+fn held_change(
+    s: &mut analyte_store::Store,
+    sample: &str,
+    statuses: [&str; 2],
+    repeats: analyte_store::RepeatPolicy,
+) -> Result<i64, FixtureError> {
+    use analyte_model::{IdentityStatus, SourceText};
+    use analyte_store::{Interpretation, Reading, ReconcileAction, ReconcileInput, ReconcileMode};
+    for (second, status) in [(5, statuses[0]), (6, statuses[1])] {
+        let receipt = receive(s, "chemistry", second)?;
+        let retained = s.receipt(receipt)?.ok_or(FixtureError::UnknownReceipt)?;
+        let mut result =
+            machines::result(receipt, Some(sample)).map_err(|_| FixtureError::Corruption)?;
+        let IdentityStatus::Resolved(identity) = &mut result.identity else {
+            return Err(FixtureError::Corruption);
+        };
+        identity.observation.run = SourceText::new(&format!("{}:{sample}", sample.len()))?;
+        let mut parts = result.parts.as_slice().to_vec();
+        let part = parts.first_mut().ok_or(FixtureError::Corruption)?;
+        part.source_status = SourceText::new(status)?;
+        part.values = analyte_model::EvidenceList::new(vec![analyte_model::ResultValue::new(
+            SourceText::new(VALUE)?,
+            analyte_model::ValueInterpretation::Text,
+        )])
+        .map_err(|_| FixtureError::Corruption)?;
+        result.parts = analyte_model::NonEmptyEvidenceList::new(
+            analyte_model::EvidenceList::new(parts).map_err(|_| FixtureError::Corruption)?,
+        )
+        .map_err(|_| FixtureError::Corruption)?;
+        s.reconcile(
+            ReconcileAction::Interpret(receipt),
+            Interpretation {
+                driver: retained.metadata.driver,
+                config_version: retained.metadata.config_version,
+                config: retained.config,
+                outcome: Reading::Results(vec![result]),
+                departures: None,
+            },
+            ReconcileInput {
+                mode: ReconcileMode::Standard(repeats),
+                ..ReconcileInput::standard(&[false], &[])
+            },
+            |_, _| Ok(Vec::new()),
+        )?;
+    }
+    Ok(s.parked(0)?.last().ok_or(FixtureError::Corruption)?.id)
+}
+
 // ADR 0035: signed-in operators compare original values and confirm one decision.
 #[tokio::test(flavor = "multi_thread")]
 async fn measurement_comparison_requires_sign_in_and_confirms_once() -> Result<(), Error> {
-    use analyte_model::{IdentityStatus, SourceText};
-    use analyte_store::{Interpretation, Reading, ReconcileAction, ReconcileInput};
-    const VALUE: &str = "synthetic-held-payload-6281";
-    const SAMPLE: &str = "000123-SYN-HELD-COMPARISON";
+    use analyte_store::RepeatPolicy;
     let logs = crate::runtime::log_capture::init();
     let directory = crate::admin::private_tempdir()?;
     let (store, (state, stopper, owner, host), auth, bearer) = started(directory.path()).await?;
     let item = store
         .request::<_, FixtureError>(fixture_deadline()?, |s| {
-            for (second, status) in [(5, "early"), (6, "held")] {
-                let receipt = receive(s, "chemistry", second)?;
-                let retained = s.receipt(receipt)?.ok_or(FixtureError::UnknownReceipt)?;
-                let mut result = machines::result(receipt, Some(SAMPLE))
-                    .map_err(|_| FixtureError::Corruption)?;
-                let IdentityStatus::Resolved(identity) = &mut result.identity else {
-                    return Err(FixtureError::Corruption);
-                };
-                identity.observation.run = SourceText::new(&format!("{}:{SAMPLE}", SAMPLE.len()))?;
-                let mut parts = result.parts.as_slice().to_vec();
-                let part = parts.first_mut().ok_or(FixtureError::Corruption)?;
-                part.source_status = SourceText::new(status)?;
-                part.values =
-                    analyte_model::EvidenceList::new(vec![analyte_model::ResultValue::new(
-                        SourceText::new(VALUE)?,
-                        analyte_model::ValueInterpretation::Text,
-                    )])
-                    .map_err(|_| FixtureError::Corruption)?;
-                result.parts = analyte_model::NonEmptyEvidenceList::new(
-                    analyte_model::EvidenceList::new(parts)
-                        .map_err(|_| FixtureError::Corruption)?,
-                )
-                .map_err(|_| FixtureError::Corruption)?;
-                s.reconcile(
-                    ReconcileAction::Interpret(receipt),
-                    Interpretation {
-                        driver: retained.metadata.driver,
-                        config_version: retained.metadata.config_version,
-                        config: retained.config,
-                        outcome: Reading::Results(vec![result]),
-                        departures: None,
-                    },
-                    ReconcileInput::standard(&[false], &[]),
-                    |_, _| Ok(Vec::new()),
-                )?;
-            }
-            Ok(s.parked(0)?.first().ok_or(FixtureError::Corruption)?.id)
+            held_change(s, SAMPLE, ["early", "held"], RepeatPolicy::Automatic)
         })
         .await?;
     let path = format!("/parked/{item}/measurement");
@@ -994,6 +1012,74 @@ async fn measurement_comparison_requires_sign_in_and_confirms_once() -> Result<(
     Ok(())
 }
 
+// ADR 0035 (amended 2026-11-27): a held same-key change offers "This is a
+// correction". Its button only draws a confirmation with the earlier and new
+// values side by side and records nothing; the confirmation's own post
+// carries the decision, and one on a changed comparison is refused. A
+// byte-equal repeat has nothing to correct and offers no such button.
+#[tokio::test(flavor = "multi_thread")]
+async fn correction_asks_for_confirmation_with_both_values() -> Result<(), Error> {
+    use analyte_store::RepeatPolicy;
+    let directory = crate::admin::private_tempdir()?;
+    let (store, (state, stopper, owner, host), auth, _) = started(directory.path()).await?;
+    let (changed, repeat) = store
+        .request::<_, FixtureError>(fixture_deadline()?, |s| {
+            let changed = held_change(s, SAMPLE, ["early", "held"], RepeatPolicy::Automatic)?;
+            let repeat = held_change(s, "000124-SYN", ["same", "same"], RepeatPolicy::AlwaysAsk)?;
+            Ok((changed, repeat))
+        })
+        .await?;
+    let button = "name=\"decision\" value=\"correction\"";
+    let path = format!("/parked/{changed}/measurement");
+    let page = request(&host, &path, &auth, None).await?;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    assert!(page.contains(button), "{page}");
+    assert!(page.contains(">This is a correction</button>"));
+    assert!(!page.contains("Replace the earlier value in the lab app?"));
+    let german = format!("{auth}Accept-Language: de\r\n");
+    let deutsch = request(&host, &path, &german, None).await?;
+    assert!(
+        deutsch.contains(">Dies ist eine Korrektur</button>"),
+        "{deutsch}"
+    );
+    let other = request(&host, &format!("/parked/{repeat}/measurement"), &auth, None).await?;
+    assert!(other.starts_with("HTTP/1.1 200"), "{other}");
+    assert!(other.contains("This is a rerun"));
+    assert!(!other.contains(button), "{other}");
+
+    let snapshot = page
+        .split_once("name=\"snapshot\" value=\"")
+        .and_then(|(_, rest)| rest.split('"').next())
+        .ok_or(FixtureError::Corruption)?;
+    let token = encode(&csrf(&page)?);
+    let post = format!("{auth}Content-Type: application/x-www-form-urlencoded\r\n");
+    let first =
+        format!("csrf={token}&snapshot={snapshot}&decision=correction&reason=Machine+fixed+it");
+    let asked = request(&host, &path, &post, Some(&first)).await?;
+    assert!(asked.starts_with("HTTP/1.1 200"), "{asked}");
+    for shown in [
+        "Replace the earlier value in the lab app?",
+        "<p class=\"dialog__label\">Earlier value</p>",
+        "<p class=\"dialog__label\">New value</p>",
+        "name=\"confirm\" value=\"yes\"",
+        ">Machine fixed it</textarea>",
+        ">Send as a correction</button>",
+    ] {
+        assert!(asked.contains(shown), "{shown}");
+    }
+    assert_eq!(asked.matches(&format!(": {VALUE}</span>")).count(), 2);
+    let open = request(&host, &format!("/parked/{changed}"), &auth, None).await?;
+    assert!(!open.contains("Correction queued"), "{open}");
+    let outdated = format!("csrf={token}&snapshot=0{snapshot}&decision=correction&reason=Fixed");
+    let refused = request(&host, &path, &post, Some(&outdated)).await?;
+    assert!(
+        refused.contains("measurement comparison changed"),
+        "{refused}"
+    );
+    assert!(!refused.contains("Send as a correction</button>"));
+    stop(state, stopper, owner, store).await
+}
+
 // Owner request 2026-11-27 (ADRs 0035 and 0038): the Needs review list and an
 // item page explain each choice beside the decisions, in the page's language.
 #[tokio::test(flavor = "multi_thread")]
@@ -1023,6 +1109,7 @@ async fn choices_help_renders_beside_the_decisions_in_english_and_german() -> Re
         for shown in [
             "<dt>Rerun</dt><dd>The same sample and test were measured again.</dd>",
             "<dt>This is a rerun</dt><dd>Sends the held result to the lab app once, as a new result. The earlier result stays; the lab app decides which value to report.</dd>",
+            "<dt>This is a correction</dt><dd>Sends the held result to the lab app once, as the next revision of the earlier result, so the lab app replaces the earlier value. Analyte asks you to confirm first. Both messages stay as received.</dd>",
             "<dt>Send again</dt><dd>Queues the same delivery for the lab app again, unchanged and with the same ID. The item stays open until someone marks it resolved.</dd>",
             "An item that nobody decides on stays here. Analyte never sends or deletes it by itself.",
         ] {
@@ -1039,6 +1126,7 @@ async fn choices_help_renders_beside_the_decisions_in_english_and_german() -> Re
         for shown in [
             "<dt>Wiederholungsmessung</dt><dd>Dieselbe Probe und derselbe Test wurden noch einmal gemessen.</dd>",
             "<dt>Dies ist eine Wiederholungsmessung</dt><dd>Sendet das zurückgehaltene Ergebnis einmal als neues Ergebnis an die Labor-App.",
+            "<dt>Dies ist eine Korrektur</dt><dd>Sendet das zurückgehaltene Ergebnis einmal als nächste Revision des früheren Ergebnisses an die Labor-App, sodass die Labor-App den früheren Wert ersetzt.",
             "Ein Eintrag, über den niemand entscheidet, bleibt hier.",
         ] {
             assert!(page.contains(shown), "{path}: {shown}");

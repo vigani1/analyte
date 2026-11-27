@@ -1,0 +1,17 @@
+{
+  "contract_version": 1,
+  "delivery_id": "019ab000-0000-7000-8000-000000000022",
+  "created_at": "2026-11-15T12:30:05Z",
+  "source": {
+    "analyzer": "synthetic-1",
+    "connection": "bench-1",
+    "model": "example/synthetic-astm"
+  },
+  "item": "42",
+  "notice": {
+    "closed": {
+      "outcome": "correction",
+      "resolved_at": "2026-11-15T12:30:00Z"
+    }
+  }
+}

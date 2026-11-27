@@ -122,8 +122,11 @@ suggestions` to list missing-tube-ID suggestions for one page of open
 items. Follow the printed `--after` cursor for more.
 
 Confirm with `analyte --actor OPERATOR parked decide ITEM ACTION --snapshot
-SNAPSHOT --reason "Checked analyzer history"`. Use `resend`, `rerun` or
-`supersede` for ACTION. Both comparison and confirmation are audited. Keep
+SNAPSHOT --reason "Checked analyzer history"`. Use `resend`, `rerun`,
+`correction` or `supersede` for ACTION. `correction` is offered only when
+the comparison prints `"correctable": true`; the lab app then replaces the
+earlier value, so check the machine first. Both comparison and confirmation
+are audited. Keep
 the command output in a protected location because it shows result data.
 If confirmation reports a changed comparison, read it again.
 

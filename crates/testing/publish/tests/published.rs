@@ -83,8 +83,13 @@ fn valid_vectors_match_the_schema() -> TestResult {
         errors(&body("OrderEvent")?, &vector("event.json")?),
         Vec::<String>::new()
     );
-    // ADR 0038: both notice vectors are valid notice bodies.
-    for name in ["review-notice.json", "review-notice-closed.json"] {
+    // ADR 0038 and ADR 0035 (2026-11-27): every notice vector is a valid
+    // notice body, including a closing one that says correction.
+    for name in [
+        "review-notice.json",
+        "review-notice-closed.json",
+        "review-notice-closed-correction.json",
+    ] {
         assert_eq!(
             errors(&body("ReviewNotice")?, &vector(name)?),
             Vec::<String>::new(),
