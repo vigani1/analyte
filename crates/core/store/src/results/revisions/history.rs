@@ -96,6 +96,33 @@ impl Reconciliation<'_, '_> {
 
         Ok(same)
     }
+    /// Whether an upload other than `receipt` retained this key, including
+    /// one data keeping has since purged; this receipt's own earlier readings
+    /// are not a repeat.
+    pub(super) fn retained_by_other_upload(
+        &self,
+        identity_key: &str,
+        receipt: analyte_model::ReceiptId,
+    ) -> Result<bool, Error> {
+        let receipt = crate::key(&receipt)?;
+        let retained: bool = self.tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM observation_revisions WHERE identity_key=?1 AND receipt<>?2)",
+            params![identity_key, receipt],
+            |r| r.get(0),
+        )?;
+        if retained {
+            return Ok(true);
+        }
+        let Some(key) = self.retention_key else {
+            return Ok(false);
+        };
+        let identity = key.digest("identity", identity_key.as_bytes())?;
+        Ok(self.tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM retention_results WHERE identity_digest=?1)",
+            [identity.as_slice()],
+            |r| r.get(0),
+        )?)
+    }
     pub(super) fn previous_revision(
         &self,
         identity_key: &str,

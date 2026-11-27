@@ -502,7 +502,7 @@ async fn replay_model(folder: &Path, model: &Path, definition: &Path) -> Result<
             let (header, events) =
                 recording::read(std::fs::File::open(&path)?, recording::Limits::default())?;
             validate_gap(&events, answers.expected_gap.as_ref())?;
-if let Some(vendor) = answers.vendor_worklist {
+            if let Some(vendor) = answers.vendor_worklist {
                 // The fixture exercises an order-enabled test peer; the
                 // shipped definition only has to speak the same stack.
                 let layers = if record_only {
@@ -524,10 +524,13 @@ if let Some(vendor) = answers.vendor_worklist {
                 assert_eq!(header.stack, layers);
                 replay_vendor_worklist(vendor, &header, &events).await
             } else if let Some(cache) = answers.order_cache {
-                if !record_only || answers.choices.is_some() || answers.recording.is_some()
+                // The query exchange replays the synthetic HL7 definition with the
+                // model's replay-orders.toml, for a ready or a blocked model alike.
+                if answers.choices.is_some()
+                    || answers.recording.is_some()
                     || answers.expected_gap.is_some()
                 {
-                    return Err("synthetic order replay needs a blocked definition and no other replay settings".into());
+                    return Err("synthetic order replay takes no other replay settings".into());
                 }
                 record_display::replay(folder, &header, &events, cache).await
             } else if record_only {

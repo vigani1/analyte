@@ -15,6 +15,7 @@
 - `stack`: Validated protocol combinations.
 - `orders`: Explicit outgoing order settings.
 - `choices`: The choices a definition declares and the lab's selections of them (ADR 0032).
+- `site`: The lab's site-file settings: retention, time zone and repeated results (ADR 0035).
 - `schema/law`: Explicit LAW profile selection (re-exported at the crate root).
 
 The machine guide gives exact TOML keys and synthetic examples for identity

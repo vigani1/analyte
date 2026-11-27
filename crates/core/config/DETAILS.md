@@ -337,6 +337,20 @@ fixed `+HH:MM`/`-HH:MM` offset (hours 00–23). Anything else fails loading.
 daylight-saving gap or fold. Only a received IHE LAW MSH-7 without an offset
 uses it, as a noted tolerance; absent keeps refusing such headers.
 
+## Site repeated results
+
+`repeated_results` is optional and is either `"automatic"` (the default when
+the key is absent) or `"always_ask"`; any other value fails loading
+([ADR 0035](../../../docs/adr/0035-machine-result-identity-recipes.md),
+2026-11-26). `automatic` keeps the identity-recipe decisions. `always_ask`
+holds every result whose measurement key an earlier upload from the same
+machine retained, so a person decides in Needs review. A first-seen key still
+flows normally. The value is part of the effective snapshot; `automatic` is
+never written, so existing site files keep their bytes and digest.
+`Effective::repeated_results` returns the value only where it applies. It
+returns none for record only, IHE LAW and POCT, which keep their own rules.
+`always_ask` is refused for those three.
+
 The Rust stack variant is `Stack::Vidas`, matching protocol key `vidas`.
 Named departures retain the TOML field `deviations` for compatibility, as
 specified by [ADR 0015](../../../docs/adr/0015-named-machine-departures.md).

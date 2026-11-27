@@ -388,6 +388,9 @@ async fn save(
                 saved.peers.as_ref(),
                 saved.lab_app.as_ref(),
             )?;
+            if let Some(choice) = saved.repeated_results {
+                say(&format!("  Repeated results: {}", choice.label()))?;
+            }
             if let Some(missing) = missing {
                 say(&missing)?;
             }

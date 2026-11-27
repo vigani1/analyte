@@ -244,19 +244,18 @@ machines to reach the proven level. They are added as configs (or vendor
 format pieces) after the standards they use are complete. Recordings from
 them can be collected at any time and kept as test data.
 
-Status on 2026-11-18: the protocol each machine needs is built at the
-documented level, but no machine config is written or qualified yet. Each
-machine folder in `machines/` holds a blocked definition that lists what is
-missing; nothing is guessed in the meantime.
+The protocols and five machine definitions are available at the documented
+level. Swelab Lumi remains record-only. Each machine folder in `machines/`
+lists the settings and evidence still needed for qualification.
 
 | Machine                | Protocol                          | Direction                         | Protocol today | Machine config | Waiting for                                     |
 | ---------------------- | --------------------------------- | --------------------------------- | -------------- | -------------- | ------------------------------------------------ |
-| Roche cobas e 411      | ASTM over serial                  | Results, host query, orders       | documented     | blocked        | Installed host codes, serial settings, trace log copy |
-| YHLO iFlash 1200       | HL7 2.3.1 over MLLP (TCP), from the iFlash family manual | Results, query (QRY/QCK/DSR)      | documented     | blocked        | Installed protocol and settings, deadlines, report completion, result identity and QC field confirmation |
+| Roche cobas e 411      | ASTM over serial                  | Results, host query, orders       | documented     | documented     | Installed host codes, serial settings, trace log copy |
+| YHLO iFlash 1200       | HL7 2.3.1 over MLLP (TCP), from the iFlash family manual | Results, query (QRY/QCK/DSR)      | documented     | documented     | Installed protocol and settings, deadlines, report completion, result identity and QC field confirmation |
 | Boule Swelab Lumi      | HL7 over TCP                      | Results, sample lookup            | documented     | blocked        | Boule's LIS description: framing, encoding, HL7 version, sample ID field, lookup message |
-| BioCARE Biolyte 2000   | ASTM over serial                  | Results only                      | documented     | blocked        | Serial flow control, one real recording          |
-| bioMérieux VIDAS (PC)  | Vendor "Literal" over serial      | Results, work list download       | documented     | blocked        | VIDAS PC version (sample ID length 12 or 17)     |
-| Dialab Autolyser       | Vendor format, host polls         | Results when asked, work list     | documented     | blocked        | TCP settings; barcode reader retrofit            |
+| BioCARE Biolyte 2000   | ASTM over serial                  | Results only                      | documented     | documented     | Serial flow control, one real recording          |
+| bioMérieux VIDAS (PC)  | Vendor "Literal" over serial      | Results, work list download       | documented     | documented     | VIDAS PC version (sample ID length 12 or 17)     |
+| Dialab Autolyser       | Vendor format, host polls         | Results when asked, work list     | documented     | documented     | TCP settings; barcode reader retrofit            |
 
 ## 10. Testing
 

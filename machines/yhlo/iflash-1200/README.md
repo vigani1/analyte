@@ -2,124 +2,189 @@
 
 ## Machine
 
-This is a blocked machine definition, with TCP capture available through
-[`record.toml`](record.toml). Use capture only to collect evidence. Normal operation still needs installed-PC evidence for
-result handling and order replies. The iFlash
-1200-A runs from an analyzer PC using iFlash 3000 software. Staff can enter a
-tube barcode with a handheld scanner at the PC.
+The [machine definition](machine.toml) is written from the interface manuals
+and ships at evidence level documented (ADR 0034 amendment, 2026-11-26). No
+real analyzer has confirmed it yet. A de-identified recording can support
+a higher evidence level for the capabilities it exercises.
+
+The iFlash 1200-A is run from an analyzer PC. The service manual installs it
+with the iFlash 3000 PC software: the installer offers the 1200 as one model,
+and the PC's folders, logs and LIS screens are those of the iFlash 3000
+(service §§6.3.2 and 6.4). The LIS manual V1.1 is written for the iFlash 3000
+series. This definition applies it to the 1200 on that basis. Staff can enter
+a tube barcode with a handheld scanner at the PC.
+
+The service manual's iFlash 1200 installer shows PC build V1.01.10.01.10
+on the confirmation and completion screens (§6.3.2.1, p. 93, Figures 6-39
+and 6-40). The LIS settings screenshot shows only a short V1 label (§6.4.1,
+p. 96, Figure 6-48). Read the full build from the installer completion
+screen or confirm it with the installer. LIS V1.1 §2.3.1, p. 11 assigns
+MSH-3 to the application and MSH-4 to the model. The definition has no wire
+selector for the PC build.
 
 ## Connection
 
-For the TCP profile the iFlash PC initiates the connection. In **Utility →
-System settings → LIS settings**, select TCP/IP and enter the Analyte
-listener's address and port. Put that listener endpoint and the iFlash PC's
-source IP in the site's `endpoint` and `allowed_peers` (ADR 0026). The
-manual gives no fixed port. HL7 2.3.1 messages use CR segment endings and MLLP
-with VT before the payload and FS CR after it (LIS V1.1 §§2.1–2.3).
+The definition offers the TCP profile. The iFlash PC connects to the LIS, so
+Analyte listens. In **Utility → System settings → LIS settings**, set
+Transmission mode to TCP/IP and enter the Analyte listener's address and port
+(service §6.4.1). Put that listener and the iFlash PC's source IP in the
+site's `endpoint` and `allowed_peers` (ADR 0026). The manuals give no fixed
+port.
 
-The service manual's **Respond timeout limit** defaults to 15 s for the
-analyzer's connection to the LIS server. Automatic reconnection is an
-analyzer setting with a 30–60 s interval. Startup connection is another
-analyzer setting. The manuals give no separate result ACK, QCK, DSR or
-ACK^Q03 deadline. Use the installed settings and measured exchanges to
-resolve those deadlines before enabling normal operation.
+HL7 2.3.1 messages end each segment with CR and travel in MLLP blocks, with
+VT before the message and FS CR after it (LIS V1.1 §§2.1.1–2.1.4). On the
+same screen the Protocol field must read HL7: the screen also offers ASTM
+(LIS V1.1 §3), which this definition does not cover.
+
+The service manual's **Respond timeout limit** defaults to 15 s and describes
+the timeout for connecting to the LIS (service §6.4.2.1, p. 97). Analyte uses
+15 s as its own limit for a query, sending a reply and waiting for each
+ACK^Q03. Confirm transaction timing on the installed PC. Auto reconnection
+uses an interval of 30 to 60 s. Connect to LIS after startup is a separate
+checkbox. Both are analyzer settings that Analyte does not need to know.
 
 ## Settings on the machine
 
-- Choose one-way results or two-way results and queries on the analyzer
-  (service §6.4.1). The future definition can use an ADR 0032 `mode` choice
-  with `orders = "off"` and `orders = "on"`. Leave the suggestion empty
-  so the lab supplies the setting. Both alternatives must validate before
-  Setup can offer this choice.
-- Record the encoding. LIS V1.1 §1.3 offers UTF-8 and an “ASCII” option
-  that actually uses the analyzer PC's local code page. Confirm the
-  emitted MSH-18 and high-byte behavior for the installed software.
-- Record the selection for real-time uploads of completed and uncompleted
-  tests. These switches independently trigger current-day uploads on
-  a state change (service §6.4.2.1). The manual gives no matching wire-code
-  definitions for uncompleted results, so there is no Setup choice for
-  interpreting them.
-- Keep the assay Channel No. list with the lab app team. The proposed
-  `test_system` is `yhlo/iflash-1200` (ADR 0029). Pass codes through
-  exactly as sent. Match outgoing orders to the configured channel codes.
+### Setup questions
+
+Setup asks exactly these. Staff read each answer on the iFlash PC.
+
+| Choice | Values | Where staff find it | Suggested |
+| --- | --- | --- | --- |
+| `communication_type` | `one-way` (results only), `two-way` (results and barcode queries) | iFlash PC → Utility → System settings → LIS settings, Communication type | None: the manuals give no factory default |
+| `software_version` | V1.01.10.01.10, Other version (not checked) | iFlash PC installer completion screen | None |
+
+Choose V1.01.10.01.10 only when the full build is confirmed. Choose Other
+version (not checked) for any other or unconfirmed build. Overview reports
+that choice as unchecked. Both choices use the same result and order rules.
+
+`one-way` turns orders off: a query gets an application error (AE). `two-way`
+answers barcode queries, but only from a trusted order cache. If the lab app
+cannot be reached or the cache is stale, the reply is an AE and never "no
+orders" (ADR 0003 rule 9). Query replies stay off until the lab picks
+`two-way`.
+
+### Other settings to check on the iFlash PC
+
+- **Protocol:** HL7. ASTM is not covered.
+- **Encoding:** ASCII. LIS V1.1 §1.3 offers UTF-8 and an "ASCII" option.
+  ASCII actually uses the PC's local code page, for example GBK on a Chinese
+  Windows. Analyte reads strict ASCII, so a byte outside ASCII is refused
+  visibly and kept. The manual does not say which MSH-18 label the UTF-8
+  option sends, so it is not offered.
+- **Real-time transmit completed test / uncompleted test:** each checkbox
+  sends the current day's results when a sample changes state
+  (service §6.4.2.1). Uncompleted results have no documented wire marker.
+  They arrive like any upload and stay held while report completion is
+  unknown (see Departures).
+- **Channel No.** per assay (service §6.4.2.2). This is the OBX-3 code
+  Analyte delivers. Give the lab app team the list. The `test_system` is
+  `yhlo/iflash-1200` (ADR 0029). No test list ships with Analyte.
 
 ## Supported workflows
 
-| Documented wire behavior | Fields and handling |
-| --- | --- |
-| Patient result upload | ORU^R01 with MSH-16 = `0`, then PID, OBR and one or more OBX. OBR-2 is the tube barcode and OBR-3 is the analyzer sample counter. PID identifies the patient. OBR-10 is rack and position, OBR-9 reports manual dilution and OBR-15 carries specimen text. Preserve barcode case and leading zeros. LIS §§2.2.1, 2.3.3–2.3.5. |
-| Observation | OBX-3 is the configured Channel No. and can be alphanumeric. OBX-5 holds the main value, OBX-6 the original unit, OBX-7 the reference range and OBX-8 flags such as L, H and N. OBX-9 holds the qualitative call and OBX-10 its reference text. ST can carry a call with OBX-5 empty. BOTH carries numeric and qualitative data. OBX-11 documents F for final. OBX-13 may report the raw result and OBX-14 the observation time. LIS §2.3.5. |
-| QC upload | ORU^R01 with MSH-16 = `2`, containing OBR without PID or OBX. OBR-11 counts the controls. OBR-12–15 and OBR-17–20 hold parallel lists of control identifier, name, lot, expiry, level, mean, SD and measured value. Preserve the correspondence by index. LIS §§2.2.1.4, 2.3.4.2 and 2.4.1.2. |
-| Result acknowledgment | ACK^R01 follows each ORU, including batches. MSA-2 references the inbound MSH-10. The vendor examples also echo MSH-10 and MSH-16 in the ACK and use MSA-6 for outcome details. AE or AR can trigger up to two retransmission attempts according to the manual. Analyte must durably keep the received bytes before AA and visibly refuse on storage failure. LIS §§2.2.1, 2.3.2 and 2.4.1. |
-| Barcode query | QRY^Q02 uses QRD-8 for the tube barcode. The LIS responds QCK^Q02, then sends DSR^Q03 with numbered DSP rows carrying the sample and assays. The analyzer replies ACK^Q03. DSP row 21 carries the barcode, with channel entries starting at row 29. An unavailable lookup requires an error. NF means a trusted lookup found no matches. ACK^Q03 confirms message receipt. LIS §§2.2.2, 2.3.6–2.3.11 and 2.4.2. |
-| Receipt and result identity | MSH-10 correlates the upload and its acknowledgment. OBR-3 and OBX-4 identify fields within the reported sample and observation context. The manual supplies no stable key and revision rule that distinguish retransmissions, reruns and corrections. Keep ambiguous result identity unresolved. LIS §§2.3.1–2.3.2 and 2.3.4–2.3.5. |
+| Wire behavior | Handling | Source |
+| --- | --- | --- |
+| Patient result upload | ORU^R01 with MSH-16 `0`, then PID, OBR and one or more OBX. The sample ID is OBR-2, the tube barcode, kept as written with case and leading zeros. OBR-10 gives rack and position. OBR-9 keeps the manual dilution factor, with its application unknown. OBR-15 is the specimen text. | LIS V1.1 §§2.2.1, 2.3.4.1 |
+| Observation | OBX-3 is the Channel No., kept as sent. OBX-5 is the value as written. OBX-6 keeps the unit, with no conversion. OBX-7 is the reference range and OBX-8 the flag (L, H, N). OBX-9 is the qualitative call with OBX-10 as its reference. BOTH keeps the number and the call. ST can carry only a call. The SI assay's three components keep their matching OBX-13 raw values. OBX-13 is the raw result and OBX-14 the observation time. | LIS V1.1 §2.3.5 |
+| QC upload | ORU^R01 with MSH-16 `2`: OBR only. OBR-11 counts the controls. OBR-12 to OBR-15 and OBR-17 to OBR-20 list each control's number, name, lot, expiry, level, mean, SD and value. A row maps only when the count and every list agree. Without a documented measurement identity, controls stay held. | LIS V1.1 §§2.2.1.4, 2.3.4.2, 2.4.1.2 |
+| Calibration upload | MSH-16 `1` is kept raw and held. | LIS V1.1 §2.3.1 |
+| Result acknowledgment | AA after the raw upload and its accepted or held outcome are durably stored. MSA-2 echoes the upload's MSH-10. Held results appear in Needs review. An HL7 syntax error found while interpreting a parsed message or an unsupported message type gets AE. The manual says AE or AR can trigger up to two resend attempts. | ADR 0010, LIS V1.1 §2.3.2, p. 12 |
+| Barcode query (two-way only) | QRY^Q02 with the barcode in QRD-8, QRD-9 `OTH`, QRD-12 `T` and QRF-1 `iFlash3000`. The LIS answers QCK^Q02, then one DSR^Q03 page per matching order. The barcode goes in DSP-21 and the channel numbers from DSP-29. The PC confirms each page with ACK^Q03, which makes that order Sent. Sample-number and time-range queries get AE: the order cache cannot answer them. | LIS V1.1 §§2.2.2, 2.3.6–2.3.11, 2.4.2 |
+| Result identity | The barcode (OBR-2), the sample serial number (OBR-3), the observation end time (OBR-8) and the channel number. If any of them is missing, the result is held. Content that changes under the same key is held. | LIS V1.1 §2.3.4.1, p. 17, ADR 0035 |
 
-Record-only keeps TCP chunks before replying. It acknowledges durable result
-receipt through the routing header even when MSH-16 carries the vendor
-category, and sends an application error for a valid query.
+LIS V1.1 §2.3.4.1, p. 17 calls OBR-3 the sample serial number and
+OBR-8 the observation end time. It gives no guarantee that OBR-3 changes
+on each rerun. The resend rule (§2.3.2, p. 12) gives no guarantee that
+OBR-3 stays stable on a resend. The recipe therefore requires OBR-8 as
+additional run evidence. The sample upload (§2.4.1.1, p. 30) leaves OBR-8
+blank, so an upload like it is held. An iFlash 1200 recording must
+confirm which fields it sends and how their values behave.
+
+Patient uploads missing run evidence or a final report status and QC
+uploads without measurement identity stay in Needs review in Analyte.
+The iFlash PC receives AA for those uploads after storage. An operator
+releases or resolves the held results in Analyte.
 
 ## Departures
 
-The capture profile has no clinical result mapping. A future normal definition
-can declare the evidenced MSH-16 and categorized ORU result departures.
-The remaining gaps below still block normal operation.
+All three rules are ADR 0015 declarations for model `yhlo/iflash-1200`,
+firmware `unknown`, HL7 2.3.1, machine to host, at level documented. Each
+cites LIS V1.1. That manual describes the iFlash series interface rather
+than one software build, so it covers the build the lab has not read yet.
+Each communication type selects its own declarations
+(`[[choice_departures]]`).
 
-| Layer | Source | Gap and effect |
-| --- | --- | --- |
-| Transport and Setup | Service §§6.4.1–6.4.2, LIS §1.2 | Serial LIS is documented. The current HL7 stack uses TCP, and ADR 0032 cannot select a different link kind. Capture the selected serial protocol and cable settings before defining a serial profile. |
-| Syntax and Setup | LIS §§1.3, 2.3.1 | The vendor's “ASCII” mode can use a local code page such as GBK. Analyte's ASCII, Latin-1 and UTF-8 choices cannot decode that mode generally. Confirm the emitted label against the existing scoped HL7 2.3.1 UTF-8 departure before enabling it. Encoding is outside the current ADR 0032 choice blocks. |
-| Syntax and dialog | LIS 2.3.1-2.3.2, 2.4.1 | Reading the MSH-16 category is supported by an evidenced departure. The ACK builder uses its own MSH-10, omits the category echo and uses standard MSA fields. Confirm installed receiver tolerance and retry correlation. |
-| Mapping | LIS 2.3.4.1, 2.3.5; service 6.4.2.1 | The existing sample selector reads OBR-2. The categorized layout reads rack and slot from OBR-10, preserves the OBR-9 dilution with unknown application, and keeps OBX-13 as source measurement evidence. It understands OBX-11 F. Incomplete transitions, report completion when OBR-25 is empty, and repeat/revision identity remain open. |
-| Syntax and mapping | LIS 2.3.5 | The categorized layout supports BOTH, ST with an OBX-9 call, the OBX-10 qualitative reference and SI's three matched OBX-5/OBX-13 components. Ambiguous component layouts are held. |
-| Mapping | LIS 2.3.1, 2.3.4.2, 2.4.1.2 | OBR-only control rows map only when the declared count and every column align. Control rows remain held without an established measurement identity. Calibration uploads remain held in raw form. |
-| Syntax and dialog | LIS sections 2.3.6 to 2.3.11, 2.4.2 | An evidenced departure selects the record query grammar, barcode filters, QAK tag SR and explicit AE on lookup failure. |
-| Encoding and order mapping | LIS sections 2.3.10 to 2.3.11, 2.4.2 | The reply clears QRD-8 and carries the barcode in DSP-21, leaves DSP-22 blank when unavailable and writes assay components from DSP-29 onward. Confirm blank DSP-22 and distinct reply control IDs on the installed PC. The manual examples reuse IDs, while the MSH field rule describes a unique ID per message. |
-| Dialog and order lifecycle | LIS sections 2.2.3, 2.4.2 to 2.4.3 | Barcode replies page through matching orders with DSC and a correlated ACK per page. ACK confirms receipt. Sample-number and time-range queries return AE because the cache lacks authoritative lookup fields. Unsolicited DSR with MSH-15 P remains open. |
-| Dialog timing | Service §§6.4.2–6.4.3, LIS §2.2 | Connection and reconnect settings are documented. Protocol phase deadlines and behavior after a lost reply are unconfirmed. A short synthetic event gap or the default connect timeout cannot establish a clinical setting. |
+| Rule | Modes | What it allows | Source |
+| --- | --- | --- | --- |
+| `hl7_msh16_message_category` | one-way, two-way | MSH-16 of an ORU^R01 carries the upload category: 0 patient, 1 calibration, 2 QC | LIS V1.1 §§2.2.1, 2.3.1, 2.4.1 |
+| `hl7_categorized_oru_results` | one-way, two-way | The documented patient, SI and OBR-only QC layouts | LIS V1.1 §§2.3.4.1, 2.3.4.2, 2.3.5, 2.4.1 |
+| `hl7_record_display_query` | two-way | The record-format barcode query and positional DSR reply | LIS V1.1 §§2.2.2, 2.3.6–2.3.11, 2.4.2.1 |
+
+No rule reads a blank OBR-25 as a final report. The manual lists OBR-25 but
+never says what a blank one means, and only F is documented for OBX-11.
+Patient results with a blank OBR-25 therefore stay held for an operator. No
+`hl7_absent_obr25_means_final` rule is declared.
+
+### Gaps
+
+| Gap | Status |
+| --- | --- |
+| Normal operation was blocked | **Closed:** the definition ships at documented level |
+| MSH-16 category and categorized results | **Closed** by the two departures above |
+| Barcode query, paging and per-page ACK | **Closed** for two-way, by `hl7_record_display_query` |
+| Lab choice of one-way or two-way | **Closed:** `communication_type` |
+| Result identity recipe | **Open:** the configured key requires OBR-8. Confirm the fields and their behavior across resends and reruns on a 1200 |
+| Report completion when OBR-25 is blank | **Open:** such results stay held |
+| Uncompleted-test uploads | **Open:** no wire marker documented; held with the rest |
+| Corrections and reruns | **Open:** no correction or rerun code documented; changed content is held |
+| QC measurement identity and calibration uploads | **Open:** held raw |
+| Serial link (LIS V1.1 §1.2) | **Open:** cable settings unconfirmed, not offered |
+| UTF-8 option and local code pages | **Open:** MSH-18 label for UTF-8 undocumented; only strict ASCII offered |
+| ACK fields | **Open:** Analyte's ACK uses its own MSH-10 and leaves out the MSH-16 echo and MSA-6 code that the vendor examples show. Confirm the PC accepts it |
+| DSR reply IDs and blank DSP-22 | **Open:** the manual's examples reuse IDs while §2.3.1 calls MSH-10 unique |
+| QRF-1 on a 1200 | **Open:** the manual shows `iFlash3000`. A different value gets AE |
+| Unsolicited DSR (LIS V1.1 §2.4.3) | **Open:** not sent |
+| ASTM protocol (LIS V1.1 §3) | **Open:** not covered |
+| Software-version choice | **Closed:** the documented installer build and Other version (not checked) |
 
 ## Evidence
 
 Level: documented
 
-The [synthetic recordings](recordings/) use invented identifiers and
-measurements. The barcode queries expect ACK^Q02 with AE and no DSR in
-record-only mode. The four uploads expect an acknowledgment of durable
-receipt under ADR 0034. The included replays check the captured exchange and its durable receipt outcome.
-[Normal-mode replay settings](replay.toml) also exercise a two-page barcode
-answer with a separate durable ACK for each page, and a QCK AE when the cache
-is unavailable.
-Synthetic data does not establish interoperability with the installed analyzer.
+The definition comes from the manuals only. The
+[synthetic recordings](recordings/) use invented identifiers and values and
+replay through the definition. The four uploads expect AA after durable
+storage: each is held (missing OBR-8, missing OBX-3, or QC without a
+measurement identity). Both plain barcode queries expect an AE when the lab
+chose one-way. [Synthetic order replays](replay-orders.toml)
+check a two-page barcode answer with a durable ACK per page, and an AE when
+the cache is unavailable. Synthetic data does not establish interoperability
+with an installed analyzer.
 
 ## Open questions
 
-- Get the exact model and PC software version from the lab. Record the LIS
-  settings screen values for transport, direction, encoding, threshold and
-  reconnect settings, and completed/uncompleted upload settings.
-- Ask the lab app team for the actual LIS Channel No. assignments and the
-  specimen and unit codes they expect to receive.
-- Use the protected LIS communication log under
-  `D:\iFlash3000\SystemLog` and a de-identified TCP capture to confirm
-  response deadlines, ACK fields, result categories, partial uploads, repeat
-  and correction behavior, qualitative values, QC arrays and dilution.
-  Include a barcode query and its successful and unsuccessful replies.
-- If the lab uses a serial cable, confirm the selected wire protocol and
-  interface settings, including flow control.
-
-## Result identity evidence
-
-LIS Protocol Manual V1.1 section 2.3.4 gives candidate fields OBR-2
-(sample barcode), OBR-3 (sample serial) and OBR-8 (observation end). Confirm
-that the 1200 sends these fields and whether the end time distinguishes
-successive measurements of the same assay.
+- Ask the lab for the PC software build and the LIS settings screen values:
+  protocol, transmission mode, communication type, encoding, timeouts and
+  the real-time upload checkboxes.
+- Ask the lab app team for the Channel No. assignments and the specimen and
+  unit spellings they expect.
+- From the protected LIS log under `D:\iFlash3000\SystemLog` or a
+  de-identified TCP capture, confirm these:
+  - whether OBR-3 and OBR-8 are filled and how they behave across resends
+    and reruns;
+  - what OBR-25 holds;
+  - how repeats, corrections and uncompleted tests look;
+  - the QRF-1 value;
+  - that the PC accepts Analyte's ACK fields;
+  - the DSR reply IDs.
 
 ## Sources
 
-- YHLO LIS Protocol Manual V1.1 (2018), §§1.1–1.3, 2.1–2.4 and 3. The
-  model list in §1.1 names iFlash 3000 variants.
-- YHLO Service Manual AF-14-iF10-001/A0, scope and §§6.3–6.4. The manual
-  covers the iFlash 1200-A and iFlash 3000-M, gives shared iFlash 3000 PC
-  software instructions and references the YHLO HL7 interface in the LIS
-  setup. That is the basis for applying V1.1 provisionally to the 1200-A.
-  The installed software and wire details still need confirmation.
+- YHLO LIS Protocol Manual V1.1 (2018), §§1.1–1.3 and 2.1–2.4. The model list
+  in §1.1 names iFlash 3000 variants. §3 (ASTM) is not used.
+- YHLO Service Manual AF-14-iF10-001/A0 (2020), scope and §§6.3–6.4. It
+  covers the iFlash 1200-A and iFlash 3000-M, installs the 1200 with the
+  iFlash 3000 PC software and gives the LIS settings screen.
 - [Repository research](../../../docs/research/machines/iflash-1200.md)
   and [HL7 protocol notes](../../../docs/protocols/hl7/README.md).
