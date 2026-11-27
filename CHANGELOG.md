@@ -6,6 +6,10 @@
   app. Choose Shqip in admin Settings or use `analyte --lang sq`. The
   machine-translated wording awaits native review.
 
+- Add German (`de`) for the admin pages, Setup, command line and desktop
+  app. Choose Deutsch in admin Settings or use `analyte --lang de`. The
+  machine-translated wording awaits native review.
+
 - Embed Fluent catalogs for the admin pages, Setup, command line and
   desktop app (ADR 0039). English ships first. The command line accepts
   `--lang`, `LC_ALL` and `LANG`. The admin pages use the user's browser

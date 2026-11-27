@@ -920,6 +920,31 @@ async fn settings_render_in_albanian_from_browser_or_saved_choice() -> Result<()
     scene.stop().await
 }
 
+// ADR 0039: a regional German browser preference selects the German catalog,
+// and a saved German choice outlasts an English browser preference.
+#[tokio::test(flavor = "multi_thread")]
+async fn settings_render_in_german_from_browser_or_saved_choice() -> Result<(), Error> {
+    let scene = Scene::start(false).await?;
+    let host = &scene.started.3;
+    let preferred = format!("{}Accept-Language: de-AT, en;q=0.5\r\n", scene.auth);
+    let page = request(host, "/settings", &preferred, None).await?;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    assert!(page.contains("<html lang=\"de\""));
+    assert!(page.contains("<h1>Einstellungen</h1>"));
+    assert!(page.contains("<option value=\"de\" lang=\"de\" selected>Deutsch</option>"));
+
+    let form = format!("csrf={}&language=de", encode(&csrf(&page)?));
+    let saved = scene.post("/settings/language", &form).await?;
+    assert!(saved.starts_with("HTTP/1.1 303"), "{saved}");
+    let language_cookie = pages::cookie(&saved)?;
+    assert_eq!(language_cookie, "analyte_language=de");
+    let cookie = scene.auth.trim_end();
+    let headers = format!("{cookie}; {language_cookie}\r\nAccept-Language: en\r\n");
+    let page = request(host, "/settings", &headers, None).await?;
+    assert!(page.contains("<h1>Einstellungen</h1>"));
+    scene.stop().await
+}
+
 // Owner request 2026-11-20 (admin restyle b5, Sidebar mockup): every page's
 // More group lists Machine orders, Cancelled by machine, Deliveries, Data
 // keeping and Settings, opened and marked on the page that is one of them.
