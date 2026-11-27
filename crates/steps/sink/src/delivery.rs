@@ -67,7 +67,7 @@ pub fn encode_order_event(
     })
 }
 
-/// Freezes a validated Needs review notice for the outbox (ADR 0037). Its
+/// Freezes a validated Needs review notice for the outbox (ADR 0038). Its
 /// delivery ID, the notice ID, is kept on every retry.
 /// # Errors
 /// Refuses oversized bytes or a delivery ID that is not a version 7 UUID.
@@ -81,9 +81,7 @@ pub fn encode_review_notice(
     if payload.len() > analyte_contract::MAX_DOCUMENT_BYTES {
         return Err(DeliveryError::PayloadTooLarge);
     }
-    let id = DeliveryId::try_from(uuid::Uuid::parse_str(
-        notice.fields().delivery_id.as_str(),
-    )?)?;
+    let id = DeliveryId::try_from(uuid::Uuid::parse_str(notice.fields().delivery_id.as_str())?)?;
     Ok(analyte_store::ReviewNoticeDelivery {
         id,
         destination,

@@ -300,6 +300,81 @@
         },
         "summary": "Deliver results"
       }
+    },
+    "/review-notices": {
+      "post": {
+        "description": "An item from a machine waits for review in Analyte (opened), or staff settled it there (closed), with the same item reference. Show it to staff; never decide from it: the decision stays in Analyte. It carries the sample ID and the machine's test codes, never a raw message or a value.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/WebhookId"
+          },
+          {
+            "$ref": "#/components/parameters/WebhookTimestamp"
+          },
+          {
+            "$ref": "#/components/parameters/WebhookSignature"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "contract-v1.schema.json#/$defs/ReviewNotice"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "contract-v1.schema.json#/$defs/StatusBody"
+                }
+              }
+            },
+            "description": "Stored durably before answering. `accepted` for a new delivery ID, `duplicate` for a repeat with the same bytes. Analyte marks the delivery done."
+          },
+          "400": {
+            "$ref": "#/components/responses/Refused"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "The app takes no Needs review notices. Analyte stops sending them to this lab app, shows that on its lab app page and asks again after it restarts. Results are not affected."
+          },
+          "408": {
+            "$ref": "#/components/responses/RetryLater"
+          },
+          "409": {
+            "description": "The delivery ID was already stored with different bytes or under the other endpoint. Analyte parks the delivery for an operator."
+          },
+          "413": {
+            "description": "The app's body limit is below the contract's 1,048,576-byte document limit. Analyte pauses the destination for setup repair."
+          },
+          "422": {
+            "$ref": "#/components/responses/Refused"
+          },
+          "429": {
+            "$ref": "#/components/responses/RetryLater"
+          },
+          "501": {
+            "description": "Same as 404: the app takes no Needs review notices."
+          },
+          "5XX": {
+            "$ref": "#/components/responses/RetryLater"
+          },
+          "default": {
+            "description": "Any other status: Analyte parks the delivery for an operator."
+          }
+        },
+        "summary": "Hear about Needs review items (optional)"
+      }
     }
   },
   "security": [
@@ -309,7 +384,7 @@
   ],
   "servers": [
     {
-      "description": "The lab app's base URL, as set up in Analyte; the three paths are under it.",
+      "description": "The lab app's base URL, as set up in Analyte; the paths are under it.",
       "url": "{base}",
       "variables": {
         "base": {

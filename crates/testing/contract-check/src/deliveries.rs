@@ -1,4 +1,4 @@
-//! Checks result and order-event deliveries: acceptance, retries, conflicts, refusals and the size limit.
+//! Checks result, order-event and Needs review notice deliveries: acceptance, retries, conflicts, refusals and the size limit.
 use crate::client::{Answer, App, Key, RequestError, Signature};
 use crate::{Outcome, Report, RunError, limit, vectors};
 use analyte_contract::{DeliveryStatus, ResponseAction, StatusBody, classify_response};
@@ -6,6 +6,7 @@ use serde_json::Value;
 
 const RESULTS: &str = "POST /results";
 const EVENTS: &str = "POST /order-events";
+const NOTICES: &str = "POST /review-notices";
 const AUTHENTICATION: &str = "HTTP and authentication";
 const RESPONSES: &str = "Delivery responses and retries";
 const WRONG_KEY: &str = "analyte-contract-check-wrong-key";
@@ -54,10 +55,42 @@ pub(crate) async fn check(app: &App, report: &mut Report) -> Result<(), RunError
             judge(answer, Expect::Stored(DeliveryStatus::Accepted)),
         );
     }
+    review_notices(app, report).await?;
     invalid_documents(app, report).await?;
     authentication(app, report).await?;
     rotated_signature(app, report).await?;
     size_limit(app, report).await
+}
+
+/// Needs review notices are optional (ADR 0038): an app that takes them stores
+/// the opening and the closing notice like any delivery; one that answers 404
+/// or 501 takes none, and Analyte stops sending them to it.
+async fn review_notices(app: &App, report: &mut Report) -> Result<(), RunError> {
+    for (name, vector) in [
+        ("review-notices.opened", vectors::REVIEW_NOTICE),
+        ("review-notices.closed", vectors::REVIEW_NOTICE_CLOSED),
+    ] {
+        let id = fresh_id();
+        let body = document(vector, &id, None)?;
+        let answer = app
+            .post(
+                "review-notices",
+                &id,
+                &body,
+                Key::Correct,
+                Signature::Correct,
+            )
+            .await;
+        let outcome = match &answer {
+            Ok(answer) if matches!(answer.status, 404 | 501) => Outcome::Skip(format!(
+                "the app answered {}: it takes no Needs review notices, so Analyte sends it none",
+                answer.status
+            )),
+            _ => judge(answer, Expect::Stored(DeliveryStatus::Accepted)),
+        };
+        report.add(name, NOTICES, outcome);
+    }
+    Ok(())
 }
 
 /// Every Retry-After the app sent during the run must be seconds or an HTTP date.

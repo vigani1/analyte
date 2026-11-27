@@ -78,12 +78,28 @@ pub(super) fn purge(
         |r| r.get(0),
     )?;
     // The Needs review notices about the receipt's items name its sample and
-    // test codes, so they go with it (ADR 0037). The items themselves stay.
+    // test codes, so they go with it (ADR 0038). The items themselves stay.
     for sql in [
-        concat!("DELETE FROM review_notices_open WHERE item IN (", receipt_items!(), ")"),
-        concat!("DELETE FROM attempts WHERE delivery IN (SELECT id FROM outbox WHERE kind='review_notice' AND ordering_key IN (SELECT CAST(id AS TEXT) FROM (", receipt_items!(), ")))"),
-        concat!("DELETE FROM review_notices WHERE item IN (", receipt_items!(), ")"),
-        concat!("DELETE FROM outbox WHERE kind='review_notice' AND ordering_key IN (SELECT CAST(id AS TEXT) FROM (", receipt_items!(), "))"),
+        concat!(
+            "DELETE FROM review_notices_open WHERE item IN (",
+            receipt_items!(),
+            ")"
+        ),
+        concat!(
+            "DELETE FROM attempts WHERE delivery IN (SELECT id FROM outbox WHERE kind='review_notice' AND ordering_key IN (SELECT CAST(id AS TEXT) FROM (",
+            receipt_items!(),
+            ")))"
+        ),
+        concat!(
+            "DELETE FROM review_notices WHERE item IN (",
+            receipt_items!(),
+            ")"
+        ),
+        concat!(
+            "DELETE FROM outbox WHERE kind='review_notice' AND ordering_key IN (SELECT CAST(id AS TEXT) FROM (",
+            receipt_items!(),
+            "))"
+        ),
     ] {
         db.execute(sql, [&receipt_key])?;
     }

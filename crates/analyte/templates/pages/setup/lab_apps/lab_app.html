@@ -1,4 +1,4 @@
-{#- One lab app's form (GET /setup/lab-apps/new and /setup/lab-apps/{name}): where to send, the machines that send here, the timing, and the keys, which are never shown; the Remove dialog drawn over it (GET /setup/lab-apps/{name}/remove). -#}
+{#- One lab app's form (GET /setup/lab-apps/new and /setup/lab-apps/{name}): where to send, the machines that send here, the timing, Needs review notices and the keys, which are never shown; the Remove dialog drawn over it (GET /setup/lab-apps/{name}/remove). -#}
 {% extends "layout/base.html" %}
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/forms.html" as forms %}
@@ -39,6 +39,13 @@
 </div>
 <span class="field__hint">{{ defaults }}</span>
 {% endcall %}
+</section>
+<section class="card card--pad stack" aria-labelledby="la-notices">
+<h2 id="la-notices" class="label">Needs review notices</h2>
+<div class="field"><label class="field__label" for="la-review">Send Needs review notices</label><select id="la-review" class="select" name="review_notices"><option value="no"{% if !notices %} selected{% endif %}>No</option><option value="yes"{% if notices %} selected{% endif %}>Yes</option></select><span class="field__hint">Yes tells the lab app when a result waits for review here, and again when it is settled. Staff still decide here; the lab app only shows it. The lab app must support it.</span></div>
+{%- if let Some(status) = notices_status %}
+{% call feedback::alert(crate::admin::view::Tone::Attention, "Needs review notices", status) %}{% endcall %}
+{%- endif %}
 </section>
 <section class="card card--pad stack" aria-labelledby="la-keys">
 <h2 id="la-keys" class="label">Keys</h2>

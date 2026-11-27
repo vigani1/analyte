@@ -1,4 +1,4 @@
-//! Finds the Needs review items a lab app should be told about, queues each notice once in the outbox and stops when the lab app declines them (ADR 0037).
+//! Finds the Needs review items a lab app should be told about, queues each notice once in the outbox and stops when the lab app declines them (ADR 0038).
 //!
 //! A notice tells a lab app that an item waits for review in Analyte, and later
 //! that it was settled. It never carries a raw message or a value: only what a
@@ -13,6 +13,8 @@ use analyte_model::{
     SampleId,
 };
 use rusqlite::{Connection, OptionalExtension, params};
+#[cfg(test)]
+mod tests;
 
 /// Most test codes one notice names: a contract evidence list.
 pub const REVIEW_NOTICE_TESTS: usize = 256;
@@ -98,7 +100,7 @@ impl Store {
     /// Sets which lab apps take notices, at engine start. A lab app newly on is
     /// told about items parked from now on; one turned off forgets where it
     /// was. A lab app that declined notices is asked again, once, because its
-    /// setting is still on (ADR 0037). Notices already queued are kept.
+    /// setting is still on (ADR 0038). Notices already queued are kept.
     /// # Errors
     /// Refuses more than 128 lab apps and reports database failures.
     pub fn configure_review_notices(&mut self, destinations: &[Identifier]) -> Result<(), Error> {
@@ -482,7 +484,11 @@ fn origin(
             )
             .optional()?;
         if let Some(receipt) = transfer {
-            let Some(metadata) = receipt.map(|receipt| metadata(db, &receipt)).transpose()?.flatten() else {
+            let Some(metadata) = receipt
+                .map(|receipt| metadata(db, &receipt))
+                .transpose()?
+                .flatten()
+            else {
                 return Ok(None);
             };
             return Ok(Some(Origin {
@@ -559,13 +565,19 @@ fn results(
     let Some(stored) = stored else {
         return Ok(Vec::new());
     };
-    Ok(match serde_json::from_str::<Interpretation>(&stored)?.outcome {
-        Reading::Results(results) => results,
-        Reading::Failed(_) => Vec::new(),
-    })
+    Ok(
+        match serde_json::from_str::<Interpretation>(&stored)?.outcome {
+            Reading::Results(results) => results,
+            Reading::Failed(_) => Vec::new(),
+        },
+    )
 }
 
-fn order_sample(db: &Connection, destination: &str, order: &str) -> Result<Option<SampleId>, Error> {
+fn order_sample(
+    db: &Connection,
+    destination: &str,
+    order: &str,
+) -> Result<Option<SampleId>, Error> {
     let sample: Option<String> = db
         .query_row(
             "SELECT sample FROM orders WHERE destination=?1 AND id=?2",
@@ -639,11 +651,9 @@ pub(crate) fn decline(
 /// Whether `delivery` is a notice: only a notice can be declined.
 pub(crate) fn is_notice(tx: &rusqlite::Transaction<'_>, delivery: &str) -> Result<bool, Error> {
     Ok(tx
-        .query_row(
-            "SELECT kind FROM outbox WHERE id=?1",
-            [delivery],
-            |r| r.get::<_, DeliveryKind>(0),
-        )
+        .query_row("SELECT kind FROM outbox WHERE id=?1", [delivery], |r| {
+            r.get::<_, DeliveryKind>(0)
+        })
         .optional()?
         == Some(DeliveryKind::ReviewNotice))
 }

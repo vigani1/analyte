@@ -10,6 +10,8 @@ macro_rules! vector {
 
 vector!(DELIVERY, "delivery.json");
 vector!(EVENT, "event.json");
+vector!(REVIEW_NOTICE, "review-notice.json");
+vector!(REVIEW_NOTICE_CLOSED, "review-notice-closed.json");
 vector!(INVALID_VERSION, "invalid-version.json");
 vector!(INVALID_SIGNATURE, "invalid-signature.json");
 vector!(INVALID_DOCUMENTS, "invalid-documents.json");

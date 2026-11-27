@@ -80,7 +80,7 @@ pub struct Settings {
     /// How long to wait for its answer, in whole seconds.
     #[arg(long)]
     request_timeout_seconds: Option<String>,
-    /// Whether to send it Needs review notices: `yes` or `no` (ADR 0037). A
+    /// Whether to send it Needs review notices: `yes` or `no` (ADR 0038). A
     /// new lab app gets none unless this says yes.
     #[arg(long, value_parser = ["yes", "no"])]
     review_notices: Option<String>,
@@ -282,7 +282,7 @@ fn list(setup: &Setup) -> Result<Outcome, Failure> {
         ))?;
         say(&format!(
             "  Send Needs review notices: {}",
-            crate::admin::setup::lab_apps::notices_word(settings.review_notices)
+            crate::admin::setup::lab_apps::change::notices_word(settings.review_notices)
         ))?;
         say(&format!(
             "  Used by: {}",

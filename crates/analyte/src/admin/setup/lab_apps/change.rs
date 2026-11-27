@@ -36,7 +36,7 @@ fn seconds(text: &str, default: u64, what: &'static str) -> Result<u64, SetupErr
 }
 
 /// "Send Needs review notices" as entered: `yes` or `no`, empty meaning no,
-/// the default (ADR 0037).
+/// the default (ADR 0038).
 pub(in crate::admin::setup) fn notices(text: &str) -> Result<bool, SetupError> {
     match text.trim() {
         "yes" => Ok(true),

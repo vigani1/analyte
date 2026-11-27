@@ -349,6 +349,7 @@ fn form_page(
     session: &Session,
     existing: Option<(&Known, &KeySource)>,
     dialog: Option<RemoveDialog>,
+    notices_status: Option<String>,
 ) -> LabApp {
     let now = Timestamp::now();
     let (existing, source) = existing.unzip();
@@ -394,6 +395,8 @@ fn form_page(
                 settings.request_timeout_seconds
             })
             .to_string(),
+        notices: settings.is_some_and(|settings| settings.review_notices),
+        notices_status,
         defaults: format!(
             "The defaults suit most labs: {} and {} seconds.",
             Destination::DEFAULT_FRESHNESS_SECONDS,
@@ -423,7 +426,7 @@ pub(in crate::admin) async fn add_form(
     let Some(Extension(session)) = session.filter(|Extension(s)| s.is_signed_in()) else {
         return Problem::SignIn.page(&state, None, section);
     };
-    let page = form_page(&state, &session, None, None);
+    let page = form_page(&state, &session, None, None, None);
     respond(
         &state,
         Some(&session),
@@ -497,7 +500,8 @@ async fn edit(
             open.as_ref().map(|open| count(open, &name)),
         )
     });
-    let page = form_page(&state, &session, Some((known, &source)), dialog);
+    let status = notices_status(&state.store, &known.settings).await;
+    let page = form_page(&state, &session, Some((known, &source)), dialog, status);
     respond(
         &state,
         Some(&session),
@@ -505,6 +509,30 @@ async fn edit(
         StatusCode::OK,
         page.render(),
     )
+}
+
+/// What the lab app page says about Needs review notices (ADR 0038): that the
+/// lab app declined them, when and why, so a person sees that Analyte stopped
+/// sending them. Results are never held because of it.
+async fn notices_status(store: &analyte_store::Handle, settings: &Destination) -> Option<String> {
+    if !settings.review_notices {
+        return None;
+    }
+    let name = settings.name.clone();
+    match super::stored(store, move |store| store.review_notice_status(&name)).await {
+        Ok(Some(analyte_store::ReviewNoticeStatus {
+            declined: Some((at, reason)),
+        })) => Some(format!(
+            "Not sending Needs review notices: {} ({}). Results are sent as usual. Analyte asks again after it restarts.",
+            reason.as_str(),
+            format::moment_unix(at, Timestamp::now()).shown
+        )),
+        Ok(Some(analyte_store::ReviewNoticeStatus { declined: None })) => None,
+        Ok(None) => {
+            Some("Needs review notices start after Analyte restarts with this setting.".to_owned())
+        }
+        Err(error) => Some(format!("Could not read whether notices are sent: {error}")),
+    }
 }
 
 /// The Remove dialog: what removing keeps, and what stops it now or that

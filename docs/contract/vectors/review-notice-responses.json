@@ -1,0 +1,50 @@
+[
+  {
+    "status": 200,
+    "expected": "done"
+  },
+  {
+    "status": 404,
+    "expected": "declined"
+  },
+  {
+    "status": 501,
+    "expected": "declined"
+  },
+  {
+    "status": 401,
+    "expected": "pause"
+  },
+  {
+    "status": 403,
+    "expected": "pause"
+  },
+  {
+    "status": 302,
+    "expected": "pause"
+  },
+  {
+    "status": 413,
+    "expected": "pause"
+  },
+  {
+    "status": 409,
+    "expected": "conflict"
+  },
+  {
+    "status": 422,
+    "expected": "parked"
+  },
+  {
+    "status": 500,
+    "expected": "retry"
+  },
+  {
+    "status": 503,
+    "expected": "retry"
+  },
+  {
+    "status": 429,
+    "expected": "retry"
+  }
+]

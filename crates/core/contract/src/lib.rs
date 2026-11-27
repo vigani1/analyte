@@ -137,7 +137,7 @@ wire!(EventFields {
     source_status: document::SourceText,
     reason: Option<Text>
 });
-// ADR 0037: why an item waits for review in Analyte. The list is closed; a
+// ADR 0038: why an item waits for review in Analyte. The list is closed; a
 // lab app shows the reason and never decides anything from it.
 choices!(ReviewReason {
     UnresolvedIdentity,
@@ -153,7 +153,7 @@ choices!(ReviewReason {
     OrderQueryUncertain,
     OrderEventModelUnknown
 });
-// ADR 0037: how staff settled an item in Analyte.
+// ADR 0038: how staff settled an item in Analyte.
 choices!(ReviewOutcome {
     Resend,
     Rerun,
@@ -297,7 +297,7 @@ impl Delivery {
 }
 
 /// A Needs review notice with validated version, version-7 UUID, times and
-/// test list (ADR 0037). It never carries a raw message or a value.
+/// test list (ADR 0038). It never carries a raw message or a value.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "ReviewNoticeFields")]
 pub struct ReviewNotice(ReviewNoticeFields);

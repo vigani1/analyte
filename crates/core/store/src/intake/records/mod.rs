@@ -135,7 +135,7 @@ pub enum Attempt {
     Conflict(Reason),
     /// The app does not take this kind of delivery (a Needs review notice
     /// answered 404 or 501): nothing more of it is sent and nothing is parked
-    /// (ADR 0037).
+    /// (ADR 0038).
     Declined(Reason),
 }
 
@@ -293,7 +293,7 @@ pub enum DeliveryKind {
     Result,
     /// Order lifecycle evidence tied to an app order.
     OrderEvent,
-    /// A Needs review notice tied to one parked item (ADR 0037).
+    /// A Needs review notice tied to one parked item (ADR 0038).
     ReviewNotice,
 }
 

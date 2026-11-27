@@ -1,7 +1,7 @@
 //! Receives durable contract deliveries and serves orders without clinical decisions.
 #![forbid(unsafe_code)]
 mod alerts;
-use analyte_contract::{Delivery, OrderEvent, SigningSecret, content_digest, decode};
+use analyte_contract::{Delivery, OrderEvent, ReviewNotice, SigningSecret, content_digest, decode};
 use axum::{
     Json, Router,
     body::Bytes,
@@ -281,6 +281,7 @@ impl Receiver {
             .route("/alerts", post(alerts::receive))
             .route("/results", post(results))
             .route("/order-events", post(events))
+            .route("/review-notices", post(notices))
             .route("/orders", get(orders))
             .layer(DefaultBodyLimit::max(analyte_contract::MAX_DOCUMENT_BYTES))
             .layer(axum::middleware::from_fn(deadline))
@@ -428,6 +429,18 @@ async fn events(
         Err(_) => failure(StatusCode::PAYLOAD_TOO_LARGE, "body_rejected"),
     }
 }
+// ADR 0038: notices are optional for a lab app; this reference receiver takes
+// them and stores them like every delivery, and decides nothing from them.
+async fn notices(
+    State(state): State<Arc<Inner>>,
+    headers: HeaderMap,
+    body: Result<Bytes, axum::extract::rejection::BytesRejection>,
+) -> Response {
+    match body {
+        Ok(body) => receive(state, headers, body, "review-notices").await,
+        Err(_) => failure(StatusCode::PAYLOAD_TOO_LARGE, "body_rejected"),
+    }
+}
 async fn receive(
     state: Arc<Inner>,
     headers: HeaderMap,
@@ -460,10 +473,12 @@ async fn receive(
     // Contract deserialization validates every evidence part, including decoded
     // text availability, before storage. Never interpret source protocol escapes here. Keep
     // the received body itself: serializing the validated types would lose unknown fields.
-    let document_id = if kind == "results" {
-        decode::<Delivery>(&body).map(|d| d.fields().delivery_id.as_str().to_owned())
-    } else {
-        decode::<OrderEvent>(&body).map(|d| d.fields().delivery_id.as_str().to_owned())
+    let document_id = match kind {
+        "results" => decode::<Delivery>(&body).map(|d| d.fields().delivery_id.as_str().to_owned()),
+        "review-notices" => {
+            decode::<ReviewNotice>(&body).map(|d| d.fields().delivery_id.as_str().to_owned())
+        }
+        _ => decode::<OrderEvent>(&body).map(|d| d.fields().delivery_id.as_str().to_owned()),
     };
     let Ok(document_id) = document_id else {
         return failure(StatusCode::UNPROCESSABLE_ENTITY, "invalid_document");

@@ -107,7 +107,9 @@ impl Store {
         };
         let tx = self.db.transaction()?;
         let id = key(&id)?;
-        if matches!(outcome, Attempt::Declined(_)) && !crate::delivery::notices::is_notice(&tx, &id)? {
+        if matches!(outcome, Attempt::Declined(_))
+            && !crate::delivery::notices::is_notice(&tx, &id)?
+        {
             return Err(Error::InvalidDeliveryInput);
         }
         if tx.execute(

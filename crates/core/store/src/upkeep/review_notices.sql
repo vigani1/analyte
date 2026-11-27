@@ -1,4 +1,4 @@
--- Step 20 to 21: Needs review notices to the lab app (ADR 0037). Every stored
+-- Step 20 to 21: Needs review notices to the lab app (ADR 0038). Every stored
 -- value stays as it was.
 --
 -- The outbox gains a third kind, 'review_notice', and a seventh state,

@@ -193,7 +193,7 @@ pub(crate) fn order_event(schema: &mut Schema) {
     );
 }
 
-/// `POST /review-notices` (ADR 0037).
+/// `POST /review-notices` (ADR 0038).
 pub(crate) fn review_notice(schema: &mut Schema) {
     describe(
         schema,

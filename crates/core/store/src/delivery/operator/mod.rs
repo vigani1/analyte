@@ -23,7 +23,7 @@ pub enum DeliveryState {
     Conflict,
     /// The app does not take this kind of delivery: a Needs review notice it
     /// answered with 404 or 501, or one queued for it after that. Finished,
-    /// like Done, but never accepted (ADR 0037).
+    /// like Done, but never accepted (ADR 0038).
     Declined,
 }
 

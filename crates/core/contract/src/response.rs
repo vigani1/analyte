@@ -51,7 +51,7 @@ pub enum ResponseAction {
         after: Option<u64>,
     },
     /// The app does not take Needs review notices: stop sending them to it,
-    /// without pausing it or parking anything (ADR 0037). Only
+    /// without pausing it or parking anything (ADR 0038). Only
     /// [`classify_notice_response`] gives this.
     Declined {
         /// Operator-visible cause.
@@ -60,11 +60,9 @@ pub enum ResponseAction {
 }
 
 /// The reason kept when a lab app answers 404 for /review-notices.
-pub const NOTICES_NOT_FOUND: &str =
-    "the lab app has no /review-notices endpoint (404); Analyte stopped sending it Needs review notices";
+pub const NOTICES_NOT_FOUND: &str = "the lab app has no /review-notices endpoint (404); Analyte stopped sending it Needs review notices";
 /// The reason kept when a lab app answers 501 for /review-notices.
-pub const NOTICES_NOT_IMPLEMENTED: &str =
-    "the lab app does not implement /review-notices (501); Analyte stopped sending it Needs review notices";
+pub const NOTICES_NOT_IMPLEMENTED: &str = "the lab app does not implement /review-notices (501); Analyte stopped sending it Needs review notices";
 
 /// Classifies an answer to `POST /review-notices`. Notices are optional for a
 /// lab app, so 404 and 501 mean it takes none: [`ResponseAction::Declined`].

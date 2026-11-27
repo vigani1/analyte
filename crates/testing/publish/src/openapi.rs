@@ -1,7 +1,7 @@
 //! Builds the OpenAPI 3.1 document for the three contract v1 calls; its bodies refer to the contract schema file (ADR 0033).
 //!
 //! The calls are the ones a lab app answers: `POST /results`,
-//! `POST /order-events` and `GET /orders`. Each status code says what Analyte
+//! `POST /order-events`, the optional `POST /review-notices` and `GET /orders`. Each status code says what Analyte
 //! does with the answer, as docs/contract/v1.md does.
 use serde_json::{Value, json};
 
@@ -39,6 +39,22 @@ fn delivery_answers() -> Value {
     })
 }
 
+/// `POST /review-notices` (ADR 0038): optional for a lab app. 404 and 501
+/// say it takes none, and Analyte stops sending them; every other answer
+/// means what it means for results.
+fn notice() -> Value {
+    let mut call = delivery(
+        "Hear about Needs review items (optional)",
+        "An item from a machine waits for review in Analyte (opened), or staff settled it there (closed), with the same item reference. Show it to staff; never decide from it: the decision stays in Analyte. It carries the sample ID and the machine's test codes, never a raw message or a value.",
+        "ReviewNotice",
+    );
+    let answers = &mut call["responses"];
+    answers["404"] = json!({ "description": "The app takes no Needs review notices. Analyte stops sending them to this lab app, shows that on its lab app page and asks again after it restarts. Results are not affected." });
+    answers["501"] =
+        json!({ "description": "Same as 404: the app takes no Needs review notices." });
+    call
+}
+
 /// A signed delivery call with `request` as its body.
 fn delivery(summary: &str, description: &str, request: &str) -> Value {
     json!({
@@ -72,7 +88,7 @@ pub(crate) fn document() -> Value {
         },
         "servers": [{
             "url": "{base}",
-            "description": "The lab app's base URL, as set up in Analyte; the three paths are under it.",
+            "description": "The lab app's base URL, as set up in Analyte; the paths are under it.",
             "variables": { "base": { "default": "https://lab-app.example/analyte" } },
         }],
         "security": [{ "bearer": [] }],
@@ -81,7 +97,7 @@ pub(crate) fn document() -> Value {
     })
 }
 
-/// The three calls.
+/// The calls a lab app answers.
 fn paths() -> Value {
     json!({
             "/results": { "post": delivery(
@@ -94,6 +110,7 @@ fn paths() -> Value {
                 "One change of an order's state on a machine. An uncertain state means the outcome is unknown; it never asks for a resend.",
                 "OrderEvent",
             ) },
+            "/review-notices": { "post": notice() },
             "/orders": { "get": {
                 "summary": "Read the order feed",
                 "description": "Without a cursor: a paged full snapshot of the latest version of each order. With the last cursor: the changes since, including tombstones. Commit each page with its cursor; complete is true on the last page.",

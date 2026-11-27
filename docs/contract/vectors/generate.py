@@ -38,6 +38,14 @@ for name, original, decoded, parsed in [
 
 event=dict(contract_version=1,delivery_id='019ab000-0000-7000-8000-000000000002',created_at='2026-11-15T12:00:00Z',source=delivery['source'],order_id='order-1',order_version=1,state='uncertain',occurred_at='2026-11-15T11:59:59Z',source_status='timeout',reason='No answer')
 write('event.json',event)
+# ADR 0038: an optional Needs review notice; opened, then closed under the
+# same item reference. Sample ID and test codes only, never a value.
+notice=dict(contract_version=1,delivery_id='019ab000-0000-7000-8000-000000000020',created_at='2026-11-15T12:00:05Z',source=delivery['source'],item='42',notice=dict(opened=dict(reason='unresolved_identity',sample_id='000Ab12',tests=[code('TEST')],parked_at='2026-11-15T12:00:00Z')))
+write('review-notice.json',notice)
+closed=dict(notice,delivery_id='019ab000-0000-7000-8000-000000000021',created_at='2026-11-15T12:30:05Z',notice=dict(closed=dict(outcome='rerun',resolved_at='2026-11-15T12:30:00Z')))
+write('review-notice-closed.json',closed)
+# What Analyte does with each answer to a notice: 404 and 501 decline notices.
+write('review-notice-responses.json',[dict(status=s,expected=e) for s,e in [(200,'done'),(404,'declined'),(501,'declined'),(401,'pause'),(403,'pause'),(302,'pause'),(413,'pause'),(409,'conflict'),(422,'parked'),(500,'retry'),(503,'retry'),(429,'retry')]])
 order=dict(id='order-1',version=1,state='requested',sample_id='000Ab12',tests=[code('TEST')],priority='routine',target_analyzers=None,expires_at=None,tombstone=False)
 write('order.json',order)
 body=json.dumps(delivery,separators=(',',':'))
