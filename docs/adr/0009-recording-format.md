@@ -49,3 +49,11 @@ reply by event index, failure and reason. The harness still replays the
 conversation and fails when a marked reply starts arriving. See the
 [machine folder guide](../../machines/README.md). The sidecar belongs to
 repository tests. The version 1 capture header and events are unchanged.
+
+## Amendment: de-identified copies (2026-11-26)
+
+`analyte captures de-identify` writes a de-identified copy of a stored
+recording ([ADR 0037](0037-de-identified-recording-copies.md)). The copy keeps
+format version 1, its evidence and every event length; its
+`de_identification` statement starts with "De-identified by Analyte captures
+de-identify".
