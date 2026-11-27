@@ -85,14 +85,18 @@ addresses, `--dry-run`, `--anyway`) are in [Connect](connect.md#from-the-command
 
 Recorded conversations ([ADR 0009](../adr/0009-recording-format.md)) live
 under the data folder in `captures/<machine>/`. They **contain patient data**:
-both commands are audited first and say so. Export copies one file byte for
-byte and never overwrites; make a reviewed de-identified copy before sharing it
+every command is audited first and says so. Export copies one file byte for
+byte and never overwrites. De-identify writes a new copy with synthetic patient
+fields and recomputed checksums and leaves the original unchanged
+([ADR 0037](../adr/0037-de-identified-recording-copies.md)); review the copy
+before sharing it
 ([Capture, de-identify and replay](../develop/adding-a-machine.md#capture-de-identify-and-replay)).
 
 | Task | Command |
 | --- | --- |
 | List each machine's recordings: file, size, last change, and whether capture stopped early | `analyte --actor it-anna captures list --machine cobas-1` |
 | Copy one recording to a protected folder | `analyte --actor it-anna captures export cobas-1 <file>.rec.jsonl --to D:\Protected --reason "First visit"` |
+| Write a de-identified copy, `<file>.deidentified.rec.jsonl`, for sharing; ASTM, HL7, IHE LAW, VIDAS and Autolyser (POCT is refused). A VIDAS recording may ask for `--checksum-case upper` or `lower`, as the machine's settings say | `analyte --actor it-anna captures de-identify cobas-1 <file>.rec.jsonl --to D:\Share --reason "Proven evidence"` |
 
 ## Lab apps
 
