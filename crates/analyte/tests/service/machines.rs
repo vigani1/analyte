@@ -1410,19 +1410,19 @@ fn assert_recording_config(path: &Path) -> Result<(), Error> {
     let site = format!(
         "retention = \"keep\"\nschema_version = 1\nendpoint = \"{endpoint}\"\n{serial}[recording]\n{answers}"
     );
-    // A record file that asks its analyzer mode loads with each offered value.
-    let modes = table
-        .get("analyzer_mode")
-        .and_then(|mode| mode.get("values"))
-        .and_then(toml::Value::as_array)
-        .map(|values| {
-            values
+    // A model file that asks its analyzer mode (a record file's, or a ready
+    // definition's mode choice that selects a link departure) loads with
+    // each offered value.
+    let asked = analyte_config::recording::analyzer_mode(&path.display().to_string(), &text)?;
+    let modes = asked.as_ref().map_or_else(
+        || vec![None],
+        |mode| {
+            mode.values
                 .iter()
-                .filter_map(|value| value.get("value")?.as_str())
-                .map(Some)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_else(|| vec![None]);
+                .map(|value| Some(value.value.as_str()))
+                .collect()
+        },
+    );
     for mode in modes {
         let chosen = mode
             .map(|mode| format!("analyzer_mode = \"{mode}\"\n"))
@@ -1433,8 +1433,22 @@ fn assert_recording_config(path: &Path) -> Result<(), Error> {
         )?;
         let effective = validated.effective();
         assert!(effective.records_only());
+        // ADR 0034, note of 2026-11-27: only link departures carry, and an
+        // asked mode's departures are that mode's own.
         for departure in &effective.machine().deviations {
-            assert_eq!(Some(departure.declaration().scope.mode.as_str()), mode);
+            assert!(
+                matches!(
+                    departure,
+                    analyte_config::MachineDeparture::AstmPackedRecordsInFrame(_)
+                        | analyte_config::MachineDeparture::AstmRepeatEnqAfterLostAck(_)
+                ),
+                "{}: {}",
+                path.display(),
+                departure.tag()
+            );
+            if let Some(mode) = mode {
+                assert_eq!(departure.declaration().scope.mode.as_str(), mode);
+            }
         }
     }
     Ok(())

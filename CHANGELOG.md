@@ -19,6 +19,13 @@
   17, as before; an existing VIDAS site file needs the new
   `sample_id_length` answer before it loads (ADR 0032).
 
+- Record only for a model with a full machine definition now keeps the ASTM
+  link departures the definition declares. A Roche cobas e 411 recorded in a
+  cobas protocol type has its packed frames acknowledged after storage
+  instead of refused, and the BioCARE Biolyte 2000's repeated ENQ is
+  accepted. Setup asks the cobas protocol type for record only. A frame that
+  fails its checksum is still refused and kept (ADR 0034).
+
 - `analyte captures de-identify` writes a de-identified copy of a recording on
   the lab PC: patient fields become synthetic values of the same shape and
   checksums are recomputed, so the copy still replays. ASTM, HL7, IHE LAW,
@@ -31,6 +38,7 @@
   me** holds every repeat of a measurement in Needs review for a person, while
   new measurements still flow. The machine's page and `machines list` show the
   setting (ADR 0035, amended 2026-11-26).
+
 - The Dialab Autolyser has a full machine definition written from its
   Operator's Manual Rev18 (evidence level documented) and replaces its
   record-only settings. It reads results and holds them for staff, since
