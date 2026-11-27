@@ -1001,3 +1001,28 @@ async fn more_pages_say_when_the_store_cannot_be_read() -> Result<(), Error> {
     )?;
     scene.stop().await
 }
+
+// ADR 0039: a Latin American browser tag selects the Spanish catalog, and the
+// saved choice keeps it when the browser asks for English.
+#[tokio::test(flavor = "multi_thread")]
+async fn settings_render_in_spanish_from_browser_or_saved_choice() -> Result<(), Error> {
+    let scene = Scene::start(false).await?;
+    let host = &scene.started.3;
+    let preferred = format!("{}Accept-Language: en;q=0.4, es-419;q=0.9\r\n", scene.auth);
+    let page = request(host, "/settings", &preferred, None).await?;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    assert!(page.contains("<html lang=\"es\""));
+    assert!(page.contains("<h1>Ajustes</h1>"));
+    assert!(page.contains("<option value=\"es\" lang=\"es\" selected>Español</option>"));
+
+    let form = format!("csrf={}&language=es", encode(&csrf(&page)?));
+    let saved = scene.post("/settings/language", &form).await?;
+    assert!(saved.starts_with("HTTP/1.1 303"), "{saved}");
+    let language_cookie = pages::cookie(&saved)?;
+    assert_eq!(language_cookie, "analyte_language=es");
+    let cookie = scene.auth.trim_end();
+    let headers = format!("{cookie}; {language_cookie}\r\nAccept-Language: en\r\n");
+    let page = request(host, "/settings", &headers, None).await?;
+    assert!(page.contains("<h1>Ajustes</h1>"));
+    scene.stop().await
+}
