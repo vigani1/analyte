@@ -105,9 +105,10 @@ to refuse two test codes it does not know.
 
 **Evidence levels** ([ADR 0005](docs/adr/0005-evidence-levels.md)): *proven*
 on the real machine, *simulated* against an official simulator or vendor
-traces, *documented* from the documents only; never raised without proof. The
-named machines are still blocked: their folders in [`machines/`](machines/README.md)
-list what is missing. Scope and checklists: [docs/protocols](docs/protocols/README.md).
+traces, *documented* from the documents only; never raised without proof. cobas e 411,
+Biolyte 2000, VIDAS and Autolyser ship definitions at level documented;
+iFlash 1200 and Swelab Lumi are still blocked. Each folder in
+[`machines/`](machines/README.md) lists what is missing. Scope and checklists: [docs/protocols](docs/protocols/README.md).
 
 **How they were built:** each standard first, from its official documents
 ([ADR 0007](docs/adr/0007-standards-first.md)), then each machine as a config

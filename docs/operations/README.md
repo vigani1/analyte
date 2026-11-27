@@ -24,8 +24,9 @@ order. Examples are synthetic. Do not use their values as machine settings.
 
 Evidence is **documented**, unless a particular capability has separate
 recorded evidence. No first-lab machine is qualified today. Installation or
-`check-config` success is not permission to use patient results. The six
-machines remain blocked pending the facts and recordings in their READMEs.
+`check-config` success is not permission to use patient results. Four of the six
+first machines ship definitions at level documented and still need the facts
+and recordings in their READMEs; iFlash 1200 and Swelab Lumi remain blocked.
 The lab must validate the complete route through the final clinical report.
 
 Keep a protected installation record outside Git. Record the binary version,

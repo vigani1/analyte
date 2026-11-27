@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The plan, guides and READMEs no longer call cobas e 411, Biolyte 2000,
+  VIDAS and Autolyser blocked: they ship definitions at level documented.
+  iFlash 1200 and Swelab Lumi stay blocked.
 - The bioMérieux VIDAS definition offers "Other version (not checked)" in
   Setup. The sample-ID limit is now its own question, "Longest sample ID the
   VIDAS PC accepts: 12 or 17 characters", with no suggestion, so an unchecked
