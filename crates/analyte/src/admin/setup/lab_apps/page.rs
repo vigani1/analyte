@@ -74,6 +74,10 @@ pub(super) struct Sender {
 pub(in crate::admin::setup) struct Key {
     /// "API key" or "Signing key".
     pub(super) label: &'static str,
+    /// The empty field's prompt: "Paste the API key".
+    pub(super) placeholder: &'static str,
+    /// The replacing field's label: "New API key".
+    pub(super) replacement: &'static str,
     /// The form field that replaces it.
     pub(super) field: &'static str,
     /// The field's element id on the page.
@@ -85,16 +89,6 @@ pub(in crate::admin::setup) struct Key {
     pub(in crate::admin::setup) exact: String,
     /// How the form takes a value for it.
     pub(super) entry: Entry,
-}
-
-impl Key {
-    /// The empty field's prompt: "Paste the api key".
-    pub(super) fn placeholder(&self) -> String {
-        tr_args(
-            "setup-paste-the-key",
-            [("key", self.label.to_lowercase().into())],
-        )
-    }
 }
 
 /// How a lab app's form takes a value for one key.

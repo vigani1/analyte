@@ -549,7 +549,11 @@ setup-could-not-read-whether-notices-are-sent = Impossible de savoir si les avis
 
 setup-remove-3 = Supprimer { $name } ?
 
-setup-is = { $name } est { $verb }
+setup-is =
+    { $state ->
+        [added] { $name } est ajoutée
+       *[saved] { $name } est enregistrée
+    }
 
 setup-is-no-longer-listed-2 = { $name } n’est plus répertoriée
 
@@ -1087,7 +1091,13 @@ setup-key-owner-lab-app = Application de laboratoire { $name }
 
 setup-key-owner-alert-target = Destinataire d’alerte { $target }
 
-setup-paste-the-key = Collez la { $key }
+setup-paste-the-api-key = Collez la clé API
+
+setup-paste-the-signing-key = Collez la clé de signature
+
+setup-new-api-key = Nouvelle clé API
+
+setup-new-signing-key = Nouvelle clé de signature
 
 setup-no-answer = pas de réponse
 

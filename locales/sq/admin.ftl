@@ -219,8 +219,6 @@ admin-paste-it-from-your-lab-app-team-s-message = Ngjitni atë nga mesazhi i eki
 
 admin-replace = Zëvendësoni
 
-admin-new = E re
-
 admin-back = Mbrapa
 
 admin-next = Tjetra
@@ -1279,7 +1277,11 @@ admin-sending-to-paused-lab-app-settings-need-repair = dërgimi te { $lab-app } 
 
 admin-reports-a-conflict = { $lab-app } raporton një konflikt
 
-admin-sending-to-tried-times = dërgimi te { $lab-app } { $failed } · { $count } herë i provuar, { $first } – { $last }
+admin-sending-to-tried-times =
+    { $outcome ->
+        [cut-off] dërgimi te { $lab-app } u ndërpre · { $count } herë i provuar, { $first } – { $last }
+       *[failed] dërgimi te { $lab-app } dështoi · { $count } herë i provuar, { $first } – { $last }
+    }
 
 admin-next-try-after = { " " }· prova tjetër pas { $next }
 
@@ -1314,8 +1316,6 @@ admin-not-read-yet = Nuk është lexuar ende
 admin-message-stored-not-read-yet = mesazhi është ruajtur, nuk është lexuar ende
 
 admin-no-results-2 = asnjë rezultat
-
-admin-was-cut-off = ishte prerë
 
 admin-not-recorded-2 = (i pa regjistruar)
 

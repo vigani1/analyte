@@ -339,6 +339,10 @@ doctor-overview-check-the-machine-s-settings = vérifiez les réglages de l’au
 
 doctor-overview-machine-software = Logiciel de l’automate
 
+doctor-overview-machine = Automate { $id }
+
+doctor-overview-machine-named-software = Logiciel de l’automate { $id }
+
 doctor-overview-check-the-store-and-run-analyte-doctor-again = vérifiez le stockage et exécutez de nouveau analyte doctor
 
 doctor-overview-free-disk-space-on-this-drive-analyte-deletes-nothing = libérez de l’espace disque sur ce lecteur ; Analyte ne supprime rien pour faire de la place

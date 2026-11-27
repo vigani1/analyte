@@ -542,7 +542,11 @@ setup-could-not-read-whether-notices-are-sent = Nuk mund të lexohej nëse njoft
 
 setup-remove-3 = Të hiqet { $name }?
 
-setup-is = { $name } është { $verb }
+setup-is =
+    { $state ->
+        [added] { $name } u shtua
+       *[saved] { $name } u ruajt
+    }
 
 setup-is-no-longer-listed-2 = { $name } nuk është më i listuar
 
@@ -1076,7 +1080,13 @@ setup-key-owner-lab-app = Aplikacioni i laboratorit { $name }
 
 setup-key-owner-alert-target = Marrësi i alarmit { $target }
 
-setup-paste-the-key = Ngjitni { $key }
+setup-paste-the-api-key = Ngjitni çelësin API
+
+setup-paste-the-signing-key = Ngjitni çelësin e nënshkrimit
+
+setup-new-api-key = Çelës i ri API
+
+setup-new-signing-key = Çelës i ri i nënshkrimit
 
 setup-no-answer = pa përgjigje
 

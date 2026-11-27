@@ -221,8 +221,6 @@ admin-paste-it-from-your-lab-app-team-s-message = Fügen Sie ihn aus der Nachric
 
 admin-replace = Ersetzen
 
-admin-new = Neu
-
 admin-back = Zurück
 
 admin-next = Weiter
@@ -1282,9 +1280,9 @@ admin-sending-to-paused-lab-app-settings-need-repair = Senden an { $lab-app } an
 admin-reports-a-conflict = { $lab-app } meldet einen Konflikt
 
 admin-sending-to-tried-times =
-    { $failed ->
-        [failed] Senden an { $lab-app } fehlgeschlagen · { $count }-mal versucht, { $first } – { $last }
-       *[other] Senden an { $lab-app } { $failed } · { $count }-mal versucht, { $first } – { $last }
+    { $outcome ->
+        [cut-off] Senden an { $lab-app } wurde unterbrochen · { $count }-mal versucht, { $first } – { $last }
+       *[failed] Senden an { $lab-app } fehlgeschlagen · { $count }-mal versucht, { $first } – { $last }
     }
 
 admin-next-try-after = { " " }· nächster Versuch nach { $next }
@@ -1320,8 +1318,6 @@ admin-not-read-yet = Noch nicht ausgewertet
 admin-message-stored-not-read-yet = Nachricht gespeichert, noch nicht ausgewertet
 
 admin-no-results-2 = keine Ergebnisse
-
-admin-was-cut-off = wurde unterbrochen
 
 admin-not-recorded-2 = (nicht aufgezeichnet)
 
