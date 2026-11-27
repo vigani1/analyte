@@ -2,9 +2,9 @@
 
 ## Unreleased
 
-- The plan, guides and READMEs no longer call cobas e 411, Biolyte 2000,
-  VIDAS and Autolyser blocked: they ship definitions at level documented.
-  iFlash 1200 and Swelab Lumi stay blocked.
+- The plan, guides and READMEs no longer call cobas e 411, iFlash 1200,
+  Biolyte 2000, VIDAS and Autolyser blocked: they ship definitions at level
+  documented. Swelab Lumi stays blocked.
 - The bioMérieux VIDAS definition offers "Other version (not checked)" in
   Setup. The sample-ID limit is now its own question, "Longest sample ID the
   VIDAS PC accepts: 12 or 17 characters", with no suggestion, so an unchecked
@@ -58,6 +58,12 @@
   seconds if the folder cannot be checked in time, even on a stalled share.
 - Setup and `analyte machines set --dry-run` now report the same machine
   configuration errors as startup, before Save writes any settings.
+- **YHLO iFlash 1200:** ship a machine definition written from the YHLO
+  LIS Protocol Manual V1.1 and the iFlash 1200 service manual, at evidence
+  level documented. Setup asks for the PC build and communication type.
+  Two-way mode answers barcode queries from a trusted order cache.
+  Parsed uploads with missing identity fields (OBR-2, OBR-3, OBR-8) or
+  uncertain report status are stored, held for review and acknowledged with AA.
 - The BioCARE Biolyte 2000 has a machine definition written from its Service
   Manual V4.2A (evidence level documented) and is no longer record-only.
   Results keep their value text and unit spelling and are held for staff,

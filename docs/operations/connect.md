@@ -413,17 +413,17 @@ Follow [Adding a machine](../develop/adding-a-machine.md) and the
 send-ahead orders need separate evidence. Do not enable orders just because
 results work. Never infer identity from position or invent units or run keys.
 
-Four of the six first machines ship a full `machine.toml` written from their
-manuals, at level documented: cobas e 411, Biolyte 2000, VIDAS and
-Autolyser. None has run against a real analyzer yet, so confirm every open
-question in its README before clinical use. iFlash 1200 and Swelab Lumi are
-still blocked: no activatable `machine.toml` is shipped for them, and every
-fact in their README is needed, not just the summary.
+Five of the six first machines ship a full `machine.toml` written from their
+manuals, at level documented: cobas e 411, iFlash 1200, Biolyte 2000, VIDAS
+and Autolyser. None has run against a real analyzer yet, so confirm every
+open question in its README before clinical use. Swelab Lumi is still
+blocked: no activatable `machine.toml` is shipped for it, so it can only be
+connected to record only, and every fact in its README is needed.
 
-| Machine | Status | Worksheet |
+| Machine | Status | Settings and evidence |
 | --- | --- | --- |
 | Roche cobas e 411 | documented | [Installed software, host codes and recordings](../../machines/roche/cobas-e411/README.md) |
-| YHLO iFlash 1200 | blocked | [1200 protocol applicability, status/QC mapping and deadlines](../../machines/yhlo/iflash-1200/README.md) |
+| YHLO iFlash 1200 | documented | [1200 protocol applicability, status/QC mapping and deadlines](../../machines/yhlo/iflash-1200/README.md) |
 | Boule Swelab Lumi | blocked | [Installed protocol, framing, encoding and sample field](../../machines/boule/swelab-lumi/README.md) |
 | BioCARE Biolyte 2000 | documented | [Flow control, codes and identity evidence](../../machines/biocare/biolyte-2000/README.md) |
 | bioMérieux VIDAS | documented | [PC version, ID length and identity evidence](../../machines/biomerieux/vidas/README.md) |
@@ -441,9 +441,10 @@ The Autolyser report carries no run identity, so its results stay held for
 staff rather than reaching the app (ADR 0035). A successful serial exchange
 does not remove this. The VIDAS definition declares its identity recipe
 (ADR 0035); a repeated key with a different value is held, never treated as
-a correction. iFlash also needs evidence-backed code
-support for its status semantics and OBR-only QC arrays; config cannot supply
-that behavior today.
+a correction. The iFlash definition reads patient and OBR-only QC layouts.
+Patient uploads lacking run identity or final status and QC uploads lacking
+measurement identity stay in Needs review after Analyte acknowledges durable
+receipt.
 
 Machine definitions use `schema_version = 2`: set `protocol` and
 `transport.kind`, and the loader derives framing, dialog and syntax, so those
@@ -452,7 +453,7 @@ unsupported.
 
 ## First visit: record only
 
-A model that is not ready yet (today iFlash 1200 and Swelab Lumi) cannot send
+A model that is not ready yet (today Swelab Lumi) cannot send
 results to a lab app. It, and any ready model, can still be connected to
 **record only** ([ADR 0034](../adr/0034-record-only-connections.md)): Analyte
 keeps the analyzer talking with its protocol's own rules and keeps every
