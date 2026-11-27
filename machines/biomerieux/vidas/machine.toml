@@ -100,6 +100,8 @@ vidas = { alternate = true }
 
 [[choices]]
 # The VIDAS PC does not report its version on the wire, so staff read it.
+# ADR 0032: a choice offering an unchecked version selects no settings, so
+# the sample-ID limit is its own choice below.
 name = "software_version"
 kind = "software_version"
 label = "VIDAS PC software version on its About screen"
@@ -108,13 +110,36 @@ label = "VIDAS PC software version on its About screen"
 # Manual F introduction and pp. 4-14, 8-54: software 4.0.0, 12-character
 # sample ID.
 value = "manual-f"
-label = "4.0.0 (Manual F profile, sample ID up to 12 characters)"
-vidas = { sample_limit = 12 }
+label = "4.0.0 (Manual F profile; answer 12 for the sample ID length)"
 
 [[choices.values]]
 # Rev C pp. 4-1 and 4-5: VU_06, sample ID up to 17 characters on the wire.
 value = "vu-06"
-label = "VU_06 (BCI guide C profile, sample ID up to 17 characters)"
+label = "VU_06 (BCI guide C profile; answer 17 for the sample ID length)"
+
+[[choices.values]]
+# Any build neither source describes. Setup shows a persistent warning
+# (ADR 0036) and the lab must still answer the sample ID length.
+value = "other"
+label = "Other version (not checked)"
+checked = false
+
+[[choices]]
+# Manual F p. 4-14 (4.0.0: 12 characters) and rev C pp. 4-1, 4-5 (VU_06: 17
+# characters). The limit depends on the installed build, so nothing is
+# suggested; staff confirm it on the VIDAS PC.
+name = "sample_id_length"
+kind = "mode"
+label = "Longest sample ID the VIDAS PC accepts: 12 or 17 characters"
+
+[[choices.values]]
+value = "12"
+label = "12 characters (software 4.0.0)"
+vidas = { sample_limit = 12 }
+
+[[choices.values]]
+value = "17"
+label = "17 characters (VU_06)"
 vidas = { sample_limit = 17 }
 
 [evidence]
