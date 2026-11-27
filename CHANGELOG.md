@@ -7,12 +7,33 @@
   checksums are recomputed, so the copy still replays. ASTM, HL7, IHE LAW,
   VIDAS and Autolyser are supported; POCT is refused. The original is never
   changed (ADR 0037).
+
+- The Dialab Autolyser has a full machine definition written from its
+  Operator's Manual Rev18 (evidence level documented) and replaces its
+  record-only settings. It reads results and holds them for staff, since
+  the report has no run identity. Setup asks the poll interval, the
+  "Send also the controls" setting and last-report recovery. Work lists stay
+  off.
+
+- HL7 v2 uploads that Analyte has stored but holds for review (missing
+  identity, a mapping problem such as a missing OBX-3, a conflicting result)
+  are now acknowledged AA, or CA then AA in enhanced mode, instead of AE. The
+  item stays in Needs review with its reason, and analyzers no longer resend
+  it or mark it "not received". Storage failures, unparseable bytes, HL7
+  syntax errors, unsupported message types and IHE LAW keep their current
+  answers (ADR 0010).
 - Machine definitions can offer "Other version (not checked)" in Setup.
   Overview, status and the machine list keep a warning visible while results
   continue to flow.
-
 - Add a documented Roche cobas e 411 definition for Elecsys and cobas ASTM
   result uploads. Hold results with unresolved measurement identity for review.
+
+- The bioMérieux VIDAS now ships a full machine definition at level
+  documented, written from the BCI Link guide and the VIDAS PC manual. It
+  reads and delivers uploaded results, with result identity from sample ID,
+  assay and completion minute. Setup asks Literal or Alternate and the VIDAS
+  PC software band, which also sets the 12- or 17-character sample-ID limit.
+  Work-list downloads stay off. Its record-only profile is removed.
 - Remove the unused VIDAS retry count and backoff settings. Configuration
   reports either old key as an unknown field.
 - `analyte doctor` reports missing or invalid lab app keys as failures and
@@ -21,6 +42,12 @@
   seconds if the folder cannot be checked in time, even on a stalled share.
 - Setup and `analyte machines set --dry-run` now report the same machine
   configuration errors as startup, before Save writes any settings.
+- The BioCARE Biolyte 2000 has a machine definition written from its Service
+  Manual V4.2A (evidence level documented) and is no longer record-only.
+  Results keep their value text and unit spelling and are held for staff,
+  because the manual documents no result identity or control marker. Setup
+  asks the software version (4.2A or another, not checked); with 4.2A a
+  different version reported by the analyzer raises a warning.
 
 ## 0.1.0 - 2026-11-23
 

@@ -115,6 +115,7 @@ fn readme(path: &Path, level: EvidenceLevel) -> Result<(), Error> {
 #[serde(deny_unknown_fields)]
 struct ReplaySettings {
     choices: Option<toml::Table>,
+    autolyser_poll_seconds: Option<u32>,
     order_profile: Option<analyte_config::AstmOrderProfile>,
     vendor_worklist: Option<VendorWorklist>,
     recording: Option<toml::Table>,
@@ -203,18 +204,26 @@ async fn replay_model(folder: &Path, model: &Path, definition: &Path) -> Result<
             let (header, events) =
                 recording::read(std::fs::File::open(&path)?, recording::Limits::default())?;
             validate_gap(&events, answers.expected_gap.as_ref())?;
-            if let Some(vendor) = answers.vendor_worklist {
-                assert!(
-                    record_only,
-                    "the fixture exercises an order-enabled test peer"
-                );
-                let name = model
-                    .join("record.toml")
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                let site = recording_site("COM3", &answers, true)?;
-                let validated = analyte_config::recording::load((&name, &text), ("site", &site))?;
-                assert_eq!(header.stack, validated.effective().stack().layer_names());
+if let Some(vendor) = answers.vendor_worklist {
+                // The fixture exercises an order-enabled test peer; the
+                // shipped definition only has to speak the same stack.
+                let layers = if record_only {
+                    let name = model
+                        .join("record.toml")
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    let site = recording_site("COM3", &answers, true)?;
+                    analyte_config::recording::load((&name, &text), ("site", &site))?
+                        .effective()
+                        .stack()
+                        .layer_names()
+                } else {
+                    ready_definition(&text, &answers)?
+                        .effective()
+                        .stack()
+                        .layer_names()
+                };
+                assert_eq!(header.stack, layers);
                 replay_vendor_worklist(vendor, &header, &events).await
             } else if let Some(cache) = answers.order_cache {
                 if !record_only || answers.choices.is_some() || answers.recording.is_some()
@@ -569,6 +578,21 @@ async fn replay_ready(
     events: &[Event],
     answers: &ReplaySettings,
 ) -> Result<(), Error> {
+    let checked = ready_definition(text, answers)?;
+    readme(
+        &folder.join("README.md"),
+        checked.effective().machine().evidence.level,
+    )?;
+    let stack = checked.effective().stack();
+    assert_eq!(header.stack, stack.layer_names(), "recording stack");
+    replay_machine(model, text, events, header, stack, answers).await
+}
+
+/// Loads a shipped `machine.toml` with the replay's site choices, as a lab PC would.
+fn ready_definition(
+    text: &str,
+    answers: &ReplaySettings,
+) -> Result<analyte_config::Validated, Error> {
     if answers.recording.is_some() {
         return Err("use choices to supply site answers for machine.toml".into());
     }
@@ -580,19 +604,12 @@ async fn replay_ready(
         _ => "127.0.0.1:5600".into(),
     };
     let site = site(&endpoint, answers, kind == "serial")?;
-    let checked = Draft::load(
+    Ok(Draft::load(
         ("machine", text),
         ("site", &site),
         ("overrides", "schema_version=1"),
     )?
-    .validate()?;
-    readme(
-        &folder.join("README.md"),
-        checked.effective().machine().evidence.level,
-    )?;
-    let stack = checked.effective().stack();
-    assert_eq!(header.stack, stack.layer_names(), "recording stack");
-    replay_machine(model, text, events, header, stack, answers).await
+    .validate()?)
 }
 
 fn transport_kind(table: &toml::Table) -> Result<&str, Error> {
@@ -954,6 +971,9 @@ fn site(endpoint: &str, answers: &ReplaySettings, serial: bool) -> Result<String
     site.insert("endpoint".into(), toml::Value::String(endpoint.into()));
     if let Some(choices) = &answers.choices {
         site.insert("choices".into(), choices.clone().into());
+    }
+    if let Some(seconds) = answers.autolyser_poll_seconds {
+        site.insert("autolyser_poll_seconds".into(), i64::from(seconds).into());
     }
     if serial {
         site.insert(

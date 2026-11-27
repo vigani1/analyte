@@ -156,17 +156,27 @@ choices within that scope, not additional promises of conformance.
 
 ## 2. Act as the receiving application for store-and-forward
 
-- **what**: Original-mode AA means Analyte durably retained and interpreted
-  the message; it does not wait for the destination lab app to receive it.
-  Each HL7 connection declares that Analyte takes on store-and-forward
-  responsibility. Input that is stored but cannot be interpreted gets AE or AR.
-  Raw storage, interpretation and the app's acceptance are separate events.
+- **what**: Original-mode AA means Analyte durably retained the message and
+  its interpretation outcome; it does not wait for the destination lab app to
+  receive it. Each HL7 connection declares that Analyte takes on
+  store-and-forward responsibility. Since 2026-11-26 an outcome held for an
+  operator (missing identity, a mapping problem, a conflict) is also answered
+  AA, because the message is in custody and its reason waits in Needs review.
+  Only an HL7 syntax error found while reading, or a message type the
+  connection does not read, keeps AE. Raw storage,
+  interpretation and the app's acceptance are separate events.
 - **why**: Waiting for an external app would tie the analyzer's response
   deadline to an unrelated network outage. Analyte instead accepts custody
   at its own durable boundary and owns subsequent delivery.
 - **source**: HL7 2.5.1 §2.9.2.2, pp.2-26–2-27;
-  [ADR 0003](../../adr/0003-clinical-safety-rules.md), receiving responsibility.
-- **test**: `aa_only_after_store_and_interpret`.
+  [ADR 0003](../../adr/0003-clinical-safety-rules.md), receiving responsibility;
+  [ADR 0010](../../adr/0010-acknowledgment-boundaries.md), amendment 2026-11-26.
+- **test**: `aa_only_after_store_and_interpret`,
+  `held_interpretation_is_accepted_after_store`,
+  `held_interpretation_gets_ca_then_aa_in_enhanced_mode`,
+  `failed_store_is_refused_even_when_held_follows`,
+  `hl7_held_uploads_get_aa_and_stay_parked`, `hl7_unparseable_and_unsupported_refusals_are_unchanged`,
+  `only_syntax_and_unsupported_transactions_keep_ae`.
 
 ## 3. Separate enhanced custody from semantic acceptance
 
@@ -175,6 +185,9 @@ choices within that scope, not additional promises of conformance.
 - **why**: Stored but uninterpretable input is recoverable evidence, not a
   successfully processed result. Combining the phases would erase that
   distinction precisely when the sender has already released responsibility.
+  A held interpretation is recorded as its own custody state
+  (`Responsibility::StoredAndHeld`), so the application AA never claims a
+  successful reading.
 - **source**: HL7 2.5.1 §2.9.3–2.9.3.3, pp.2-27–2-28;
   [ADR 0010](../../adr/0010-acknowledgment-boundaries.md), HL7 row.
 - **test**: `accept_and_application_conditions_independent`.

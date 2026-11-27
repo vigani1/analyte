@@ -175,6 +175,34 @@ fn enhanced_ack_follows_custody() -> Result<(), Error> {
     Ok(())
 }
 
+// HL7 2.5.1 §2.9.2; ADR 0010 (2026-11-26): AA accepts responsibility, so a
+// held interpretation may be accepted, but bytes merely stored may not.
+#[test]
+fn held_custody_allows_aa_and_stored_alone_does_not() -> Result<(), Error> {
+    let input = Message::parse(
+        b"MSH|^~\\&|S|F|R|F|20261116||ORU^R01^ORU_R01|id|P|2.5.1\r",
+        Options::default(),
+    )?;
+    let ack = |custody| {
+        acknowledgment(
+            &input,
+            Response {
+                control_id: ControlId::new(b"reply")?,
+                timestamp: b"20261116",
+            },
+            AckCode::Aa,
+            custody,
+            None,
+            Options::default(),
+        )
+    };
+    let held = ack(Responsibility::StoredAndHeld)?.ok_or(Error::Encoding)?;
+    assert!(held.raw().ends_with(b"MSA|AA|id\r"));
+    assert_eq!(ack(Responsibility::Stored), Err(Error::NotStored));
+    assert_eq!(ack(Responsibility::NotStored), Err(Error::NotStored));
+    Ok(())
+}
+
 // HL7 2.6 §2.7.1, §2.14.9.18
 #[test]
 fn utf8_charset_and_literal_escapes() -> Result<(), Error> {

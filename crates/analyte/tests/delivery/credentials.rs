@@ -63,11 +63,14 @@ async fn retransmission_and_correction_deliver_once() -> Result<(), Error> {
                 .contains("MSA|AA")
         );
     }
+    // ADR 0010 (2026-11-26): a conflicting resend is stored and held for an
+    // operator, so it is accepted; the receiver count below proves it was not
+    // delivered.
     let conflict = String::from_utf8(ORU.to_vec())?.rewrite("12.30", "99.9");
     assert!(
         hl7(&mut hl7_peer, conflict.as_bytes())
             .await?
-            .contains("MSA|AE")
+            .contains("MSA|AA|message1")
     );
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
         .arg("status")

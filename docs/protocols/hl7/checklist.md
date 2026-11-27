@@ -185,7 +185,7 @@ inferred (`unsupported_escapes_never_become_clean_text`).
 
 - [ ] B — Both MSH-15/16 unvalued selects original mode; otherwise validate and apply the enhanced condition fields. 231 ch.2 §§2.12.1, 2.24.1.15–16 pp.107–112, 143–144; 251 ch.2 §§2.9, 2.15.9.15–16 pp.24–28, 78.
 - [ ] B — Apply AL/NE/ER/SU independently to acceptance and application outcomes; test ACK suppression as well as positive/negative responses. Same clauses.
-- [ ] B — Original mode reports AA only for successful agreed application processing, AE for content/application error and AR for rejection. 231 §2.12.1.2.1 pp.109–110; 251 §2.9.2 pp.26–27.
+- [ ] B — Original mode reports AA only for successful agreed application processing, AE for content/application error and AR for rejection. 231 §2.12.1.2.1 pp.109–110; 251 §2.9.2 pp.26–27. Local rule (ADR 0010, 2026-11-26): durable custody of the message and its held interpretation counts as accepted processing, so held uploads get AA; HL7 syntax errors found while reading and unsupported message types keep AE.
 - [ ] B — Enhanced mode safely commits before positive acceptance and distinguishes CA from CE/CR; no CA may precede durable responsibility. 231 §2.12.1.2.2 pp.110–112; 251 §2.9.3 pp.27–28.
 - [ ] B — Treat application response as its own exchange with correct correlation and no infinite application-ACK chain. Same enhanced clauses.
 - [ ] B — Create response MSH-10/time anew, address recipient from sender identity and copy MSA-2 from the triggering message ID. 231 §2.12.1.2 pp.110–111; 251 §§2.9.2.2, 2.9.3.2 pp.26, 28.
@@ -210,8 +210,11 @@ Both phases disabled reports issuance with no requested response, never acceptan
 ERR locations use the actual source segment occurrence and field when known,
 and remain unvalued when reconciliation cannot identify a source field. HL7 and
 LAW use one host builder. Source: 2.5.1 section 2.15.5.2 pp.2-67-68.
-`hl7_ae_reports_actual_mapping_location` (receive tests)
-covers the second OBX and an unlocated conflict; `unknown_error_location_stays_unvalued`
+`negative_ack_keeps_syntax_and_mapping_locations` (analyte unit tests) covers a
+located OBX field, and `hl7_unparseable_and_unsupported_refusals_are_unchanged`
+(receive tests) an AE located at MSH-9; since ADR 0010's 2026-11-26 amendment a
+held upload such as a second OBX without OBX-3 gets AA instead
+(`hl7_held_uploads_get_aa_and_stay_parked`). `unknown_error_location_stays_unvalued`
 (control tests) checks wire rendering. LAW's
 `conflict_rejects_batch_and_og_separates_runs`
 (delivery tests) checks the same second-OBX mapping failure.

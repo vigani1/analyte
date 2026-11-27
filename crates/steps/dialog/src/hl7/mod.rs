@@ -101,6 +101,9 @@ pub enum Event<'a> {
     StoreFailed(ExchangeId),
     /// Interpretation succeeded under the agreed profile.
     Interpreted(ExchangeId),
+    /// The interpretation was durably held for an operator, with its reason. The
+    /// message is in custody, so it is accepted (ADR 0010, 2026-11-26).
+    Held(ExchangeId),
     /// Interpretation failed, with structured location and a rejection/content-error choice.
     NotInterpretable(ExchangeId, AckError<'a>, AckChoice),
     /// Fresh response metadata for the requested response phase.
@@ -469,7 +472,7 @@ impl Dialog {
             {
                 return Err(Error::Stale);
             }
-            self.finish_host(id, false, true, None, out)?;
+            self.finish_host(id, Finish::Refused, out)?;
         }
         Ok(())
     }
@@ -539,22 +542,10 @@ impl Dialog {
             Event::StoreFailed(id) => {
                 self.commit_failed(id, out)?;
             }
-            Event::Interpreted(id) => self.finish_host(id, true, false, None, out)?,
-            Event::NotInterpretable(id, error, reject) => {
-                if !self
-                    .state
-                    .pending()
-                    .is_some_and(|p| p.id == id && matches!(p.phase, Phase::Interpret))
-                {
-                    return Err(Error::Stale);
-                }
-                self.finish_host(
-                    id,
-                    false,
-                    matches!(reject, AckChoice::Reject),
-                    Some(error),
-                    out,
-                )?;
+            Event::Interpreted(id) => self.finish_host(id, Finish::Interpreted, out)?,
+            Event::Held(id) => self.finish_host(id, Finish::Held, out)?,
+            Event::NotInterpretable(id, error, choice) => {
+                self.finish_host(id, Finish::NotInterpretable(error, choice), out)?;
             }
             Event::Respond(id, response) => {
                 self.respond(id, response, out)?;
@@ -576,34 +567,39 @@ impl Dialog {
     fn finish_host(
         &mut self,
         id: ExchangeId,
-        success: bool,
-        reject: bool,
-        error: Option<AckError<'_>>,
+        finish: Finish<'_>,
         out: &mut Vec<Action>,
     ) -> Result<(), Error> {
         let pending = self.state.pending_mut().ok_or(Error::Stale)?;
+        let interpreting = matches!(pending.phase, Phase::Interpret);
         if pending.id != id
             || !matches!(pending.phase, Phase::Commit | Phase::Interpret)
-            || (success && !matches!(pending.phase, Phase::Interpret))
+            || (!interpreting && !matches!(finish, Finish::Refused))
         {
             return Err(Error::Stale);
         }
-        let code = if matches!(pending.phase, Phase::Commit) {
+        let (code, error) = match finish {
             // A storage failure is unrelated to the message content: AR in
             // original mode, a commit error (CE) in enhanced mode. CR is reserved
             // for unacceptable message type, version or processing ID
             // (HL7 2.5.1 §2.9.3).
-            match Msh::new(&pending.message)?.mode() {
-                AckMode::Original => AckCode::Ar,
-                AckMode::Enhanced { .. } => AckCode::Ce,
+            Finish::Refused if !interpreting => match Msh::new(&pending.message)?.mode() {
+                AckMode::Original => (AckCode::Ar, None),
+                AckMode::Enhanced { .. } => (AckCode::Ce, None),
+            },
+            Finish::Refused => (AckCode::Ar, None),
+            Finish::Interpreted => {
+                pending.responsibility = Responsibility::StoredAndInterpreted;
+                (AckCode::Aa, None)
             }
-        } else if success {
-            pending.responsibility = Responsibility::StoredAndInterpreted;
-            AckCode::Aa
-        } else if reject {
-            AckCode::Ar
-        } else {
-            AckCode::Ae
+            // HL7 2.5.1 §2.9.2: AA means the receiver accepted responsibility; a
+            // held interpretation is already in custody and in the review queue.
+            Finish::Held => {
+                pending.responsibility = Responsibility::StoredAndHeld;
+                (AckCode::Aa, None)
+            }
+            Finish::NotInterpretable(error, AckChoice::Reject) => (AckCode::Ar, Some(error)),
+            Finish::NotInterpretable(error, AckChoice::ContentError) => (AckCode::Ae, Some(error)),
         };
         if error.is_some_and(|e| {
             e.segment.len() > 3 || e.code.len() > 3 || e.application_code.len() > 64
@@ -752,7 +748,7 @@ impl Dialog {
             out.push(Action::TimedOut(id));
             match pending.phase {
                 Phase::Commit | Phase::Interpret => {
-                    if let Err(error) = self.finish_host(id, false, true, None, out) {
+                    if let Err(error) = self.finish_host(id, Finish::Refused, out) {
                         out.push(Action::Refused(error));
                     }
                 }
@@ -766,6 +762,19 @@ impl Dialog {
         }
         self.frame_started = None;
     }
+}
+
+/// How the host ended the exchange it was asked to store or interpret.
+#[derive(Debug, Clone, Copy)]
+enum Finish<'a> {
+    /// Storage failed or the host phase expired: no responsibility accepted.
+    Refused,
+    /// Interpreted under the agreed profile.
+    Interpreted,
+    /// Interpretation durably held for an operator.
+    Held,
+    /// Interpretation refused with a located error.
+    NotInterpretable(AckError<'a>, AckChoice),
 }
 
 /// Selects the negative application acknowledgment without an unnamed flag.

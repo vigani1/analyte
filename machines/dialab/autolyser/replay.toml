@@ -1,22 +1,33 @@
-["controls-report.rec.jsonl".recording]
-poll_seconds = 1
-controls = true
+# Site answers for replaying each recording through machine.toml.
+["controls-report.rec.jsonl"]
+autolyser_poll_seconds = 1
+["controls-report.rec.jsonl".choices]
+controls = "on"
+recovery = "stop"
 
-["corrupt-and-last.rec.jsonl".recording]
-poll_seconds = 1
-controls = false
+["corrupt-and-last.rec.jsonl"]
+autolyser_poll_seconds = 1
+["corrupt-and-last.rec.jsonl".choices]
+controls = "off"
+recovery = "ask-last"
 
-["empty-poll.rec.jsonl".recording]
-poll_seconds = 1
-controls = false
+["empty-poll.rec.jsonl"]
+autolyser_poll_seconds = 1
+["empty-poll.rec.jsonl".choices]
+controls = "off"
+recovery = "stop"
 
-["next-report.rec.jsonl".recording]
-poll_seconds = 1
-controls = false
+["next-report.rec.jsonl"]
+autolyser_poll_seconds = 1
+["next-report.rec.jsonl".choices]
+controls = "off"
+recovery = "stop"
 
+# The shipped definition keeps work lists off, so this replays against the
+# order-enabled synthetic Autolyser example (Rev18 §23.1).
 ["worklist-download.rec.jsonl"]
 vendor_worklist = "autolyser"
-
-["worklist-download.rec.jsonl".recording]
-poll_seconds = 1
-controls = false
+autolyser_poll_seconds = 1
+["worklist-download.rec.jsonl".choices]
+controls = "off"
+recovery = "stop"

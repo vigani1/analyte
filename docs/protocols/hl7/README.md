@@ -48,9 +48,14 @@ not implemented transactions. Named tests below must pass before handoff.
   dropped.
 - **Who is the receiving application.** Each connection declares that
   Analyte takes on store-and-forward responsibility. It answers AA only for
-  messages it durably stored *and* could interpret. Input it stored but could
-  not interpret is answered AE or AR as the standard prescribes and parked
-  for an operator. Enhanced mode (CA/CE/CR) follows MSH-15/16 exactly.
+  messages it durably stored together with their interpretation outcome. A
+  stored message whose interpretation is held for an operator (missing
+  identity, a mapping problem, a conflict) is still answered AA and parked
+  with its reason ([ADR 0010](../../adr/0010-acknowledgment-boundaries.md),
+  2026-11-26). An HL7 syntax error found while reading, or a message type the
+  connection does not read, keeps AE; bytes the parser rejects are kept and
+  parked without a reply. Enhanced mode
+  (CA/CE/CR) follows MSH-15/16 exactly.
 - **Identity.** An observation is identified by its code and code system,
   its sub-ID and its order context, never by OBX-1, test name or value.
   Several OBX segments with the same key can form one replacement unit.

@@ -1,11 +1,89 @@
-//! Locates HL7 and LAW errors without inventing unknown source positions.
+//! Locates HL7 and LAW errors without inventing unknown source positions, and
+//! tells a syntax failure apart from a held interpretation.
 use analyte_hl7::Terminator;
 use analyte_mapping::Output;
 
 pub(crate) use analyte_hl7::Location;
 use analyte_hl7::syntax_location;
 
-pub(crate) fn mapping_location(
+/// What the HL7 acknowledgment needs to know about a stored message's reading.
+#[derive(Debug, Default)]
+pub(crate) struct Diagnosis {
+    /// Where reading stopped, when the source position is known.
+    pub location: Option<Location>,
+    /// Why an interpretation that was not accepted failed.
+    pub cause: Cause,
+}
+
+/// Why a stored HL7 message was not accepted; only a held one still gets AA
+/// (ADR 0010, 2026-11-26).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Cause {
+    /// Readable HL7 whose interpretation is held for an operator.
+    #[default]
+    Held,
+    /// The stored bytes break HL7 syntax, a data type or framing.
+    Syntax,
+    /// MSH-9 names a transaction the result grammar does not read.
+    Unsupported,
+}
+
+pub(crate) fn diagnose(
+    mapping: &Result<Output, crate::machine::interpretation::ReadError>,
+    raw: &[u8],
+    ending: Terminator,
+    unsupported: bool,
+) -> Diagnosis {
+    let cause = if syntax_failure(mapping) {
+        Cause::Syntax
+    } else if unsupported {
+        Cause::Unsupported
+    } else {
+        Cause::Held
+    };
+    Diagnosis {
+        location: mapping_location(mapping, raw, ending),
+        cause,
+    }
+}
+
+fn syntax_failure(mapping: &Result<Output, crate::machine::interpretation::ReadError>) -> bool {
+    use crate::reading::Error as Read;
+    let Err(crate::machine::interpretation::ReadError::Mapping(error)) = mapping else {
+        return false;
+    };
+    match error {
+        Read::Hl7(_)
+        | Read::MllpFrame(_)
+        | Read::MllpReceipt(_)
+        | Read::Encoding(_)
+        | Read::Mapping(analyte_mapping::Error::Hl7 { .. }) => true,
+        Read::Mapping(
+            analyte_mapping::Error::Limit { .. }
+            | analyte_mapping::Error::Structure { .. }
+            | analyte_mapping::Error::Encoding { .. }
+            | analyte_mapping::Error::Text { .. }
+            | analyte_mapping::Error::CharsetMismatch
+            | analyte_mapping::Error::DepartureKind
+            | analyte_mapping::Error::DepartureEvidence(_),
+        )
+        | Read::RecordedOnly
+        | Read::LawMapping(_)
+        | Read::Astm(_)
+        | Read::Law(_)
+        | Read::Poct(_)
+        | Read::Vidas(_)
+        | Read::Autolyser(_)
+        | Read::AstmFrame(_)
+        | Read::AstmReceipt(_)
+        | Read::VidasFrame(_)
+        | Read::AutolyserFrame(_)
+        | Read::Evidence(_)
+        | Read::Context(_) => false,
+    }
+}
+
+fn mapping_location(
     mapping: &Result<Output, crate::machine::interpretation::ReadError>,
     raw: &[u8],
     ending: Terminator,
@@ -88,6 +166,84 @@ mod tests {
                 String::from_utf8_lossy(ack.raw()).contains("ERR||OBX^1^5|207|E|operator-review")
             );
         }
+    }
+
+    // HL7 2.5.1 §2.9.2; ADR 0010 (2026-11-26): an HL7 syntax failure or an
+    // unsupported transaction keeps AE; a mapping problem such as a missing
+    // OBX-3 is a held interpretation.
+    #[test]
+    fn only_syntax_and_unsupported_transactions_keep_ae() {
+        use crate::machine::interpretation::ReadError;
+        let raw = b"MSH|^~\\&|SYN|LAB|HOST|LAB|202611151200||ORU^R01^ORU_R01|message1|P|2.5.1\rOBX|1|NM|||12\r";
+        let position = analyte_mapping::Position {
+            record: 2,
+            field: 3,
+        };
+        let cases: [(Result<Output, ReadError>, Cause); 6] = [
+            (Ok(Output::default()), Cause::Held),
+            (
+                Err(ReadError::Mapping(crate::reading::Error::Hl7(
+                    analyte_hl7::Error::Escape {
+                        segment: 2,
+                        field: 5,
+                        offset: 0,
+                    },
+                ))),
+                Cause::Syntax,
+            ),
+            (
+                Err(ReadError::Mapping(crate::reading::Error::Mapping(
+                    analyte_mapping::Error::Hl7 {
+                        position,
+                        source: analyte_hl7::Error::Control {
+                            segment: "OBX",
+                            field: 14,
+                        },
+                    },
+                ))),
+                Cause::Syntax,
+            ),
+            (
+                Err(ReadError::Mapping(crate::reading::Error::Mapping(
+                    analyte_mapping::Error::Structure {
+                        position,
+                        reason: "synthetic missing observation identifier",
+                    },
+                ))),
+                Cause::Held,
+            ),
+            (
+                Err(ReadError::Mapping(crate::reading::Error::Mapping(
+                    analyte_mapping::Error::Limit {
+                        position,
+                        resource: "synthetic bound",
+                    },
+                ))),
+                Cause::Held,
+            ),
+            (
+                Err(ReadError::Mapping(crate::reading::Error::Mapping(
+                    analyte_mapping::Error::CharsetMismatch,
+                ))),
+                Cause::Held,
+            ),
+        ];
+        for (mapping, cause) in cases {
+            assert_eq!(diagnose(&mapping, raw, Terminator::Cr, false).cause, cause);
+        }
+        let unsupported = Err(ReadError::Mapping(crate::reading::Error::Mapping(
+            analyte_mapping::Error::Structure {
+                position: analyte_mapping::Position {
+                    record: 1,
+                    field: 9,
+                },
+                reason: "synthetic unsupported transaction",
+            },
+        )));
+        assert_eq!(
+            diagnose(&unsupported, raw, Terminator::Cr, true).cause,
+            Cause::Unsupported
+        );
     }
 
     // HL7 2.5.1 §2.15.5.2
