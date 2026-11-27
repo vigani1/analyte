@@ -104,3 +104,47 @@ The owner approved a per-machine site setting, **Repeated results**, on
   received the result. Resolve held repeats before switching the setting back.
 - Setup step 2 and `analyte machines set --repeated-results` share one plan
   and save path. The machine's page and `machines list` show the choice in use.
+
+## Amendment 2026-11-27: staff can confirm a held change as a correction
+
+The owner approved a third decision, **This is a correction**, on
+2026-11-27.
+
+Why: a machine can change a result under the same identity key without
+marking it as a correction, for example tube 000123 glucose 5.4 and then
+5.9 with no correction code. Analyte holds it, as above. Until now staff
+could only call it a resend, which drops the new value, or a rerun, which
+sends it as a second result next to the old one. Neither tells the lab app
+that the new value replaces the old one, so staff had no correct choice.
+Retyping the value in the lab app instead risks a transcription error on a
+patient report.
+
+- The decision applies to the same items, comparison and snapshot recheck as
+  resend and rerun: a held ordinary-recipe result with changed content under
+  a retained key. It is offered only when the held result differs clinically
+  from the latest retained revision under that key. A byte-identical repeat
+  held by `always_ask` has nothing to correct, and a missing-sample
+  suggestion is not a same-key change; neither offers it.
+- The held reading becomes the next revision of the same result, exactly as
+  a machine-marked correction does: the machine's identity key is kept and
+  the revision is the latest one plus one. The store appends a reading and
+  enqueues one delivery for that revision through the normal outbox, so a
+  retry reuses the delivery's ID. It requires an eligible production result
+  and the same effective configuration and delivery route that received it,
+  like a rerun.
+- The run is not rewritten. An `operator:` run would make it a new result,
+  which is what a rerun is for; keeping the key is what makes the lab app
+  replace the value. The operator decision is marked instead by the audit
+  action `parked-measurement-correction`, with the actor, time, reason, both
+  receipts and the snapshot, written in the same transaction as the
+  resolution and the enqueue. The source values, timestamps, sample ID and
+  both original receipts stay as received.
+- If the item or comparison changed after it was shown, the decision is
+  refused and the item stays open to be reviewed again.
+- The admin page asks for confirmation first, showing the earlier and new
+  values side by side, and requires a reason. The command line takes
+  `parked decide ITEM correction` with the printed snapshot.
+- Contract v1 keeps its shape: the delivery is an ordinary result whose
+  revision is above zero. With Needs review notices on (ADR 0038), the
+  closing notice carries the new outcome `correction`, an additive value of
+  the closed outcome enum.

@@ -417,6 +417,8 @@ admin-resolve-the-held-item = . Den zurückgehaltenen Eintrag klären?
 
 admin-choose-resend-to-record-a-duplicate-without-sending-another = Wählen Sie „erneute Übertragung“, um ein Duplikat festzuhalten, ohne ein weiteres Ergebnis zu senden. Wählen Sie „Wiederholungsmessung“, um eine neue Messung an die Labor-App zu senden.
 
+admin-choose-correction-to-replace = Wählen Sie „Korrektur“, wenn der zurückgehaltene Wert den früheren ersetzt: Die Labor-App erhält ihn als nächste Revision desselben Ergebnisses.
+
 admin-held-measurement = Zurückgehaltene Messung
 
 admin-later-measurement = Spätere Messung
@@ -428,6 +430,18 @@ admin-resolve-held-item = Zurückgehaltenen Eintrag klären
 admin-this-is-a-resend = Dies ist eine erneute Übertragung
 
 admin-this-is-a-rerun = Dies ist eine Wiederholungsmessung
+
+admin-this-is-a-correction = Dies ist eine Korrektur
+
+admin-replace-the-earlier-value = Den früheren Wert in der Labor-App ersetzen?
+
+admin-correction-dialog-text = Die Labor-App erhält das zurückgehaltene Ergebnis als nächste Revision des früheren Ergebnisses und ersetzt den früheren Wert. Das frühere Ergebnis und beide Nachrichten bleiben in Analyte wie empfangen. Ihr Name, die Uhrzeit und der Grund werden festgehalten.
+
+admin-earlier-value = Früherer Wert
+
+admin-new-value = Neuer Wert
+
+admin-send-as-correction = Als Korrektur senden
 
 admin-help-what-each-choice-means = Was jede Wahl bedeutet
 
@@ -445,13 +459,15 @@ admin-help-case-correction = Korrektur
 
 admin-help-case-correction-text = Das Gerät hat ein bereits gesendetes Ergebnis geändert.
 
-admin-help-correction-note = Keine Schaltfläche sendet eine zurückgehaltene Änderung als Korrektur. Eine Korrektur, die das Gerät als solche kennzeichnet, geht von selbst als neue Revision des Ergebnisses an die Labor-App, außer das Gerät steht auf „Immer nachfragen“. Wartet hier ein geändertes Ergebnis, prüfen Sie am Gerät, welcher Wert stimmt, bevor Sie wählen.
+admin-help-correction-note = Eine Korrektur, die das Gerät als solche kennzeichnet, geht von selbst als neue Revision des Ergebnisses an die Labor-App, außer das Gerät steht auf „Immer nachfragen“. Hat das Gerät ein Ergebnis ohne Kennzeichnung geändert, wartet es hier. Prüfen Sie am Gerät, welcher Wert stimmt, bevor Sie wählen; wählen Sie „Dies ist eine Korrektur“ nur, wenn der neue Wert den früheren ersetzt.
 
 admin-help-buttons = Was jede Schaltfläche tut:
 
 admin-help-resend-does = Hält das zurückgehaltene Ergebnis als dasselbe Ergebnis wie das frühere fest. An die Labor-App wird nichts Neues gesendet.
 
 admin-help-rerun-does = Sendet das zurückgehaltene Ergebnis einmal als neues Ergebnis an die Labor-App. Das frühere Ergebnis bleibt; die Labor-App entscheidet, welcher Wert berichtet wird.
+
+admin-help-correction-does = Sendet das zurückgehaltene Ergebnis einmal als nächste Revision des früheren Ergebnisses an die Labor-App, sodass die Labor-App den früheren Wert ersetzt. Analyte bittet vorher um Bestätigung. Beide Nachrichten bleiben wie empfangen.
 
 admin-help-resolve-held-does = Wird angeboten, wenn ein zurückgehaltenes Ergebnis ohne Proben-ID zu einer späteren Nachricht desselben Geräts mit Proben-ID passt. Die spätere Nachricht gilt, und es wird nichts zusätzlich gesendet.
 
@@ -1426,6 +1442,10 @@ admin-recorded-as-a-resend-in-line = als erneute Übertragung festgehalten
 admin-rerun-queued = Wiederholungsmessung eingereiht
 
 admin-rerun-queued-in-line = Wiederholungsmessung eingereiht
+
+admin-correction-queued = Korrektur eingereiht
+
+admin-correction-queued-in-line = Korrektur eingereiht
 
 admin-superseded-by-the-receipt-with-a-tube-id = Ersetzt durch den Empfang mit Röhrchen-ID
 

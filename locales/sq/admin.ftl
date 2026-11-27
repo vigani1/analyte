@@ -415,6 +415,8 @@ admin-resolve-the-held-item = . Ta zgjidhni çështjen e mbajtur për shqyrtim?
 
 admin-choose-resend-to-record-a-duplicate-without-sending-another = Zgjidhni «Ky është një ridërgim» për ta regjistruar si dublikatë pa dërguar një rezultat tjetër. Zgjidhni «Kjo është një rimatje» për t’i dërguar një matje të re aplikacionit të laboratorit.
 
+admin-choose-correction-to-replace = Zgjidhni «Ky është një korrigjim» kur vlera e mbajtur zëvendëson të mëparshmen: aplikacioni i laboratorit e merr si versionin e radhës të të njëjtit rezultat.
+
 admin-held-measurement = Matje e mbajtur
 
 admin-later-measurement = Matja e mëvonshme
@@ -426,6 +428,18 @@ admin-resolve-held-item = Zgjidh çështjen e mbajtur për shqyrtim
 admin-this-is-a-resend = Ky është një ridërgim
 
 admin-this-is-a-rerun = Kjo është një rimatje
+
+admin-this-is-a-correction = Ky është një korrigjim
+
+admin-replace-the-earlier-value = Të zëvendësohet vlera e mëparshme në aplikacionin e laboratorit?
+
+admin-correction-dialog-text = Aplikacioni i laboratorit e merr rezultatin e mbajtur si versionin e radhës të rezultatit të mëparshëm dhe zëvendëson vlerën e mëparshme. Rezultati i mëparshëm dhe të dy mesazhet mbeten në Analyte siç u morën. Emri juaj, koha dhe arsyeja regjistrohen.
+
+admin-earlier-value = Vlera e mëparshme
+
+admin-new-value = Vlera e re
+
+admin-send-as-correction = Dërgoje si korrigjim
 
 admin-help-what-each-choice-means = Çfarë do të thotë secila zgjedhje
 
@@ -443,13 +457,15 @@ admin-help-case-correction = Korrigjim
 
 admin-help-case-correction-text = Pajisja ndryshoi një rezultat që e kishte dërguar.
 
-admin-help-correction-note = Asnjë buton nuk e dërgon një ndryshim të mbajtur për shqyrtim si korrigjim. Një korrigjim që pajisja e shënon si të tillë shkon vetë te aplikacioni i laboratorit si version i ri i rezultatit, përveç kur pajisja është vendosur te «Më pyet gjithmonë». Nëse një rezultat i ndryshuar pret këtu, kontrolloni në pajisje cila vlerë është e saktë para se të zgjidhni.
+admin-help-correction-note = Një korrigjim që pajisja e shënon si të tillë shkon vetë te aplikacioni i laboratorit si version i ri i rezultatit, përveç kur pajisja është vendosur te «Më pyet gjithmonë». Nëse pajisja e ndryshoi një rezultat pa e shënuar, ai pret këtu. Kontrolloni në pajisje cila vlerë është e saktë para se të zgjidhni; zgjidhni «Ky është një korrigjim» vetëm nëse vlera e re zëvendëson të mëparshmen.
 
 admin-help-buttons = Çfarë bën secili buton:
 
 admin-help-resend-does = E regjistron rezultatin e mbajtur për shqyrtim si të njëjtin rezultat me atë të mëparshmin. Asgjë e re nuk i dërgohet aplikacionit të laboratorit.
 
 admin-help-rerun-does = Ia dërgon rezultatin e mbajtur për shqyrtim aplikacionit të laboratorit një herë, si rezultat të ri. Rezultati i mëparshëm mbetet; aplikacioni i laboratorit vendos cilën vlerë të raportojë.
+
+admin-help-correction-does = Ia dërgon rezultatin e mbajtur për shqyrtim aplikacionit të laboratorit një herë, si versionin e radhës të rezultatit të mëparshëm, që aplikacioni i laboratorit të zëvendësojë vlerën e mëparshme. Analyte ju kërkon ta konfirmoni më parë. Të dy mesazhet mbeten siç u morën.
 
 admin-help-resolve-held-does = Ofrohet kur një rezultat i mbajtur për shqyrtim pa ID-në e mostrës përputhet me një mesazh të mëvonshëm nga e njëjta pajisje që e ka atë. Vlen mesazhi i mëvonshëm dhe asgjë shtesë nuk dërgohet.
 
@@ -1424,6 +1440,10 @@ admin-recorded-as-a-resend-in-line = regjistruar si ridërgim
 admin-rerun-queued = Rezultati i rimatjes është në radhë për dërgim
 
 admin-rerun-queued-in-line = rezultati i rimatjes është në radhë për dërgim
+
+admin-correction-queued = Korrigjimi është në radhë për dërgim
+
+admin-correction-queued-in-line = korrigjimi është në radhë për dërgim
 
 admin-superseded-by-the-receipt-with-a-tube-id = Zëvendësohet nga fatura me një tub ID
 

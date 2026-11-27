@@ -226,6 +226,44 @@ fn held_repeats_resolve_as_resend_or_rerun() -> TestResult {
     Ok(())
 }
 
+// ADR 0035 (amended 2026-11-27): under "always ask me" a held change can be
+// confirmed as a correction, which queues it as the next revision of the same
+// result. A byte-identical repeat has nothing to correct: it offers only
+// resend and rerun, and a correction is refused without a delivery.
+#[test]
+fn held_repeats_are_correctable_only_when_the_content_changed() -> TestResult {
+    for (value, correctable, expected, remaining) in
+        [("negative", true, 2, 0), ("positive", false, 1, 1)]
+    {
+        let temporary = tempfile::tempdir()?;
+        let mut store = open(&temporary.path().join("correct.db"))?;
+        let ask = RepeatPolicy::AlwaysAsk;
+        upload(&mut store, ("positive", RUN, false), ask)?;
+        let (held, _) = upload(&mut store, (value, RUN, false), ask)?;
+        let item = held_item(&store, held)?;
+        let actor = Identifier::new("operator")?;
+        let view = store
+            .measurement_review(item, actor.clone(), 6)?
+            .ok_or("the held repeat has no comparison")?;
+        assert_eq!(view.correctable, correctable, "{value}");
+        let decided = store.decide_measurement(
+            MeasurementConfirmation {
+                item,
+                snapshot: &view.snapshot,
+                decision: MeasurementDecision::Correction,
+                actor,
+                time: 7,
+                reason: Reason::new("analyzer corrected the value")?,
+            },
+            delivery,
+        );
+        assert_eq!(decided.is_ok(), correctable, "{value}");
+        assert_eq!(deliveries(&store)?, expected, "{value}");
+        assert_eq!(store.parked_counts()?.open, remaining, "{value}");
+    }
+    Ok(())
+}
+
 // ADR 0035: "automatic" keeps the recipe decisions exactly: a resend is kept
 // once, a correction advances the revision, a same-key change is held, and a
 // new key is a new result.

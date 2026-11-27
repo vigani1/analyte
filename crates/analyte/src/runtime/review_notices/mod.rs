@@ -276,6 +276,7 @@ fn outcome(resolution: &Audit) -> ReviewOutcome {
     match resolution.action.as_str() {
         analyte_store::RESEND_MEASUREMENT_ACTION => ReviewOutcome::Resend,
         analyte_store::RERUN_MEASUREMENT_ACTION => ReviewOutcome::Rerun,
+        analyte_store::CORRECTION_MEASUREMENT_ACTION => ReviewOutcome::Correction,
         analyte_store::SUPERSEDE_SAMPLE_ACTION => ReviewOutcome::Supersede,
         crate::operator::recovery::REPROCESS_ACTION => ReviewOutcome::Reprocess,
         crate::operator::recovery::RESOLVE_ACTION => ReviewOutcome::Dismissed,

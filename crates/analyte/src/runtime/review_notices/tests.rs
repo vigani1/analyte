@@ -127,6 +127,7 @@ fn a_closing_notice_names_the_item_and_the_outcome() -> TestResult {
     for (action, expected) in [
         (analyte_store::RESEND_MEASUREMENT_ACTION, "resend"),
         (analyte_store::RERUN_MEASUREMENT_ACTION, "rerun"),
+        (analyte_store::CORRECTION_MEASUREMENT_ACTION, "correction"),
         (analyte_store::SUPERSEDE_SAMPLE_ACTION, "supersede"),
         (crate::operator::recovery::REPROCESS_ACTION, "reprocess"),
         (crate::operator::recovery::RESOLVE_ACTION, "dismissed"),

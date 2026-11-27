@@ -415,6 +415,8 @@ admin-resolve-the-held-item = . Résoudre l’élément retenu ?
 
 admin-choose-resend-to-record-a-duplicate-without-sending-another = Choisissez renvoi pour enregistrer un doublon sans envoyer d’autre résultat. Choisissez réanalyse pour envoyer une nouvelle mesure à l’application de laboratoire.
 
+admin-choose-correction-to-replace = Choisissez correction quand la valeur retenue remplace la précédente : l’application de laboratoire la reçoit comme révision suivante du même résultat.
+
 admin-held-measurement = Mesure retenue
 
 admin-later-measurement = Mesure ultérieure
@@ -426,6 +428,18 @@ admin-resolve-held-item = Résoudre l’élément retenu
 admin-this-is-a-resend = Il s’agit d’un renvoi
 
 admin-this-is-a-rerun = Il s’agit d’une réanalyse
+
+admin-this-is-a-correction = Il s’agit d’une correction
+
+admin-replace-the-earlier-value = Remplacer la valeur précédente dans l’application de laboratoire ?
+
+admin-correction-dialog-text = L’application de laboratoire reçoit le résultat retenu comme révision suivante du résultat précédent et remplace la valeur précédente. Le résultat précédent et les deux messages restent dans Analyte tels que reçus. Votre nom, l’heure et le motif sont enregistrés.
+
+admin-earlier-value = Valeur précédente
+
+admin-new-value = Nouvelle valeur
+
+admin-send-as-correction = Envoyer comme correction
 
 admin-help-what-each-choice-means = Ce que signifie chaque choix
 
@@ -443,13 +457,15 @@ admin-help-case-correction = Correction
 
 admin-help-case-correction-text = L’automate a modifié un résultat qu’il avait envoyé.
 
-admin-help-correction-note = Aucun bouton n’envoie une modification retenue comme correction. Une correction que l’automate signale comme telle part d’elle-même vers l’application de laboratoire, comme nouvelle révision du résultat, sauf si l’automate est réglé sur « Toujours me demander ». Si un résultat modifié attend ici, vérifiez sur l’automate quelle valeur est la bonne avant de choisir.
+admin-help-correction-note = Une correction que l’automate signale comme telle part d’elle-même vers l’application de laboratoire, comme nouvelle révision du résultat, sauf si l’automate est réglé sur « Toujours me demander ». Si l’automate a modifié un résultat sans le signaler, celui-ci attend ici. Vérifiez sur l’automate quelle valeur est la bonne avant de choisir ; choisissez « Il s’agit d’une correction » seulement si la nouvelle valeur remplace la précédente.
 
 admin-help-buttons = Ce que fait chaque bouton :
 
 admin-help-resend-does = Enregistre le résultat retenu comme le même résultat que le précédent. Rien de nouveau n’est envoyé à l’application de laboratoire.
 
 admin-help-rerun-does = Envoie une fois le résultat retenu à l’application de laboratoire, comme nouveau résultat. Le résultat précédent reste ; l’application de laboratoire décide quelle valeur rendre.
+
+admin-help-correction-does = Envoie une fois le résultat retenu à l’application de laboratoire, comme révision suivante du résultat précédent, afin que l’application de laboratoire remplace la valeur précédente. Analyte vous demande d’abord de confirmer. Les deux messages restent tels que reçus.
 
 admin-help-resolve-held-does = Proposé quand un résultat retenu sans ID d’échantillon correspond à un message ultérieur du même automate qui en a un. Le message ultérieur fait foi, et rien de plus n’est envoyé.
 
@@ -1424,6 +1440,10 @@ admin-recorded-as-a-resend-in-line = enregistré comme renvoi
 admin-rerun-queued = Réanalyse en file d’attente
 
 admin-rerun-queued-in-line = réanalyse en file d’attente
+
+admin-correction-queued = Correction en file d’attente
+
+admin-correction-queued-in-line = correction en file d’attente
 
 admin-superseded-by-the-receipt-with-a-tube-id = Remplacé par la réception avec un ID de tube
 

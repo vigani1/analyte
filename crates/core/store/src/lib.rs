@@ -56,8 +56,8 @@ pub use revisions::{
 };
 /// LAW execution custody and retained message dispositions.
 pub use revisions::{
-    MeasurementConfirmation, MeasurementDecision, MeasurementReview, RERUN_MEASUREMENT_ACTION,
-    RESEND_MEASUREMENT_ACTION, SUPERSEDE_SAMPLE_ACTION, law,
+    CORRECTION_MEASUREMENT_ACTION, MeasurementConfirmation, MeasurementDecision, MeasurementReview,
+    RERUN_MEASUREMENT_ACTION, RESEND_MEASUREMENT_ACTION, SUPERSEDE_SAMPLE_ACTION, law,
 };
 
 pub use operator::activity::{

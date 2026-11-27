@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Needs review offers **This is a correction** for a held result whose value
+  changed under the same identity without a correction marker (ADR 0035,
+  amended 2026-11-27). After a confirmation that shows the earlier and new
+  values side by side, and a reason, the held result goes to the lab app
+  once as the next revision of the earlier result, so the lab app replaces
+  the earlier value; both messages stay as received and the decision is
+  audited. The command line takes `parked decide ITEM correction`. With
+  Needs review notices on, the closing notice says `correction`, a new value
+  of the contract's closed outcome list (schema and vector updated).
+
 - Labels inside a sentence (Activity lines, the serial cable differences,
   the `machines` setup questions and the devices warning in `machines
   list`) now have their own message in every language instead of being

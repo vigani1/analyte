@@ -408,6 +408,8 @@ admin-resolve-the-held-item = . Resolve the held item?
 
 admin-choose-resend-to-record-a-duplicate-without-sending-another = Choose resend to record a duplicate without sending another result. Choose rerun to send a new measurement to the lab app.
 
+admin-choose-correction-to-replace = Choose correction when the held value replaces the earlier one: the lab app receives it as the next revision of the same result.
+
 admin-held-measurement = Held measurement
 
 admin-later-measurement = Later measurement
@@ -419,6 +421,18 @@ admin-resolve-held-item = Resolve held item
 admin-this-is-a-resend = This is a resend
 
 admin-this-is-a-rerun = This is a rerun
+
+admin-this-is-a-correction = This is a correction
+
+admin-replace-the-earlier-value = Replace the earlier value in the lab app?
+
+admin-correction-dialog-text = The lab app receives the held result as the next revision of the earlier result and replaces the earlier value. The earlier result and both messages stay in Analyte as received. Your name, the time and the reason are recorded.
+
+admin-earlier-value = Earlier value
+
+admin-new-value = New value
+
+admin-send-as-correction = Send as a correction
 
 admin-help-what-each-choice-means = What each choice means
 
@@ -436,13 +450,15 @@ admin-help-case-correction = Correction
 
 admin-help-case-correction-text = The machine changed a result it had sent.
 
-admin-help-correction-note = No button sends a held change as a correction. A correction the machine marks as one goes to the lab app by itself, as a new revision of the result, unless the machine is set to Always ask me. If a changed result waits here, check on the machine which value is right before you choose.
+admin-help-correction-note = A correction the machine marks as one goes to the lab app by itself, as a new revision of the result, unless the machine is set to Always ask me. If the machine changed a result without marking it, it waits here. Check on the machine which value is right before you choose; choose This is a correction only if the new value replaces the earlier one.
 
 admin-help-buttons = What each button does:
 
 admin-help-resend-does = Records the held result as the same result as the earlier one. Nothing new is sent to the lab app.
 
 admin-help-rerun-does = Sends the held result to the lab app once, as a new result. The earlier result stays; the lab app decides which value to report.
+
+admin-help-correction-does = Sends the held result to the lab app once, as the next revision of the earlier result, so the lab app replaces the earlier value. Analyte asks you to confirm first. Both messages stay as received.
 
 admin-help-resolve-held-does = Offered when a held result without a sample ID matches a later message from the same machine that has one. The later message counts, and nothing extra is sent.
 
@@ -1417,6 +1433,10 @@ admin-recorded-as-a-resend-in-line = recorded as a resend
 admin-rerun-queued = Rerun queued
 
 admin-rerun-queued-in-line = rerun queued
+
+admin-correction-queued = Correction queued
+
+admin-correction-queued-in-line = correction queued
 
 admin-superseded-by-the-receipt-with-a-tube-id = Superseded by the receipt with a tube ID
 

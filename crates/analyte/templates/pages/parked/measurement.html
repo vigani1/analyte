@@ -1,4 +1,4 @@
-{#- Protected measurement comparison, the "What each choice means" help and explicit audited confirmation. -#}
+{#- Protected measurement comparison, the "What each choice means" help and explicit audited confirmation; a correction is confirmed again in a dialog with the earlier and new values side by side. -#}
 {% extends "layout/base.html" %}
 {%- import "pages/parked/choices.html" as choices %}
 {% macro evidence(title, evidence) %}
@@ -26,12 +26,23 @@
 </details>
 </section>
 {% endmacro %}
+{#- One side of the correction confirmation: each test with its values as sent. -#}
+{% macro values(title, evidence) %}
+<section class="grow stack">
+<p class="dialog__label">{{ title }}</p>
+<ul class="dialog__list">
+{%- for part in evidence.observations %}
+<li><span>{{ part.test }}: {% for value in part.values %}{% if !loop.first %}, {% endif %}{{ value }}{% endfor %}</span></li>
+{%- endfor %}
+</ul>
+</section>
+{% endmacro %}
 {% block main %}
 <h1>{{ crate::admin::view::format::compare_measurements() }}</h1>
 {% if let Some(sample) = sample %}
 <p>{{ analyte_i18n::text("admin-this-looks-like-the-same-result-now-with-tube") }} {{ sample }}{{ analyte_i18n::text("admin-resolve-the-held-item") }}</p>
 {% else %}
-<p>{{ analyte_i18n::text("admin-choose-resend-to-record-a-duplicate-without-sending-another") }}</p>
+<p>{{ analyte_i18n::text("admin-choose-resend-to-record-a-duplicate-without-sending-another") }}{% if correctable %} {{ analyte_i18n::text("admin-choose-correction-to-replace") }}{% endif %}</p>
 {% endif %}
 <div class="split">
 {% call evidence(analyte_i18n::text("admin-held-measurement"), held) %}{% endcall %}
@@ -56,7 +67,30 @@
 {% else %}
 <button class="btn btn--outline" type="submit" name="decision" value="resend">{{ analyte_i18n::text("admin-this-is-a-resend") }}</button>
 <button class="btn btn--primary" type="submit" name="decision" value="rerun">{{ analyte_i18n::text("admin-this-is-a-rerun") }}</button>
+{% if correctable %}
+<button class="btn btn--outline" type="submit" name="decision" value="correction">{{ analyte_i18n::text("admin-this-is-a-correction") }}</button>
+{% endif %}
 {% endif %}
 </div>
 </form>
+{% if let Some(reason) = confirm %}
+<div class="scrim">
+<form class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title" method="post" action="/parked/{{ id }}/measurement">
+<input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="confirm" value="yes">
+<input type="hidden" name="snapshot" value="{{ snapshot }}"><input type="hidden" name="decision" value="correction">
+<h2 id="dlg-title" class="dialog__title">{{ analyte_i18n::text("admin-replace-the-earlier-value") }}</h2>
+<p class="dialog__text">{{ analyte_i18n::text("admin-correction-dialog-text") }}</p>
+<div class="split">
+{% call values(analyte_i18n::text("admin-earlier-value"), other) %}{% endcall %}
+{% call values(analyte_i18n::text("admin-new-value"), held) %}{% endcall %}
+</div>
+<div class="field">
+<label class="field__label" for="dlg-reason">{{ analyte_i18n::text("admin-reason") }}</label>
+<textarea id="dlg-reason" class="textarea" name="reason" required maxlength="256" autofocus>{{ reason }}</textarea>
+<span class="field__hint">{{ analyte_i18n::text("admin-required-up-to-256-characters-recorded-in-the-history") }}</span>
+</div>
+<div class="dialog__actions"><a class="btn btn--outline" href="/parked/{{ id }}/measurement">{{ analyte_i18n::text("admin-cancel") }}</a><button type="submit" class="btn btn--danger">{{ analyte_i18n::text("admin-send-as-correction") }}</button></div>
+</form>
+</div>
+{% endif %}
 {% endblock %}

@@ -7,8 +7,8 @@ pub mod law;
 mod outbox;
 mod review;
 pub use review::{
-    MeasurementConfirmation, MeasurementDecision, MeasurementReview, RERUN_MEASUREMENT_ACTION,
-    RESEND_MEASUREMENT_ACTION, SUPERSEDE_SAMPLE_ACTION,
+    CORRECTION_MEASUREMENT_ACTION, MeasurementConfirmation, MeasurementDecision, MeasurementReview,
+    RERUN_MEASUREMENT_ACTION, RESEND_MEASUREMENT_ACTION, SUPERSEDE_SAMPLE_ACTION,
 };
 mod parking;
 mod status_policy;
