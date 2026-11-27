@@ -542,7 +542,11 @@ setup-could-not-read-whether-notices-are-sent = Could not read whether notices a
 
 setup-remove-3 = Remove { $name }?
 
-setup-is = { $name } is { $verb }
+setup-is =
+    { $state ->
+        [added] { $name } is added
+       *[saved] { $name } is saved
+    }
 
 setup-is-no-longer-listed-2 = { $name } is no longer listed
 

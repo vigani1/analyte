@@ -309,6 +309,8 @@ impl Change {
         }
     }
 
+    /// The fixed word for the change: the audit reason's English word and the
+    /// key the `setup-is` message selects its wording by. Never shown as is.
     pub(in crate::admin::setup) const fn verb(self) -> &'static str {
         match self {
             Self::Added => "added",
@@ -446,6 +448,33 @@ pub(in crate::admin::setup) fn address_line(address: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use analyte_i18n::{Language, message};
+
+    // ADR 0039: code passes the change's fixed key and each catalog chooses
+    // its own words; an English word never reaches another language.
+    #[test]
+    fn added_and_saved_notices_are_worded_by_each_catalog() {
+        let notice = |change: Change| {
+            message(
+                "setup-is",
+                [("name", "main-lab".into()), ("state", change.verb().into())],
+            )
+        };
+        assert_eq!(notice(Change::Added), "main-lab is added");
+        assert_eq!(notice(Change::Saved), "main-lab is saved");
+        for language in Language::installed().filter(|language| language.tag() != "en") {
+            let (added, saved) =
+                language.sync_scope(|| (notice(Change::Added), notice(Change::Saved)));
+            assert_ne!(added, saved, "{}", language.tag());
+            for text in [&added, &saved] {
+                assert!(
+                    !text.contains("added") && !text.contains("saved"),
+                    "{}: {text}",
+                    language.tag()
+                );
+            }
+        }
+    }
 
     // AGENTS.md "Keep errors specific": a saved change can have unknown usage.
     #[test]

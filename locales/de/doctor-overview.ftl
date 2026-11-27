@@ -340,6 +340,10 @@ doctor-overview-check-the-machine-s-settings = prüfen Sie die Einstellungen des
 
 doctor-overview-machine-software = Gerätesoftware
 
+doctor-overview-machine = Gerät { $id }
+
+doctor-overview-machine-named-software = Gerät { $id }: Software
+
 doctor-overview-check-the-store-and-run-analyte-doctor-again = prüfen Sie den Datenspeicher und führen Sie analyte doctor erneut aus
 
 doctor-overview-free-disk-space-on-this-drive-analyte-deletes-nothing = schaffen Sie Speicherplatz auf diesem Laufwerk; Analyte löscht nichts, um Platz zu schaffen

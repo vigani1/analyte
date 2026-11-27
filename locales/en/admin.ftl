@@ -1270,7 +1270,11 @@ admin-sending-to-paused-lab-app-settings-need-repair = sending to { $lab-app } p
 
 admin-reports-a-conflict = { $lab-app } reports a conflict
 
-admin-sending-to-tried-times = sending to { $lab-app } { $failed } · tried { $count } times, { $first } – { $last }
+admin-sending-to-tried-times =
+    { $outcome ->
+        [cut-off] sending to { $lab-app } was cut off · tried { $count } times, { $first } – { $last }
+       *[failed] sending to { $lab-app } failed · tried { $count } times, { $first } – { $last }
+    }
 
 admin-next-try-after = { " " }· next try after { $next }
 
@@ -1305,8 +1309,6 @@ admin-not-read-yet = Not read yet
 admin-message-stored-not-read-yet = message stored, not read yet
 
 admin-no-results-2 = no results
-
-admin-was-cut-off = was cut off
 
 admin-not-recorded-2 = (not recorded)
 

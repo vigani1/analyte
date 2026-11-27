@@ -542,7 +542,11 @@ setup-could-not-read-whether-notices-are-sent = Nuk mund të lexohej nëse njoft
 
 setup-remove-3 = Të hiqet { $name }?
 
-setup-is = { $name } është { $verb }
+setup-is =
+    { $state ->
+        [added] { $name } u shtua
+       *[saved] { $name } u ruajt
+    }
 
 setup-is-no-longer-listed-2 = { $name } nuk është më i listuar
 

@@ -549,7 +549,11 @@ setup-could-not-read-whether-notices-are-sent = Impossible de savoir si les avis
 
 setup-remove-3 = Supprimer { $name } ?
 
-setup-is = { $name } est { $verb }
+setup-is =
+    { $state ->
+        [added] { $name } est ajoutée
+       *[saved] { $name } est enregistrée
+    }
 
 setup-is-no-longer-listed-2 = { $name } n’est plus répertoriée
 

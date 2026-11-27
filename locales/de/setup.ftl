@@ -553,10 +553,9 @@ setup-could-not-read-whether-notices-are-sent = Es konnte nicht gelesen werden, 
 setup-remove-3 = { $name } entfernen?
 
 setup-is =
-    { $verb ->
+    { $state ->
         [added] { $name } ist hinzugefügt
-        [saved] { $name } ist gespeichert
-       *[other] { $name }: { $verb }
+       *[saved] { $name } ist gespeichert
     }
 
 setup-is-no-longer-listed-2 = { $name } ist nicht mehr aufgeführt

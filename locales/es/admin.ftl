@@ -1279,7 +1279,11 @@ admin-sending-to-paused-lab-app-settings-need-repair = envío a { $lab-app } en 
 
 admin-reports-a-conflict = { $lab-app } informa de un conflicto
 
-admin-sending-to-tried-times = envío a { $lab-app } { $failed } · intentado { $count } veces, { $first } – { $last }
+admin-sending-to-tried-times =
+    { $outcome ->
+        [cut-off] el envío a { $lab-app } se interrumpió · intentado { $count } veces, { $first } – { $last }
+       *[failed] el envío a { $lab-app } falló · intentado { $count } veces, { $first } – { $last }
+    }
 
 admin-next-try-after = { " " }· próximo intento después de { $next }
 
@@ -1314,8 +1318,6 @@ admin-not-read-yet = Todavía sin leer
 admin-message-stored-not-read-yet = mensaje guardado, todavía sin leer
 
 admin-no-results-2 = sin resultados
-
-admin-was-cut-off = se interrumpió
 
 admin-not-recorded-2 = (no registrado)
 

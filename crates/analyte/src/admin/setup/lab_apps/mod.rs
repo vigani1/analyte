@@ -701,7 +701,7 @@ fn saved_page(
                 "setup-is",
                 [
                     ("name", (name).to_string().into()),
-                    ("verb", (change.verb()).to_string().into()),
+                    ("state", change.verb().into()),
                 ],
             ),
             restart_required(),

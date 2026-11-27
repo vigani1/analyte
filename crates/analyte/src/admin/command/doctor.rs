@@ -305,13 +305,16 @@ async fn installation(program: &Program) -> Vec<Check> {
     checks.extend(store_checks);
     checks.push(disk(program));
     for machine in program.machines() {
-        let what = format!("Machine {}", machine.id().as_str());
+        let what = tr_args(
+            "doctor-overview-machine",
+            [("id", machine.id().as_str().into())],
+        );
         let check = connection(&what, machine, running);
         checks.extend(bounded(&what, check).await);
     }
     for id in program.awaiting_setup() {
         checks.push(warn(
-            format!("Machine {}", id.as_str()),
+            tr_args("doctor-overview-machine", [("id", id.as_str().into())]),
             tr("doctor-overview-listed-but-not-set-up-yet-so-it-does"),
             tr("doctor-overview-choose-its-model-on-the-setup-page-save-then"),
         ));
@@ -530,7 +533,10 @@ async fn software_checks(program: &Program, store: &analyte_store::Handle) -> Ve
             .into_iter()
             .map(|(machine, text)| {
                 warn(
-                    format!("Machine {} software", machine.as_str()),
+                    tr_args(
+                        "doctor-overview-machine-named-software",
+                        [("id", machine.as_str().into())],
+                    ),
                     text,
                     tr("doctor-overview-check-the-machine-s-settings"),
                 )
