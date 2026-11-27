@@ -547,7 +547,7 @@ fn order_facts(
     let order_status = look(order.state, &order.source_code);
     let mut facts = vec![
         Fact {
-            term: "Machine",
+            term: crate::admin::view::format::MACHINE,
             value: Value::Page {
                 href: format::machine_href(machine),
                 label: match state.machine_model(machine) {
@@ -557,7 +557,7 @@ fn order_facts(
             },
         },
         Fact {
-            term: "Lab app",
+            term: crate::admin::view::format::LAB_APP,
             value: Value::Page {
                 href: format::lab_app_href(order.key.destination.as_str()),
                 label: order.key.destination.as_str().to_owned(),
@@ -650,7 +650,7 @@ fn item_facts(item: &MachineOrderItem, now: Timestamp) -> Vec<Fact> {
 /// request was pending then; the message it came in stays on hover.
 fn execution(projection: Option<&AwosExecutionProjection>, now: Timestamp) -> Value {
     let Some(projection) = projection else {
-        return Value::Text("Nothing yet".into());
+        return Value::Text(crate::admin::view::format::NOTHING_YET.into());
     };
     let recorded = format::moment_unix(projection.recorded_at, now);
     let tone = match projection.state {

@@ -16,10 +16,10 @@ use crate::admin::view::{
 
 /// The machine list's columns.
 pub(super) const MACHINE_COLUMNS: [Column; 6] = [
-    Column::text("Machine"),
-    Column::text("Connection"),
-    Column::text("Last data"),
-    Column::text("Connected by"),
+    Column::text(crate::admin::view::format::MACHINE),
+    Column::text(crate::admin::view::format::CONNECTION),
+    Column::text(crate::admin::view::format::LAST_DATA),
+    Column::text(crate::admin::view::format::CONNECTED_BY),
     Column::text("Since"),
     Column::text("Sends to"),
 ];
@@ -29,7 +29,7 @@ pub(super) const MESSAGE_COLUMNS: [Column; 5] = [
     Column::text("Time"),
     Column::text("Sample"),
     Column::text("Reading"),
-    Column::text("Lab app"),
+    Column::text(crate::admin::view::format::LAB_APP),
     Column::text("Details"),
 ];
 

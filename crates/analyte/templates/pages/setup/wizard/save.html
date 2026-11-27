@@ -9,40 +9,40 @@
 <div><h2 id="s4" class="wizard__title">Check and save</h2><p class="muted wizard__text">{% match outcome %}{% when Outcome::Review { .. } %}This is what will be saved. Saving checks everything again and keeps a dated copy of the old settings.{% when Outcome::Saved { .. } %}This is what was saved.{% endmatch %}</p></div>
 <div class="card card--pad">
 <dl class="kv">
-<dt>Machine</dt><dd>{{ wizard.id }}</dd>
-<dt>Model</dt><dd>{{ summary.model }}</dd>
-<dt>Connection</dt><dd>{% call display::hover(summary.connection.shown, summary.connection.exact) %}{% endcall %}</dd>
+<dt>{{ crate::admin::view::format::MACHINE }}</dt><dd>{{ wizard.id }}</dd>
+<dt>{{ crate::admin::view::format::MODEL }}</dt><dd>{{ summary.model }}</dd>
+<dt>{{ crate::admin::view::format::CONNECTION }}</dt><dd>{% call display::hover(summary.connection.shown, summary.connection.exact) %}{% endcall %}</dd>
 {%- if let Some(cable) = summary.cable %}
-<dt>Cable settings</dt><dd>{{ cable }}</dd>
+<dt>{{ crate::admin::view::format::CABLE_SETTINGS }}</dt><dd>{{ cable }}</dd>
 {%- endif %}
 {%- if let Some(choices) = summary.choices %}
-<dt>Analyzer settings</dt><dd>{{ choices }}</dd>
+<dt>{{ crate::admin::view::format::ANALYZER_SETTINGS }}</dt><dd>{{ choices }}</dd>
 {%- endif %}
 {%- if let Some(accepts) = summary.accepts %}
-<dt>Accepts connections from</dt><dd>
+<dt>{{ crate::admin::view::format::ACCEPTS_FROM }}</dt><dd>
 {%- match accepts %}
 {%- when Accepts::Offer { value, label, note } %}<label class="check"><input type="checkbox" name="allowed_peers" value="{{ value }}" form="s4-save" checked><span>{{ label }}</span></label>{% if let Some(note) = note %}<span class="kv__note">{{ note }}</span>{% endif %}<span class="kv__note">Untick to accept any device that reaches the port.</span>
-{%- when Accepts::Any %}<span class="tone-warn">Any device</span><span class="kv__note">Any device on the lab network that reaches this port could send results as this machine. Run the connection test in step 3, or type the machine’s address in step 2.</span>
+{%- when Accepts::Any %}<span class="tone-warn">{{ crate::admin::view::format::ANY_DEVICE }}</span><span class="kv__note">Any device on the lab network that reaches this port could send results as this machine. Run the connection test in step 3, or type the machine’s address in step 2.</span>
 {%- when Accepts::Saved(words, any) %}{% if any %}<span class="tone-warn">{{ words }}</span>{% else %}<span class="mono">{{ words }}</span>{% endif %}
 {%- endmatch -%}
 </dd>
 {%- endif %}
 {%- if let Some(lab_app) = summary.lab_app %}
-<dt>Sends results to</dt><dd><a class="link" href="{{ lab_app.href }}" title="{{ lab_app.address }}">{{ lab_app.name }}</a>{% if let Some(missing) = lab_app.missing %} <span class="tone-warn">· {{ missing }}</span>{% endif %}</dd>
+<dt>{{ crate::admin::view::format::SENDS_RESULTS_TO }}</dt><dd><a class="link" href="{{ lab_app.href }}" title="{{ lab_app.address }}">{{ lab_app.name }}</a>{% if let Some(missing) = lab_app.missing %} <span class="tone-warn">· {{ missing }}</span>{% endif %}</dd>
 {%- else %}
-<dt>Sends results to</dt><dd><span class="tone-warn">{{ crate::admin::view::format::RECORDING_ONLY }}</span></dd>
+<dt>{{ crate::admin::view::format::SENDS_RESULTS_TO }}</dt><dd><span class="tone-warn">{{ crate::admin::view::format::RECORDING_ONLY }}</span></dd>
 {%- endif %}
-<dt>Connection test</dt><dd>
+<dt>{{ crate::admin::setup::wizard::CONNECTION_TEST }}</dt><dd>
 {%- match summary.test %}
 {%- when Tested::Seen { tone, title, when } %}<span class="with-icon tone-{{ tone.class() }}">{% call draw::icon(tone.icon(), "icon--md") %}{% endcall %}<span>{{ title }} · {% call display::time(when) %}{% endcall %}</span></span>
 {%- when Tested::NotRun %}<span class="subtle">Not run with these settings</span>
 {%- when Tested::Unavailable %}<span class="tone-warn">Connection test state unavailable</span>
-{%- when Tested::Folder %}<span class="subtle">Nothing to test for a watched folder</span>
+{%- when Tested::Folder %}<span class="subtle">{{ crate::admin::setup::wizard::FOLDER_NOT_TESTED }}</span>
 {%- endmatch -%}
 </dd>
 {%- if let Some((new, running)) = summary.versions %}
 <dt>New settings version</dt><dd>{% call display::code(new.shown, new.exact) %}{% endcall %}</dd>
-<dt>Running now</dt><dd>{% if let Some(running) = running %}{% call display::code(running.shown, running.exact) %}{% endcall %}{% else %}<span class="subtle">Not running yet</span>{% endif %}</dd>
+<dt>Running now</dt><dd>{% if let Some(running) = running %}{% call display::code(running.shown, running.exact) %}{% endcall %}{% else %}<span class="subtle">{{ crate::admin::view::format::NOT_RUNNING }}</span>{% endif %}</dd>
 {%- endif %}
 </dl>
 </div>
@@ -52,11 +52,11 @@
 <div class="wizard-foot">
 <form method="get" action="{{ back }}">{% call forms::hidden_fields(back_hidden) %}{% endcall %}<button type="submit" class="btn btn--outline">Back</button></form>
 <span class="subtle wizard__count">{{ wizard.count }}</span>
-<form id="s4-save" method="post" action="{{ action }}"><input type="hidden" name="csrf" value="{{ csrf }}">{% call forms::hidden_fields(hidden) %}{% endcall %}<button type="submit" class="btn btn--primary">Save</button></form>
+<form id="s4-save" method="post" action="{{ action }}"><input type="hidden" name="csrf" value="{{ csrf }}">{% call forms::hidden_fields(hidden) %}{% endcall %}<button type="submit" class="btn btn--primary">{{ crate::admin::setup::SAVE }}</button></form>
 </div>
 {%- when Outcome::Saved { csrf, lines, problems, support, done } %}
 <div class="alert alert--good" role="status">{% call draw::icon(crate::admin::view::Tone::Good.icon(), "") %}{% endcall %}<div><p class="alert__title">Settings saved</p><p class="alert__text">Analyte keeps running the old settings until it restarts. {{ crate::admin::view::format::RESTART_ADVICE }}</p></div>
-<div class="cluster">{% call forms::link_button(crate::admin::view::Tab::Setup.href(), "Later", "btn--quiet btn--sm") %}{% endcall %}<form method="post" action="/setup/restart"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="btn btn--primary btn--sm">Restart now</button></form></div></div>
+<div class="cluster">{% call forms::link_button(crate::admin::view::Tab::Setup.href(), "Later", "btn--quiet btn--sm") %}{% endcall %}<form method="post" action="/setup/restart"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="btn btn--primary btn--sm">{{ crate::admin::view::format::RESTART_NOW }}</button></form></div></div>
 {%- for line in lines %}
 <p class="text">{{ line }}</p>
 {%- endfor %}

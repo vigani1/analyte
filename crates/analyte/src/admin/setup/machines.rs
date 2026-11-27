@@ -49,8 +49,12 @@ pub(in crate::admin) async fn add_form(
     };
     let section = Section::Setup(None);
     let page = page::Add {
-        frame: section.frame(&state, "Add a machine", Some(&session)),
-        head: section.head("Add a machine"),
+        frame: section.frame(
+            &state,
+            crate::admin::view::format::ADD_MACHINE,
+            Some(&session),
+        ),
+        head: section.head(crate::admin::view::format::ADD_MACHINE),
         csrf: session.csrf.form_value().to_owned(),
         name,
     };
@@ -226,10 +230,10 @@ fn added_page(
     let section = Section::Setup(Some(id));
     let mut lines = vec!["It is listed and not set up yet.".to_owned()];
     if reused {
-        lines.push("It joins the stored history of the earlier machine with this name.".into());
+        lines.push(crate::admin::setup::REUSED_MACHINE_HISTORY.into());
     }
     if !written.backups.is_empty() {
-        lines.push("A dated copy of the old settings was kept.".into());
+        lines.push(crate::admin::setup::BACKUP_KEPT.into());
     }
     let mut support = vec![format!("Its settings file: {}", path.display())];
     support.extend(copies(&written.backups));
@@ -245,7 +249,7 @@ fn added_page(
             },
             Button {
                 href: crate::admin::view::Tab::Setup.href().to_owned(),
-                label: "Back to Setup",
+                label: crate::admin::view::Tab::Setup.back(),
                 class: "btn--outline",
             },
         ],
@@ -450,7 +454,7 @@ pub(super) async fn preview_removal(
     items.push(DialogItem {
         tone: Tone::Neutral,
         icon: Icon::Ok,
-        text: "Analyte keeps a dated copy of the old settings.".into(),
+        text: crate::admin::setup::BACKUP_ADVICE.into(),
     });
     Ok(Preview {
         sending: delivery_sentence(&kept, &open),
@@ -490,11 +494,15 @@ pub(in crate::admin) async fn confirm_remove(
         list_title: if warned {
             "Still unfinished"
         } else {
-            "Before you remove it"
+            crate::admin::setup::BEFORE_REMOVAL
         },
         items: preview.items,
         anyway: warned,
-        button: Some(if warned { "Remove anyway" } else { "Remove" }),
+        button: Some(if warned {
+            "Remove anyway"
+        } else {
+            crate::admin::setup::REMOVE
+        }),
     };
     machines::with_dialog(&state, &session, &id, dialog).await
 }
@@ -724,7 +732,7 @@ pub(in crate::admin) async fn remove(
         ))),
     }
     if !support.is_empty() {
-        lines.insert(0, "A dated copy of the old settings was kept.".into());
+        lines.insert(0, crate::admin::setup::BACKUP_KEPT.into());
     }
     if let Err(error) = audited {
         problems.push(format::sentence(&error.to_string()));

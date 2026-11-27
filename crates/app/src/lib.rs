@@ -17,6 +17,9 @@
 // ADR 0022: only the shell's `frame` module may expect unsafe_code.
 #![deny(unsafe_code)]
 
+#[path = "../../analyte/src/admin/view/status_words.rs"]
+mod status_words;
+
 pub mod engine;
 pub mod local;
 pub mod navigation;

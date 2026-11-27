@@ -4,7 +4,7 @@
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("Newest at the top", "Activity", ACTIVITY_LEDE) %}<div class="cluster">
+{% call layout::intro_head("Newest at the top", crate::admin::view::Tab::Activity.label(), ACTIVITY_LEDE) %}<div class="cluster">
 <span class="live tone-good activity__live" data-live-pill hidden><span class="live-dot"></span>Live</span>
 <button type="button" class="btn btn--outline btn--sm" data-live-pause aria-pressed="false" hidden>Pause updates</button>
 </div>{% endcall %}
@@ -17,7 +17,7 @@
 {%- else %}
 <form class="toolbar" method="get" action="/activity">
 <div class="field activity__machine">
-<label class="field__label" for="act-machine">Machine</label>
+<label class="field__label" for="act-machine">{{ crate::admin::view::format::MACHINE }}</label>
 <select id="act-machine" class="select activity__select" name="machine">
 <option value="">All machines</option>
 {%- for option in machines %}
@@ -54,7 +54,7 @@
 <a class="btn btn--quiet btn--sm" rel="next" href="{{ href }}">Show earlier activity</a>
 {%- endif %}
 <span class="spacer"></span>
-<span class="subtle activity__note">Read from what Analyte stored; what is kept is set under <a class="link" href="/retention">Data keeping</a></span>
+<span class="subtle activity__note">Read from what Analyte stored; what is kept is set under <a class="link" href="/retention">{{ crate::admin::view::Tab::Retention.label() }}</a></span>
 </div>
 </div>
 {%- endif %}

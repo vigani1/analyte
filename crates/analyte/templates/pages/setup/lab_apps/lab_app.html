@@ -53,7 +53,7 @@
 {%- else %}
 <span></span>
 {%- endif %}
-<div class="cluster">{% call forms::link_button(crate::admin::view::Tab::LabApps.href(), "Cancel", "btn--outline") %}{% endcall %}<button type="submit" class="btn btn--primary">Save</button></div>
+<div class="cluster">{% call forms::link_button(crate::admin::view::Tab::LabApps.href(), "Cancel", "btn--outline") %}{% endcall %}<button type="submit" class="btn btn--primary">{{ crate::admin::setup::SAVE }}</button></div>
 </div>
 </form>
 {%- if !support.is_empty() %}

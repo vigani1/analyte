@@ -11,6 +11,14 @@ mod ask;
 mod lab_apps;
 mod live;
 mod machines;
+
+/// Reports that a settings change was written but its audit row was not.
+fn saved_without_audit(error: &impl std::fmt::Display) -> io::Result<()> {
+    problem(&format::sentence(&format!(
+        "the change was saved, but {error}"
+    )))
+}
+
 #[cfg(test)]
 mod tests;
 
@@ -226,9 +234,7 @@ async fn record(
     match audit_as(store, actor, action, id, reason).await {
         Ok(()) => Ok(Outcome::Done),
         Err(error) => {
-            problem(&format::sentence(&format!(
-                "the change was saved, but {error}"
-            )))?;
+            saved_without_audit(&error)?;
             Ok(Outcome::Partly)
         }
     }

@@ -118,7 +118,7 @@ fn page(
         metadata,
         next,
     } = read;
-    let title = "How this message was read";
+    let title = crate::admin::view::format::HOW_READ;
     let mut crumbs = vec![Crumb::link(Tab::Machines.label(), Tab::Machines.href())];
     crumbs.extend(metadata.as_ref().map(|metadata| {
         Crumb::link(

@@ -193,7 +193,7 @@ pub(super) fn candidate(
     );
     let text = toml::to_string(&table).map_err(SetupError::SiteText)?;
     Ok(Candidate {
-        text: format!("# Written by the Analyte setup page.\n{text}"),
+        text: format!("{SITE_HEADER}{text}"),
         lab_apps: after,
     })
 }
@@ -282,7 +282,7 @@ pub(super) fn recording_candidate(
     );
     let text = toml::to_string(&table).map_err(SetupError::SiteText)?;
     Ok(Candidate {
-        text: format!("# Written by the Analyte setup page.\n{text}"),
+        text: format!("{SITE_HEADER}{text}"),
         lab_apps: after,
     })
 }
@@ -543,6 +543,9 @@ fn restore(changes: &[(PathBuf, String)], backups: &[Option<PathBuf>]) {
         }
     }
 }
+
+/// Heads a machine site file written by Setup.
+const SITE_HEADER: &str = "# Written by the Analyte setup page.\n";
 
 #[cfg(test)]
 mod tests {

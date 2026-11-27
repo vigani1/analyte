@@ -24,12 +24,7 @@ pub(in crate::admin) fn reason_words(stored: &str) -> Option<String> {
     for piece in pieces {
         match piece {
             ReasonPiece::Text(text) => shown.push_str(text),
-            ReasonPiece::Position(Position { record, field: 0 }) => {
-                shown.push_str(&format!("record {record}"));
-            }
-            ReasonPiece::Position(Position { record, field }) => {
-                shown.push_str(&format!("record {record}, field {field}"));
-            }
+            ReasonPiece::Position(position) => shown.push_str(&place(position)),
         }
     }
     Some(shown)
@@ -131,7 +126,7 @@ fn problem_words(problem: &Problem, at: Position) -> (&'static str, String) {
             format!("The message has no sample ID in {at}."),
         ),
         Problem::MissingIdentity { .. } => (
-            "Result identity missing",
+            crate::admin::view::format::IDENTITY_MISSING,
             format!(
                 "The value this machine’s settings use to tell results apart is missing in {at}."
             ),
@@ -254,7 +249,7 @@ fn mapping_finding(stored: &str) -> Explained {
 
 /// Why a result has no identity, in words.
 fn unidentified(reason: Unidentified) -> Explained {
-    const MISSING: &str = "Result identity missing";
+    const MISSING: &str = crate::admin::view::format::IDENTITY_MISSING;
     match reason {
         Unidentified::Missing { setting, position } => {
             let (title, sentence) = problem_words(&Problem::MissingIdentity { setting }, position);
@@ -343,7 +338,7 @@ const READING_REASONS: [Fixed; 15] = [
     ),
     (
         poct::CANCELLED_REASON,
-        "Message cut off",
+        crate::admin::view::format::MESSAGE_CUT_OFF,
         "The connection was stopped while the message was arriving; the part that arrived is kept.",
     ),
     (
@@ -353,7 +348,7 @@ const READING_REASONS: [Fixed; 15] = [
     ),
     (
         poct::INCOMPLETE_REASON,
-        "Message cut off",
+        crate::admin::view::format::MESSAGE_CUT_OFF,
         concat!(
             "The connection timed out or closed before the message was complete; the part that ",
             "arrived is kept.",
@@ -461,7 +456,7 @@ fn reconciliation(stored: &str) -> Explained {
              and nothing marks it as a correction.",
         ),
         Some(RevisionOutcome::Unresolved) => Explained::said(
-            "Result identity missing",
+            crate::admin::view::format::IDENTITY_MISSING,
             "The message does not give this result an identity, so Analyte cannot tell whether \
              it is new, repeated or a correction.",
         ),
@@ -523,6 +518,45 @@ fn refused_order(stored: &str) -> Explained {
         None => Explained::as_stored(),
     }
 }
+
+/// Heads the details of how a stored message was read.
+pub(in crate::admin) const HOW_READ: &str = "How this message was read";
+
+/// Labels the screen for comparing related measurements.
+pub(in crate::admin) const COMPARE_MEASUREMENTS: &str = "Compare measurements";
+
+/// Labels the action to mark a review item resolved.
+pub(in crate::admin) const MARK_RESOLVED: &str = "Mark resolved";
+
+/// Labels the action to reprocess a review item.
+pub(in crate::admin) const PROCESS_AGAIN: &str = "Process again";
+
+/// The recorded action of marking a review item resolved.
+pub(in crate::admin) const MARKED_RESOLVED: &str = "Marked resolved";
+
+/// The recorded action of reprocessing a review item.
+pub(in crate::admin) const PROCESSED_AGAIN: &str = "Processed again";
+
+/// Labels the link to a stored item.
+pub(in crate::admin) const OPEN_ITEM: &str = "Open the item";
+
+/// Labels a linked record in a review item.
+pub(in crate::admin) const LINKED_RECORD: &str = "Linked record";
+
+/// Labels the action to show the original pieces.
+pub(in crate::admin) const AS_ARRIVED: &str = "Show the pieces as they arrived";
+
+/// Labels the original bytes of a stored message.
+pub(in crate::admin) const ORIGINAL_MESSAGE: &str = "Original message";
+
+/// Labels the action to show a stored message.
+pub(in crate::admin) const SHOW_ORIGINAL: &str = "Show the original message";
+
+/// Heads reports of missing result identity.
+const IDENTITY_MISSING: &str = "Result identity missing";
+
+/// Heads reports of incomplete messages.
+const MESSAGE_CUT_OFF: &str = "Message cut off";
 
 #[cfg(test)]
 mod tests {

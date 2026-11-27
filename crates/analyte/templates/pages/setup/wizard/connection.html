@@ -27,7 +27,7 @@
 </fieldset>
 <div class="field"><label class="field__label" for="s2-port">Or type a port name</label><input id="s2-port" class="input mono" name="port_name" maxlength="1024" value="{{ typed }}" placeholder="{{ placeholder }}"><span class="field__hint">If yours isn’t listed. A typed name wins over a port picked above.</span></div>
 <fieldset class="wizard__set stack">
-<legend class="field__label wizard__legend">Cable settings</legend>
+<legend class="field__label wizard__legend">{{ crate::admin::view::format::CABLE_SETTINGS }}</legend>
 <span class="field__hint">Match the analyzer’s LIS/host settings screen. They start at the values the machine’s manual usually suggests.</span>
 <div class="form-grid">
 {%- for field in cable %}
@@ -42,7 +42,7 @@
 {%- match hosts %}
 {%- when Ok(hosts) %}
 <fieldset class="wizard__set stack">
-<legend class="field__label wizard__legend">This PC’s address</legend>
+<legend class="field__label wizard__legend">{{ crate::admin::setup::wizard::PC_ADDRESS }}</legend>
 <ul class="choices">
 {%- for host in hosts %}
 <li><label class="choice"><input type="radio" name="host" value="{{ host.value }}" required{% if host.checked %} checked{% endif %}><span><span class="choice__title mono">{{ host.address }}</span> <span class="choice__meta">– {{ host.meta }}</span></span><span></span></label></li>
@@ -54,7 +54,7 @@
 {%- when Err(why) %}
 {% call feedback::alert(crate::admin::view::Tone::Problem, "This PC’s addresses could not be listed", why) %}{% endcall %}
 <div class="form-grid">
-<div class="field"><label class="field__label" for="s2-host">This PC’s address</label><input id="s2-host" class="input mono" name="host" required maxlength="64" value="{{ typed }}"><span class="field__hint">An address of this PC on the machine’s network, or 0.0.0.0 for every network card. Type the same address into the machine’s host (LIS) settings.</span></div>
+<div class="field"><label class="field__label" for="s2-host">{{ crate::admin::setup::wizard::PC_ADDRESS }}</label><input id="s2-host" class="input mono" name="host" required maxlength="64" value="{{ typed }}"><span class="field__hint">An address of this PC on the machine’s network, or 0.0.0.0 for every network card. Type the same address into the machine’s host (LIS) settings.</span></div>
 {%- endmatch %}
 <div class="field"><label class="field__label" for="s2-tcp">Port</label><input id="s2-tcp" class="input mono" name="tcp_port" required maxlength="5" inputmode="numeric" value="{{ port }}"><span class="field__hint">Type the same port number into the machine’s host (LIS) settings.</span></div>
 </div>
@@ -69,7 +69,7 @@
 {%- endmatch %}
 {%- if !choices.is_empty() %}
 <fieldset class="wizard__set stack">
-<legend class="field__label wizard__legend">Analyzer settings</legend>
+<legend class="field__label wizard__legend">{{ crate::admin::view::format::ANALYZER_SETTINGS }}</legend>
 <span class="field__hint">This model’s settings that the lab chooses. Match what the analyzer shows; they start at the values its manual suggests.</span>
 <div class="form-grid">
 {%- for field in choices %}
@@ -125,18 +125,18 @@
 <div class="form-grid">
 <div class="field"><label class="field__label" for="s2-name">Name in Analyte</label><input id="s2-name" class="input" value="{{ wizard.id }}" readonly><span class="field__hint">Cannot change: stored results are kept under this name.</span></div>
 {%- if recording.is_some() %}
-<div class="field"><span class="field__label">Send results to</span>{% call feedback::alert(crate::admin::view::Tone::Attention, crate::admin::view::format::RECORDING_ONLY, "Every byte is kept and recorded. Nothing is read, no order is sent and no lab app is needed.") %}{% endcall %}</div>
+<div class="field"><span class="field__label">{{ crate::admin::setup::wizard::SEND_RESULTS_TO }}</span>{% call feedback::alert(crate::admin::view::Tone::Attention, crate::admin::view::format::RECORDING_ONLY, "Every byte is kept and recorded. Nothing is read, no order is sent and no lab app is needed.") %}{% endcall %}</div>
 {%- else %}
 {%- match lab_apps %}
 {%- when Picker::Choose { apps, chosen } %}
-<div class="field"><label class="field__label" for="s2-lab">Send results to</label><select id="s2-lab" class="select" name="lab_app" required>
+<div class="field"><label class="field__label" for="s2-lab">{{ crate::admin::setup::wizard::SEND_RESULTS_TO }}</label><select id="s2-lab" class="select" name="lab_app" required>
 {%- if !chosen %}<option value="" selected>Choose a lab app</option>{% endif %}
 {%- for app in apps %}<option value="{{ app.name }}"{% if app.selected %} selected{% endif %}>{{ app.name }} ({{ app.address }})</option>{% endfor -%}
-</select><span class="field__hint">Addresses and keys are set once on <a class="link" href="{{ crate::admin::view::Tab::LabApps.href() }}">Lab apps</a>.</span></div>
+</select><span class="field__hint">Addresses and keys are set once on <a class="link" href="{{ crate::admin::view::Tab::LabApps.href() }}">{{ crate::admin::view::Tab::LabApps.label() }}</a>.</span></div>
 {%- when Picker::None %}
-<div class="field"><span class="field__label">Send results to</span>{% call feedback::alert(crate::admin::view::Tone::Attention, "No lab app is set up yet", "Add a lab app first (its address and keys), then come back and choose it here.") %}{% endcall %}<p class="cluster">{% call forms::link_button("/setup/lab-apps/new", "Add a lab app", "btn--outline btn--sm") %}{% endcall %}</p></div>
+<div class="field"><span class="field__label">{{ crate::admin::setup::wizard::SEND_RESULTS_TO }}</span>{% call feedback::alert(crate::admin::view::Tone::Attention, crate::admin::setup::NO_LAB_APP, "Add a lab app first (its address and keys), then come back and choose it here.") %}{% endcall %}<p class="cluster">{% call forms::link_button("/setup/lab-apps/new", crate::admin::setup::ADD_LAB_APP, "btn--outline btn--sm") %}{% endcall %}</p></div>
 {%- when Picker::Unreadable(why) %}
-<div class="field"><span class="field__label">Send results to</span>{% call feedback::alert(crate::admin::view::Tone::Problem, "The lab apps could not be read", why) %}{% endcall %}</div>
+<div class="field"><span class="field__label">{{ crate::admin::setup::wizard::SEND_RESULTS_TO }}</span>{% call feedback::alert(crate::admin::view::Tone::Problem, "The lab apps could not be read", why) %}{% endcall %}</div>
 {%- endmatch %}
 {%- endif %}
 </div>

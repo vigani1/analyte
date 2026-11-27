@@ -18,11 +18,11 @@ pub(in crate::admin) fn last_delivered(
 }
 
 /// What waits for a lab app, written to follow [`last_delivered`] after a
-/// " · ": "4 items waiting · oldest 10:31", or "nothing waiting". Items are
+/// " · ": "4 items waiting · oldest 10:31", or crate::admin::view::format::NOTHING_WAITING. Items are
 /// results and order messages alike.
 pub(in crate::admin) fn waiting(count: u64, oldest: Option<Timestamp>, now: Timestamp) -> Line {
     if count == 0 {
-        return Line::text("nothing waiting");
+        return Line::text(crate::admin::view::format::NOTHING_WAITING);
     }
     let items = amount(count, "item waiting", "items waiting");
     match oldest {
@@ -96,6 +96,18 @@ fn set_on_in(set_at: i64, now: Timestamp, zone: &TimeZone) -> String {
 pub(in crate::admin) fn set_in_environment(variable: &str) -> String {
     format!("Set in the service environment ({variable})")
 }
+
+/// Labels the lab app associated with the settings or data.
+pub(in crate::admin) const LAB_APP: &str = "Lab app";
+
+/// Says the lab app’s delivery queue is empty.
+pub(in crate::admin) const NOTHING_WAITING: &str = "nothing waiting";
+
+/// Labels the action to retry a delivery.
+pub(in crate::admin) const SEND_AGAIN: &str = "Send again";
+
+/// Labels a delivery or queue waiting to be sent.
+pub(in crate::admin) const WAITING_TO_SEND: &str = "Waiting to be sent";
 
 #[cfg(test)]
 mod tests {

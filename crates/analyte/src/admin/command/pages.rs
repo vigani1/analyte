@@ -147,7 +147,7 @@ pub(super) async fn keeping(program: &Program, after: u64, json: bool) -> Result
     for (machine, kept) in &page.kept {
         super::say(&format!("  {machine}: {kept}"))?;
     }
-    super::say("Last clean-up")?;
+    super::say(crate::admin::more::retention::LAST_CLEAN_UP)?;
     match &page.clean_up {
         Some(facts) => {
             for (term, value) in facts {
@@ -157,7 +157,7 @@ pub(super) async fn keeping(program: &Program, after: u64, json: bool) -> Result
         None => super::say("  Not run yet")?,
     }
     super::say(&format!("Oldest message kept: {}", page.oldest))?;
-    super::say("Holds")?;
+    super::say(crate::admin::more::retention::HOLDS)?;
     if page.holds.is_empty() {
         super::say("  No holds: messages are deleted only as kept above.")?;
     }

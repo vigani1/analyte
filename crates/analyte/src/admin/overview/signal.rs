@@ -221,7 +221,7 @@ pub(in crate::admin) struct Standing {
     pub(in crate::admin) failing: Option<Line>,
     /// "Last delivered 10:43", "Nothing delivered yet" or "No delivery in the kept records".
     pub(in crate::admin) delivered: Line,
-    /// "4 items waiting · oldest 10:31" or "nothing waiting".
+    /// "4 items waiting · oldest 10:31" or crate::admin::view::format::NOTHING_WAITING.
     pub(in crate::admin) waiting: Line,
 }
 
@@ -457,7 +457,7 @@ impl Waiting {
                 label: "Oldest waiting".into(),
                 value: "—".into(),
                 when: None,
-                aside: "nothing waiting".into(),
+                aside: crate::admin::view::format::NOTHING_WAITING.into(),
                 aside_when: None,
                 tone: None,
             },

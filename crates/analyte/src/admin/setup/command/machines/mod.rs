@@ -255,7 +255,7 @@ async fn add(
             let id = added.id.as_str();
             say(&format!("{id} is added. It is listed and not set up yet."))?;
             if added.reused {
-                say("It joins the stored history of the earlier machine with this name.")?;
+                say(crate::admin::setup::REUSED_MACHINE_HISTORY)?;
             }
             say(&format!("Its settings file: {}", added.path.display()))?;
             backups(&added.written.backups)?;
@@ -281,8 +281,8 @@ async fn add(
 fn accepts(link: Link, peers: Option<&analyte_config::AllowedPeers>) -> Option<String> {
     (link == Link::TcpServer).then(|| {
         peers.map_or_else(
-            || format!("{} - {}", format::OPEN_TO_ANY, format::OPEN_TO_ANY_ADVICE),
-            |peers| format!("Accepts connections only from {peers}"),
+            || format!("{} - {}", format::ANY_DEVICE, format::OPEN_TO_ANY_ADVICE),
+            format::only_devices,
         )
     })
 }
@@ -392,7 +392,7 @@ async fn save(
                 say(&missing)?;
             }
             if saved.moved {
-                say("This lab app is now kept on the Lab apps page; nothing else changed.")?;
+                say(crate::admin::setup::LAB_APP_MOVED)?;
             }
             say(&format!(
                 "Settings version: {} ({})",

@@ -29,8 +29,7 @@ pub(in crate::admin) const SUPPORT: &str = "Details for support";
 /// A value Analyte never stored, such as a time an older version did not keep.
 pub(in crate::admin) const NOT_RECORDED: &str = "Not recorded";
 
-/// A value for something that has not happened yet.
-pub(in crate::admin) const NOTHING_YET: &str = "Nothing yet";
+pub(in crate::admin) use crate::admin::view::status_words::NOTHING_YET;
 
 /// A value that does not apply here.
 pub(in crate::admin) const NOT_APPLICABLE: &str = "—";
@@ -76,3 +75,12 @@ pub(in crate::admin) const KEY_NEEDED: &str = "Needed before Analyte can send re
 
 /// Said under a key's field when the locked keys file could not be read.
 pub(in crate::admin) const KEY_UNCHECKED: &str = "The locked keys file could not be read, so this key cannot be checked; the reason is under Details for support.";
+
+/// Heads reports where an action made no changes.
+pub(in crate::admin) const NOTHING_CHANGED: &str = "Nothing was changed";
+
+/// Labels the action to restart the engine to apply settings.
+pub(in crate::admin) const RESTART_NOW: &str = "Restart now";
+
+/// Labels the link out of an unavailable page of a list.
+pub(in crate::admin) const FIRST_PAGE: &str = "Back to the first page";

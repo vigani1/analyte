@@ -323,10 +323,13 @@ fn print_live(row: &live::Row) -> std::io::Result<()> {
 /// other links.
 pub(in super::super) fn devices_line(machine: &Listed) -> Option<String> {
     match (&machine.allowed_peers, machine.open_to_any_device) {
-        (Some(peers), _) => Some(format!("  Devices: only {}", peers.join(", "))),
+        (Some(peers), _) => Some(format!(
+            "  Devices: {}",
+            format::only_devices(peers.join(", "))
+        )),
         (None, true) => Some(format!(
             "  Devices: warning - {}. Accept only the analyzer with: analyte machines set {} --allowed-peer <IP>",
-            format::OPEN_TO_ANY.to_lowercase(),
+            format::ANY_DEVICE,
             machine.id
         )),
         (None, false) => None,
