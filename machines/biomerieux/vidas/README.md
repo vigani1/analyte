@@ -36,22 +36,27 @@ and mentions retries but gives no numeric serial timeout or retry schedule.
 ## Settings on the machine
 
 Confirm that the BCI link is enabled and that Upload is on (Manual F
-pp. 10-11–10-14). Setup asks these questions (ADR 0032). Neither has a
-suggestion: the manuals give no factory default for either.
+pp. 10-11–10-14). Setup asks these questions (ADR 0032). None has a
+suggestion: the manuals give no factory default, and only the lab knows its
+installed build.
 
 ### Setup questions
 
 | Choice | Values | Where staff find it | Source |
 | --- | --- | --- | --- |
 | `acknowledgment` | `literal`: acknowledge after the checksum. `alternate`: acknowledge after ETX. | The protocol of the RS232 link in the BCI Link settings | Guide C pp. 3-2–3-4 |
-| `software_version` | `manual-f`: software 4.0.0, sample ID up to 12 characters. `vu-06`: VU_06, sample ID up to 17 characters on the wire. | The VIDAS PC About screen (Manual F p. 8-54) | Manual F introduction, p. 4-14; guide C pp. 4-1, 4-5 |
+| `software_version` | `manual-f`: software 4.0.0. `vu-06`: VU_06. `other`: Other version (not checked). | The VIDAS PC About screen (Manual F p. 8-54) | Manual F introduction, p. 4-14; guide C pp. 4-1, 4-5 |
+| `sample_id_length` | `12`: sample ID up to 12 characters. `17`: sample ID up to 17 characters on the wire. | The longest sample ID the VIDAS PC accepts | Manual F p. 4-14; guide C pp. 4-1, 4-5 |
 
-The software version band also sets the sample-ID ceiling (`vidas.sample_limit`
-12 or 17), so one answer decides both. Builds between Manual F and guide C
-are not described by either source; choose the band whose sample-ID limit
-the installed PC enforces, and report the version so a later band can cover
-it. The VIDAS PC does not send its version on the wire, so Analyte cannot
-cross-check the answer (ADR 0036).
+The sample-ID ceiling (`vidas.sample_limit`) is its own question because a
+version outside the manuals must not imply one (ADR 0032). For the checked
+versions the answer follows from the sources: `manual-f` uses `12` and
+`vu-06` uses `17`, which keeps both bands exactly as before. With `other`,
+Setup shows a persistent unchecked-version warning (ADR 0036) and staff
+confirm the limit on the installed PC, for example by entering a sample ID
+longer than 12 characters; report the version so a later band can cover it.
+The VIDAS PC does not send its version on the wire, so Analyte cannot
+cross-check either answer.
 
 Setup also asks the serial port and flow control, as for every serial
 definition.

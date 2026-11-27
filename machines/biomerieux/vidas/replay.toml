@@ -3,34 +3,42 @@
 ["alternate-bad-checksum.rec.jsonl".choices]
 acknowledgment = "alternate"
 software_version = "vu-06"
+sample_id_length = "17"
 
 ["alternate-invalid.rec.jsonl".choices]
 acknowledgment = "alternate"
 software_version = "vu-06"
+sample_id_length = "17"
 
 ["alternate-qualitative.rec.jsonl".choices]
 acknowledgment = "alternate"
 software_version = "vu-06"
+sample_id_length = "17"
 
 ["alternate-quantitative.rec.jsonl".choices]
 acknowledgment = "alternate"
 software_version = "vu-06"
+sample_id_length = "17"
 
 ["literal-bad-checksum.rec.jsonl".choices]
 acknowledgment = "literal"
 software_version = "vu-06"
+sample_id_length = "17"
 
 ["literal-invalid.rec.jsonl".choices]
 acknowledgment = "literal"
 software_version = "vu-06"
+sample_id_length = "17"
 
 ["literal-qualitative.rec.jsonl".choices]
 acknowledgment = "literal"
 software_version = "vu-06"
+sample_id_length = "17"
 
 ["literal-quantitative.rec.jsonl".choices]
 acknowledgment = "literal"
 software_version = "vu-06"
+sample_id_length = "17"
 
 # Work-list downloads are off in the shipped definition. This protocol-level
 # fixture replays through the order-enabled VIDAS test peer instead, after
@@ -41,3 +49,4 @@ vendor_worklist = "vidas"
 ["worklist-download.rec.jsonl".choices]
 acknowledgment = "literal"
 software_version = "vu-06"
+sample_id_length = "17"
