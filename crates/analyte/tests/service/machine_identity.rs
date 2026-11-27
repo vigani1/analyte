@@ -76,9 +76,9 @@ fn synthetic_record(
     fields: Option<&RecordFields>,
     repeats: &str,
     first_field: usize,
-) -> String {
+) -> Result<String, Error> {
     let Some(fields) = fields else {
-        return record.into();
+        return Ok(record.into());
     };
     let mut rendered = Vec::<Vec<Vec<&str>>>::new();
     for (&(field, repetition, component), value) in fields {
@@ -86,18 +86,25 @@ fn synthetic_record(
             // The record name in ASTM field 1 is already supplied.
             continue;
         };
-        if rendered.len() <= index {
-            rendered.resize_with(index + 1, Vec::new);
+        let len = index.checked_add(1).ok_or("field position overflow")?;
+        if rendered.len() < len {
+            rendered.resize_with(len, Vec::new);
         }
-        let field = &mut rendered[index];
+        let field = rendered.get_mut(index).ok_or("field missing")?;
         if field.len() < repetition {
             field.resize_with(repetition, Vec::new);
         }
-        let repetition = &mut field[repetition - 1];
+        let repetition = repetition
+            .checked_sub(1)
+            .and_then(|at| field.get_mut(at))
+            .ok_or("repetitions start at 1")?;
         if repetition.len() < component {
             repetition.resize(component, "");
         }
-        repetition[component - 1] = value;
+        *component
+            .checked_sub(1)
+            .and_then(|at| repetition.get_mut(at))
+            .ok_or("components start at 1")? = value;
     }
     let fields = rendered
         .iter()
@@ -110,7 +117,7 @@ fn synthetic_record(
         })
         .collect::<Vec<_>>()
         .join("|");
-    format!("{record}|{fields}")
+    Ok(format!("{record}|{fields}"))
 }
 
 fn astm_identity_upload(mappings: &analyte_config::Mappings, value: &str) -> Result<String, Error> {
@@ -147,7 +154,7 @@ fn astm_identity_upload(mappings: &analyte_config::Mappings, value: &str) -> Res
     identity_fields(&mut records, mappings);
     let mut upload = String::from("H|\\^&||||||||||P|LIS2-A2|20261127120000\r");
     for record in ["P", "O", "R"] {
-        upload.push_str(&synthetic_record(record, records.get(record), "\\", 2));
+        upload.push_str(&synthetic_record(record, records.get(record), "\\", 2)?);
         upload.push('\r');
     }
     upload.push_str("L|1|N\r");
@@ -189,9 +196,9 @@ fn hl7_identity_upload(
     let mut segments = vec![format!(
         "MSH|^~\\&|SYN|LAB|HOST|LAB|20261127120000||ORU^R01^ORU_R01|message{id}|P|{version}"
     )];
-    segments.extend(
-        ["PID", "OBR", "OBX"].map(|record| synthetic_record(record, records.get(record), "~", 1)),
-    );
+    for record in ["PID", "OBR", "OBX"] {
+        segments.push(synthetic_record(record, records.get(record), "~", 1)?);
+    }
     let end = match syntax.terminator() {
         Terminator::Cr => "\r",
         Terminator::CrLf => "\r\n",
@@ -214,7 +221,9 @@ pub(super) async fn replay_identity(
         None
     };
     for (index, value) in ["12.30", "12.30", "23.40"].into_iter().enumerate() {
-        let count = i64::try_from(index)? + 1;
+        let count = i64::try_from(index)?
+            .checked_add(1)
+            .ok_or("upload count overflow")?;
         match stack {
             Stack::Astm(transport) => {
                 let upload = astm_identity_upload(astm_mappings(transport), value)?;
