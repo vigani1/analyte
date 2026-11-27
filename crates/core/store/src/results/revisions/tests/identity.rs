@@ -260,7 +260,7 @@ fn reconciliation_bounds_results_and_findings_separately() -> TestResult {
                 corrections: &[false, false],
                 findings: &[],
                 held_back: None,
-                mode: ReconcileMode::Standard
+                mode: ReconcileMode::Standard(RepeatPolicy::Automatic)
             },
             |_, _| Ok(vec![])
         ),
@@ -282,7 +282,7 @@ fn reconciliation_bounds_results_and_findings_separately() -> TestResult {
                 corrections: &[],
                 findings: &[finding.clone(), finding.clone()],
                 held_back: None,
-                mode: ReconcileMode::Standard
+                mode: ReconcileMode::Standard(RepeatPolicy::Automatic)
             },
             |_, _| Ok(vec![])
         ),
@@ -337,7 +337,7 @@ fn batch_duplicates_reuse_revision_keep_runs_distinct() -> TestResult {
             corrections: &[false, false, true, false, false],
             findings: &[],
             held_back: None,
-            mode: ReconcileMode::Standard,
+            mode: ReconcileMode::Standard(RepeatPolicy::Automatic),
         },
         |_, _| Ok(vec![]),
     )?;
@@ -660,7 +660,7 @@ fn a_reading_held_back_by_its_findings_parks_only_the_findings() -> TestResult {
                 corrections: &[],
                 findings: &findings,
                 held_back: Some(HELD),
-                mode: ReconcileMode::Standard,
+                mode: ReconcileMode::Standard(RepeatPolicy::Automatic),
             },
             |_, _| Ok(Vec::new()),
         )?;

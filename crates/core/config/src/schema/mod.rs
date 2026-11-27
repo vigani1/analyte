@@ -601,6 +601,9 @@ pub struct Site {
     /// Present only for a record-only machine: the lab's answers to the
     /// capture profile's questions (ADR 0034).
     pub recording: Option<crate::ProfileAnswers>,
+    /// How a repeat of a retained measurement key is handled (ADR 0035,
+    /// 2026-11-26); `automatic` when the site file leaves it out.
+    pub repeated_results: crate::RepeatedResults,
 }
 
 /// The site file as written: `endpoint` and `usb_serial` are two keys, and
@@ -641,6 +644,9 @@ pub(crate) struct SiteFile {
     /// conversation; nothing goes to a lab app.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     recording: Option<crate::ProfileAnswers>,
+    /// Left out means automatic, so existing site files keep their bytes.
+    #[serde(default, skip_serializing_if = "crate::RepeatedResults::is_automatic")]
+    repeated_results: crate::RepeatedResults,
 }
 
 /// What the lab chose in its site file beside the site settings: the serial
@@ -688,6 +694,7 @@ impl SiteFile {
                 destination,
                 time_zone: self.time_zone,
                 recording: self.recording,
+                repeated_results: self.repeated_results,
             },
             source,
             LabChoices {
@@ -731,6 +738,7 @@ impl From<Site> for SiteFile {
             autolyser_poll_seconds: None,
             vidas_patient_namespace: None,
             recording: site.recording,
+            repeated_results: site.repeated_results,
         }
     }
 }

@@ -49,6 +49,9 @@ pub(in crate::admin) struct Draft {
     /// Record only, step 2: the mode the analyzer's own settings show, when
     /// the model's record file asks it (the cobas e 411's protocol type).
     pub(in crate::admin::setup) analyzer_mode: Option<String>,
+    /// Step 2, a normal connection: `automatic` or `always_ask` (ADR 0035,
+    /// 2026-11-26); empty keeps the saved choice, else automatic.
+    pub(in crate::admin::setup) repeated_results: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -98,6 +101,7 @@ fields! {
     controls: Connection,
     acknowledgment: Connection,
     analyzer_mode: Connection,
+    repeated_results: Connection,
 }
 
 impl TryFrom<Vec<(String, String)>> for Draft {

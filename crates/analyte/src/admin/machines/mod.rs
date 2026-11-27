@@ -729,6 +729,20 @@ fn running_facts(
             value: Value::Text(choices.clone()),
         });
     }
+    if let Some(repeats) = machine.repeated_results {
+        facts.push(Fact {
+            term: "Repeated results",
+            value: Value::Text(match repeats {
+                analyte_config::RepeatedResults::Automatic => {
+                    "Handled automatically: a resend is kept once, a correction is a new revision"
+                }
+                analyte_config::RepeatedResults::AlwaysAsk => {
+                    "Always ask me: every repeat waits in Needs review"
+                }
+            }
+            .into()),
+        });
+    }
     facts.extend([
         Fact {
             term: "Last data",
