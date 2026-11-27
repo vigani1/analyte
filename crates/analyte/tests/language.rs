@@ -1,15 +1,21 @@
 //! Checks the language selected through the command-line executable.
 #![forbid(unsafe_code)]
 
-// ADR 0039: the explicit tag scopes the command and its help to that language.
+// ADR 0039: the explicit tag scopes the command's diagnostic output.
 #[test]
-fn overview_help_renders_in_albanian() -> Result<(), Box<dyn std::error::Error>> {
+fn doctor_renders_in_albanian() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
-        .args(["--lang", "sq", "overview", "--help"])
+        .args(["--lang", "sq", "--config"])
+        .arg(directory.path().join("missing.toml"))
+        .arg("doctor")
         .output()?;
-    assert!(output.status.success(), "{:?}", output.stderr);
-    let help = String::from_utf8(output.stdout)?;
-    assert!(help.contains("Përmbledhja"), "{help}");
-    assert!(help.contains("--json"), "{help}");
+    assert_eq!(output.status.code(), Some(2));
+    let diagnostics = String::from_utf8(output.stdout)?;
+    assert!(diagnostics.contains("Skedari i programit"), "{diagnostics}");
+    assert!(
+        diagnostics.contains("Diagnostika: 1 dështim dhe 0 paralajmërime."),
+        "{diagnostics}"
+    );
     Ok(())
 }

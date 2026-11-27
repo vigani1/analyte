@@ -178,7 +178,7 @@ doctor-overview-cannot-be-used = { $config } nuk mund të përdoret: { $error }
 
 doctor-overview-what-to-do-2 = { "      " }Çfarë duhet të bëni: { $fix }
 
-doctor-overview-doctor-and = Mjeku: { $failures } dhe { $warnings }.
+doctor-overview-doctor-and = Diagnostika: { $failures } dhe { $warnings }.
 
 doctor-overview-the-store-did-not-open-within-seconds = depoja e të dhënave nuk u hap brenda { $as-secs } sekondave
 
@@ -308,7 +308,7 @@ doctor-overview-run-analyte-doctor-again-if-it-stays-slow-run = ekzekutoni përs
 
 doctor-overview-fix-what-it-names-or-choose-the-right-file = rregulloni atë që emërton (ose zgjidhni skedarin e duhur me --config), më pas ekzekutoni përsëri analyte doctor; kontrollet e tjera kanë nevojë për një skedar të vlefshëm programi
 
-doctor-overview-doctor-everything-checked-is-ok = Mjeku: gjithçka që kontrollohet është OK.
+doctor-overview-doctor-everything-checked-is-ok = Diagnostika: të gjitha kontrollet dolën OK.
 
 doctor-overview-store = Depoja e të dhënave
 
@@ -362,7 +362,7 @@ doctor-overview-turn-the-admin-page-on-so-doctor-can-tell = aktivizo faqen e adm
 
 doctor-overview-choose-an-address-this-computer-has-on-the-setup = zgjidhni një adresë që ka ky kompjuter në faqen e konfigurimit
 
-doctor-overview-turn-the-admin-page-on-so-doctor-can-tell-2 = aktivizoni faqen e administratorit në mënyrë që mjeku të tregojë nëse motori funksionon
+doctor-overview-turn-the-admin-page-on-so-doctor-can-tell-2 = aktivizoni faqet e administrimit që diagnostika të mund të kontrollojë nëse motori është në punë
 
 doctor-overview-check-that-the-machine-is-on-its-network-settings = kontrolloni nëse pajisja është e ndezur, cilësimet e saj të rrjetit dhe kabllon
 
