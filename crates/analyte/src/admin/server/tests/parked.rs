@@ -714,8 +714,13 @@ async fn dialogs_draw_over_the_item_and_ask_again_for_a_refused_reason() -> Resu
         assert!(dialog.contains(text), "{text}\n{dialog}");
     }
     assert!(!dialog.contains("your name"));
-    // The conflicting delivery is never offered Send again.
-    assert!(!dialog.contains("Send again"));
+    // The conflicting delivery is never offered Send again: no resend link
+    // and no such button. The words appear only in the always-shown
+    // "What each choice means" help.
+    assert!(!dialog.contains("/resend"), "{dialog}");
+    assert!(!dialog.contains(">Send again</a>"), "{dialog}");
+    assert!(!dialog.contains(">Send again</button>"), "{dialog}");
+    assert_eq!(dialog.matches("Send again").count(), 1, "{dialog}");
     let token = encode(&csrf(&dialog)?);
     let post = format!("{auth}Content-Type: application/x-www-form-urlencoded\r\n");
     for (reason, error) in [
