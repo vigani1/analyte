@@ -26,6 +26,24 @@ const ALBANIAN: &[&str] = &[
     include_str!("../../../../locales/sq/doctor-overview.ftl"),
     include_str!("../../../../locales/sq/dates.ftl"),
 ];
+const FRENCH: &[&str] = &[
+    include_str!("../../../../locales/fr/admin.ftl"),
+    include_str!("../../../../locales/fr/setup.ftl"),
+    include_str!("../../../../locales/fr/cli.ftl"),
+    include_str!("../../../../locales/fr/desktop.ftl"),
+    include_str!("../../../../locales/fr/doctor-overview.ftl"),
+    include_str!("../../../../locales/fr/dates.ftl"),
+];
+
+const SPANISH: &[&str] = &[
+    include_str!("../../../../locales/es/admin.ftl"),
+    include_str!("../../../../locales/es/setup.ftl"),
+    include_str!("../../../../locales/es/cli.ftl"),
+    include_str!("../../../../locales/es/desktop.ftl"),
+    include_str!("../../../../locales/es/doctor-overview.ftl"),
+    include_str!("../../../../locales/es/dates.ftl"),
+];
+
 const GERMAN: &[&str] = &[
     include_str!("../../../../locales/de/admin.ftl"),
     include_str!("../../../../locales/de/setup.ftl"),
@@ -108,8 +126,12 @@ impl Catalog {
 
 static SOURCE: LazyLock<Catalog> = LazyLock::new(|| Catalog::new("en", "English", ENGLISH));
 static TRANSLATIONS: LazyLock<Vec<Catalog>> = LazyLock::new(|| {
-    let embedded: &[(&str, &str, &[&str])] =
-        &[("sq", "Shqip", ALBANIAN), ("de", "Deutsch", GERMAN)];
+    let embedded: &[(&str, &str, &[&str])] = &[
+        ("sq", "Shqip", ALBANIAN),
+        ("fr", "Français", FRENCH),
+        ("es", "Español", SPANISH),
+        ("de", "Deutsch", GERMAN),
+    ];
     embedded
         .iter()
         .map(|(tag, name, sources)| Catalog::new(tag, name, sources))
@@ -260,7 +282,7 @@ mod tests {
 
     #[test]
     fn catalogs_parse_and_english_is_the_default() {
-        assert_eq!(Language::select(["fr-CA", "en-GB"]).tag(), "en");
+        assert_eq!(Language::select(["it-IT", "en-GB"]).tag(), "en");
         assert_eq!(Language::select(["und"]).tag(), "en");
         assert_eq!(text("admin-language"), "Language");
     }
@@ -291,20 +313,19 @@ mod tests {
         }
     }
 
-    // ADR 0039: regional German tags use the one German catalog, and
-    // CLDR German plurals have one and other.
+    // Unicode CLDR plural rules: French uses one for 0 and 1.
     #[test]
-    fn german_matches_regional_tags_and_formats_one_and_other() {
-        for tag in ["de", "de-DE", "de-AT", "de-CH"] {
+    fn french_matches_regional_tags_and_formats_one_and_other() {
+        for tag in ["fr", "fr-FR", "fr-CH", "fr-CA"] {
             let language = Language::select([tag, "en"]);
-            assert_eq!(language.tag(), "de");
-            assert_eq!(language.name(), "Deutsch");
+            assert_eq!(language.tag(), "fr");
             language.sync_scope(|| {
-                assert_eq!(text("admin-language"), "Sprache");
-                assert_eq!(count("admin-count-results", 1_u64), "1 Ergebnis");
-                assert_eq!(count("admin-count-results", 2_u64), "2 Ergebnisse");
-                assert_eq!(weekday(1), "Montag");
-                assert_eq!(month(3), "März");
+                assert_eq!(text("admin-language"), "Langue");
+                assert_eq!(count("admin-count-results", 0_u64), "0 résultat");
+                assert_eq!(count("admin-count-results", 1_u64), "1 résultat");
+                assert_eq!(count("admin-count-results", 2_u64), "2 résultats");
+                assert_eq!(weekday(1), "lundi");
+                assert_eq!(month(11), "novembre");
             });
         }
     }
@@ -326,5 +347,43 @@ mod tests {
             message("admin-live-at", [("time", data.into())]),
             format!("Live · {data}")
         );
+    }
+
+    // ADR 0039 and CLDR plural rules for Spanish: one, many and other.
+    #[test]
+    fn spanish_matches_regional_tags_and_formats_its_plurals() {
+        for tag in ["es", "es-ES", "es-MX", "es-419"] {
+            let language = Language::select([tag, "en"]);
+            assert_eq!(language.tag(), "es");
+            language.sync_scope(|| {
+                assert_eq!(text("admin-language"), "Idioma");
+                assert_eq!(count("admin-count-results", 1_u64), "1 resultado");
+                assert_eq!(count("admin-count-results", 2_u64), "2 resultados");
+                assert_eq!(
+                    count("admin-count-results", 1_000_000_u64),
+                    "1000000 resultados"
+                );
+                assert_eq!(weekday(1), "lunes");
+                assert_eq!(month(11), "noviembre");
+            });
+        }
+    }
+
+    // ADR 0039: regional German tags use the one German catalog, and
+    // CLDR German plurals have one and other.
+    #[test]
+    fn german_matches_regional_tags_and_formats_one_and_other() {
+        for tag in ["de", "de-DE", "de-AT", "de-CH"] {
+            let language = Language::select([tag, "en"]);
+            assert_eq!(language.tag(), "de");
+            assert_eq!(language.name(), "Deutsch");
+            language.sync_scope(|| {
+                assert_eq!(text("admin-language"), "Sprache");
+                assert_eq!(count("admin-count-results", 1_u64), "1 Ergebnis");
+                assert_eq!(count("admin-count-results", 2_u64), "2 Ergebnisse");
+                assert_eq!(weekday(1), "Montag");
+                assert_eq!(month(3), "März");
+            });
+        }
     }
 }

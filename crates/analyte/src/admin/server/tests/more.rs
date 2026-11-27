@@ -920,28 +920,18 @@ async fn settings_render_in_albanian_from_browser_or_saved_choice() -> Result<()
     scene.stop().await
 }
 
-// ADR 0039: a regional German browser preference selects the German catalog,
-// and a saved German choice outlasts an English browser preference.
+// ADR 0039: a French browser preference renders the page in French, and the
+// picker names French in its own wording.
 #[tokio::test(flavor = "multi_thread")]
-async fn settings_render_in_german_from_browser_or_saved_choice() -> Result<(), Error> {
+async fn settings_render_in_french_from_browser_choice() -> Result<(), Error> {
     let scene = Scene::start(false).await?;
     let host = &scene.started.3;
-    let preferred = format!("{}Accept-Language: de-AT, en;q=0.5\r\n", scene.auth);
+    let preferred = format!("{}Accept-Language: fr-CH, en;q=0.5\r\n", scene.auth);
     let page = request(host, "/settings", &preferred, None).await?;
     assert!(page.starts_with("HTTP/1.1 200"), "{page}");
-    assert!(page.contains("<html lang=\"de\""));
-    assert!(page.contains("<h1>Einstellungen</h1>"));
-    assert!(page.contains("<option value=\"de\" lang=\"de\" selected>Deutsch</option>"));
-
-    let form = format!("csrf={}&language=de", encode(&csrf(&page)?));
-    let saved = scene.post("/settings/language", &form).await?;
-    assert!(saved.starts_with("HTTP/1.1 303"), "{saved}");
-    let language_cookie = pages::cookie(&saved)?;
-    assert_eq!(language_cookie, "analyte_language=de");
-    let cookie = scene.auth.trim_end();
-    let headers = format!("{cookie}; {language_cookie}\r\nAccept-Language: en\r\n");
-    let page = request(host, "/settings", &headers, None).await?;
-    assert!(page.contains("<h1>Einstellungen</h1>"));
+    assert!(page.contains("<html lang=\"fr\""));
+    assert!(page.contains("<h1>Paramètres</h1>"));
+    assert!(page.contains("<option value=\"fr\" lang=\"fr\" selected>Français</option>"));
     scene.stop().await
 }
 
@@ -1009,5 +999,55 @@ async fn more_pages_say_when_the_store_cannot_be_read() -> Result<(), Error> {
     rusqlite::Connection::open(scene.database())?.execute_batch(
         "ALTER TABLE outbox_away RENAME TO outbox; ALTER TABLE orders_away RENAME TO machine_orders; ALTER TABLE holds_away RENAME TO retention_holds;",
     )?;
+    scene.stop().await
+}
+
+// ADR 0039: a Latin American browser tag selects the Spanish catalog, and the
+// saved choice keeps it when the browser asks for English.
+#[tokio::test(flavor = "multi_thread")]
+async fn settings_render_in_spanish_from_browser_or_saved_choice() -> Result<(), Error> {
+    let scene = Scene::start(false).await?;
+    let host = &scene.started.3;
+    let preferred = format!("{}Accept-Language: en;q=0.4, es-419;q=0.9\r\n", scene.auth);
+    let page = request(host, "/settings", &preferred, None).await?;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    assert!(page.contains("<html lang=\"es\""));
+    assert!(page.contains("<h1>Ajustes</h1>"));
+    assert!(page.contains("<option value=\"es\" lang=\"es\" selected>Español</option>"));
+
+    let form = format!("csrf={}&language=es", encode(&csrf(&page)?));
+    let saved = scene.post("/settings/language", &form).await?;
+    assert!(saved.starts_with("HTTP/1.1 303"), "{saved}");
+    let language_cookie = pages::cookie(&saved)?;
+    assert_eq!(language_cookie, "analyte_language=es");
+    let cookie = scene.auth.trim_end();
+    let headers = format!("{cookie}; {language_cookie}\r\nAccept-Language: en\r\n");
+    let page = request(host, "/settings", &headers, None).await?;
+    assert!(page.contains("<h1>Ajustes</h1>"));
+    scene.stop().await
+}
+
+// ADR 0039: a regional German browser preference selects the German catalog,
+// and a saved German choice outlasts an English browser preference.
+#[tokio::test(flavor = "multi_thread")]
+async fn settings_render_in_german_from_browser_or_saved_choice() -> Result<(), Error> {
+    let scene = Scene::start(false).await?;
+    let host = &scene.started.3;
+    let preferred = format!("{}Accept-Language: de-AT, en;q=0.5\r\n", scene.auth);
+    let page = request(host, "/settings", &preferred, None).await?;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    assert!(page.contains("<html lang=\"de\""));
+    assert!(page.contains("<h1>Einstellungen</h1>"));
+    assert!(page.contains("<option value=\"de\" lang=\"de\" selected>Deutsch</option>"));
+
+    let form = format!("csrf={}&language=de", encode(&csrf(&page)?));
+    let saved = scene.post("/settings/language", &form).await?;
+    assert!(saved.starts_with("HTTP/1.1 303"), "{saved}");
+    let language_cookie = pages::cookie(&saved)?;
+    assert_eq!(language_cookie, "analyte_language=de");
+    let cookie = scene.auth.trim_end();
+    let headers = format!("{cookie}; {language_cookie}\r\nAccept-Language: en\r\n");
+    let page = request(host, "/settings", &headers, None).await?;
+    assert!(page.contains("<h1>Einstellungen</h1>"));
     scene.stop().await
 }
