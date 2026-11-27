@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- The plan, guides and READMEs no longer call cobas e 411, iFlash 1200,
+  Biolyte 2000, VIDAS and Autolyser blocked: they ship definitions at level
+  documented. Swelab Lumi stays blocked.
+- The bioMérieux VIDAS definition offers "Other version (not checked)" in
+  Setup. The sample-ID limit is now its own question, "Longest sample ID the
+  VIDAS PC accepts: 12 or 17 characters", with no suggestion, so an unchecked
+  version never implies a limit. Software 4.0.0 answers 12 and VU_06 answers
+  17, as before; an existing VIDAS site file needs the new
+  `sample_id_length` answer before it loads (ADR 0032).
+
 - Record only for a model with a full machine definition now keeps the ASTM
   link departures the definition declares. A Roche cobas e 411 recorded in a
   cobas protocol type has its packed frames acknowledged after storage

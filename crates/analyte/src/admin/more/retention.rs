@@ -350,7 +350,7 @@ fn release_dialog(session: &Session, held: &Held, now: Timestamp) -> ReleaseDial
         ),
         placeholder: "For example: the audit is finished",
         hint: "Required, up to 256 characters. Recorded with the time.",
-        button: "Release",
+        button: RELEASE,
         csrf: session.csrf.form_value().to_owned(),
         cancel: Tab::DataKeeping.href().into(),
         reason: String::new(),
@@ -396,9 +396,9 @@ pub(in crate::admin) async fn hold(
             Tab::DataKeeping,
             StatusCode::FORBIDDEN,
             Outcome {
-                title: "Hold not saved",
+                title: HOLD_NOT_SAVED,
                 tone: Tone::Problem,
-                alert: "Nothing was changed".into(),
+                alert: format::NOTHING_CHANGED.into(),
                 text: "Tick the confirmation box and make sure you are signed in, then try again."
                     .into(),
             },
@@ -434,9 +434,9 @@ pub(in crate::admin) async fn hold(
             Tab::DataKeeping,
             StatusCode::CONFLICT,
             Outcome {
-                title: "Hold not saved",
+                title: HOLD_NOT_SAVED,
                 tone: Tone::Problem,
-                alert: "Nothing was changed".into(),
+                alert: format::NOTHING_CHANGED.into(),
                 text: format::sentence(&error.to_string()),
             },
             Vec::new(),
@@ -479,3 +479,18 @@ async fn apply(state: &Context, actor: Identifier, form: HoldForm) -> Result<(),
         .await?;
     Ok(())
 }
+
+/// Labels the most recent data clean-up.
+pub(in crate::admin) const LAST_CLEAN_UP: &str = "Last clean-up";
+
+/// Labels the list of retention holds.
+pub(in crate::admin) const HOLDS: &str = "Holds";
+
+/// Heads the report when a hold fails to save.
+pub(in crate::admin) const HOLD_NOT_SAVED: &str = "Hold not saved";
+
+/// Labels the action to add a retention hold.
+pub(in crate::admin) const ADD_HOLD: &str = "Add a hold";
+
+/// Labels the action to release a retention hold.
+pub(in crate::admin) const RELEASE: &str = "Release";

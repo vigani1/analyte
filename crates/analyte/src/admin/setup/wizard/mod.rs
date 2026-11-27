@@ -81,10 +81,10 @@ impl Step {
 
     const fn label(self) -> &'static str {
         match self {
-            Self::Machine => "Machine",
-            Self::Connection => "Connection",
+            Self::Machine => format::MACHINE,
+            Self::Connection => format::CONNECTION,
             Self::Test => "Test",
-            Self::Save => "Save",
+            Self::Save => crate::admin::setup::SAVE,
         }
     }
 
@@ -213,7 +213,7 @@ pub(super) fn refused_at(
         return refused(state, Some(session), Some(id), error);
     };
     let section = Section::Setup(Some(id));
-    let title = "Nothing was changed";
+    let title = format::NOTHING_CHANGED;
     let page = Report {
         lines: vec![format!(
             "Fix this in step {}: {}.",
@@ -228,7 +228,7 @@ pub(super) fn refused_at(
             },
             Button {
                 href: Tab::Setup.href().to_owned(),
-                label: "Back to Setup",
+                label: Tab::Setup.back(),
                 class: "btn--outline",
             },
         ],
@@ -236,7 +236,7 @@ pub(super) fn refused_at(
             section.frame(state, title, Some(session)),
             section,
             Tone::Problem,
-            "Setup could not continue",
+            crate::admin::view::report::SETUP_STOPPED,
             format::sentence(&error.to_string()),
         )
     };
@@ -571,12 +571,10 @@ pub(in crate::admin) async fn save(
     tracing::info!(machine = id.as_str(), "setup page saved a site file");
     let mut lines = Vec::new();
     if saved.moved {
-        lines.push(
-            "This lab app is now kept on the Lab apps page; nothing else changed.".to_owned(),
-        );
+        lines.push(crate::admin::setup::LAB_APP_MOVED.to_owned());
     }
     if !saved.backups.is_empty() {
-        lines.push("A dated copy of the old settings was kept.".into());
+        lines.push(crate::admin::setup::BACKUP_KEPT.into());
     }
     let page = SaveStep {
         frame: frame(&state, &session, &id),
@@ -587,10 +585,10 @@ pub(in crate::admin) async fn save(
             choices: saved.choices.clone(),
             accepts: (saved.link == Link::TcpServer).then(|| {
                 Accepts::Saved(
-                    saved.peers.as_ref().map_or_else(
-                        || format::OPEN_TO_ANY.into(),
-                        |peers| format!("Only {peers}"),
-                    ),
+                    saved
+                        .peers
+                        .as_ref()
+                        .map_or_else(|| format::OPEN_TO_ANY.into(), format::only_devices),
                     saved.peers.is_none(),
                 )
             }),
@@ -629,6 +627,28 @@ pub(in crate::admin) async fn save(
         page.render(),
     )
 }
+
+/// Labels the wizard’s connection test report.
+pub(in crate::admin) const CONNECTION_TEST: &str = "Connection test";
+
+/// Heads the connection test step.
+pub(in crate::admin) const TEST_CONNECTION: &str = "Test the connection";
+
+/// Says how the test works when Analyte connects.
+pub(in crate::admin) const CONNECTS_TO_READ: &str =
+    "Analyte connects to the machine and only reads.";
+
+/// Says how the test works when the machine connects.
+pub(in crate::admin) const ONLY_LISTENS: &str = "Analyte only listens.";
+
+/// Explains why a watched folder skips the connection test.
+pub(in crate::admin) const FOLDER_NOT_TESTED: &str = "Nothing to test for a watched folder";
+
+/// Labels the PC’s address in the connection step.
+pub(in crate::admin) const PC_ADDRESS: &str = "This PC’s address";
+
+/// Labels where the wizard asks for a destination.
+pub(in crate::admin) const SEND_RESULTS_TO: &str = "Send results to";
 
 #[cfg(test)]
 mod tests {

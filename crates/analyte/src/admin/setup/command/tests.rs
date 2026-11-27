@@ -858,7 +858,7 @@ async fn list_says_which_devices_each_machine_accepts() -> Result<(), Error> {
     };
     assert_eq!(
         line("guarded-2").as_deref(),
-        Some("  Devices: only 192.168.1.50")
+        Some("  Devices: Only 192.168.1.50")
     );
     assert_eq!(
         line("open-3").as_deref(),

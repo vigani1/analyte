@@ -11,9 +11,10 @@ Status on 2026-11-18, in plain words:
   only. Service installs, backup and restore, the admin page, alerts with named
   responders, retention, the release process and the guides exist too.
 - **Not yet:** no machine config is qualified, and nothing has met a real
-  machine. Each protocol checklist still lists open rows, mostly ones that need
-  installation evidence or a more complete named test; the POCT conformance
-  gate is still open ([POCT notes](protocols/poct/README.md)).
+  machine. Since 2026-11-26, five first-lab models ship full definitions
+  written from their manuals, at level documented. Each protocol checklist
+  still lists open rows, mostly ones that need installation evidence or a
+  more complete named test; the POCT conformance gate is still open ([POCT notes](protocols/poct/README.md)).
 - **LAW simulator:** Gazelle's message validator passes all eight messages
   Analyte sends ([reports](conformance/gazelle/README.md)). The live Gazelle
   run was recorded, but the simulator's own reply broke the standard (MSH-7
@@ -244,18 +245,22 @@ machines to reach the proven level. They are added as configs (or vendor
 format pieces) after the standards they use are complete. Recordings from
 them can be collected at any time and kept as test data.
 
-The protocols and five machine definitions are available at the documented
-level. Swelab Lumi remains record-only. Each machine folder in `machines/`
-lists the settings and evidence still needed for qualification.
+Status on 2026-11-27: the protocol each machine needs is built at the
+documented level. Since the ADR 0034 amendment of 2026-11-26, cobas e 411,
+iFlash 1200, Biolyte 2000, VIDAS and Autolyser ship a full `machine.toml`
+written from their manuals, at level documented; none is qualified on a real
+machine yet. Swelab Lumi still holds a blocked definition that lists what is
+missing and can be connected to record only. Nothing is guessed in the
+meantime.
 
 | Machine                | Protocol                          | Direction                         | Protocol today | Machine config | Waiting for                                     |
 | ---------------------- | --------------------------------- | --------------------------------- | -------------- | -------------- | ------------------------------------------------ |
-| Roche cobas e 411      | ASTM over serial                  | Results, host query, orders       | documented     | documented     | Installed host codes, serial settings, trace log copy |
+| Roche cobas e 411      | ASTM over serial                  | Results, host query, orders       | documented     | documented     | Installed software and host codes confirmed; real recordings |
 | YHLO iFlash 1200       | HL7 2.3.1 over MLLP (TCP), from the iFlash family manual | Results, query (QRY/QCK/DSR)      | documented     | documented     | Installed protocol and settings, deadlines, report completion, result identity and QC field confirmation |
 | Boule Swelab Lumi      | HL7 over TCP                      | Results, sample lookup            | documented     | blocked        | Boule's LIS description: framing, encoding, HL7 version, sample ID field, lookup message |
-| BioCARE Biolyte 2000   | ASTM over serial                  | Results only                      | documented     | documented     | Serial flow control, one real recording          |
-| bioMérieux VIDAS (PC)  | Vendor "Literal" over serial      | Results, work list download       | documented     | documented     | VIDAS PC version (sample ID length 12 or 17)     |
-| Dialab Autolyser       | Vendor format, host polls         | Results when asked, work list     | documented     | documented     | TCP settings; barcode reader retrofit            |
+| BioCARE Biolyte 2000   | ASTM over serial                  | Results only                      | documented     | documented     | Flow control and sample ID use confirmed; real recordings |
+| bioMérieux VIDAS (PC)  | Vendor "Literal" over serial      | Results, work list download       | documented     | documented     | Installed version and sample ID limit confirmed; real recordings; work-list download off |
+| Dialab Autolyser       | Vendor format, host polls         | Results when asked, work list     | documented     | documented     | Installed settings confirmed; real recordings; results held without run identity |
 
 ## 10. Testing
 
@@ -349,7 +354,7 @@ lists the settings and evidence still needed for qualification.
 
 ## 13. Phases
 
-| #   | Work                                                                                | Done when                                  | Status on 2026-11-18 |
+| #   | Work                                                                                | Done when                                  | Status on 2026-11-27 |
 | --- | ----------------------------------------------------------------------------------- | ------------------------------------------ | --- |
 | 0   | Name, license, repo, this plan, first ADRs                                          | Plan approved                              | Done |
 | 1   | Core: workspace, common model, store, outbox, delivery, order contract and order cache ("changes since" polling, freshness, deadlines), fake machine, first reference receiver, protected command-line view of parked items, CI | A fake result reaches the reference receiver and a fake query is answered from the cache, failure paths included | Done |
@@ -358,8 +363,8 @@ lists the settings and evidence still needed for qualification.
 | 4   | IHE LAW as Analyzer Manager within [its scope](protocols/law/README.md): LAB-27 query, LAB-28 work order, LAB-29 results, selected options | Every checklist row has passing tests and a recorded Gazelle run (simulated) | Built, documented; Gazelle run recorded but the simulator's reply broke the standard, so simulated is not reached |
 | 5   | POCT01-A2 as DML Observation Reviewer within [its scope](protocols/poct/README.md) | Every checklist row has passing tests (documented) | Built, documented; conformance gate still open |
 | 6   | Published contract: full reference receiver, contract docs and test vectors any app can run | The test vectors pass against the reference receiver end to end | Done |
-| 7   | Machine configs: cobas e 411, Biolyte 2000, iFlash 1200, Swelab Lumi        | Each config passes its vendor traces (simulated) | Waiting for the lab's settings and recordings |
-| 8   | Vendor formats: VIDAS Literal, Autolyser (start/end framing, tags, fixed width, polling dialog) | Each piece passes its vendor examples (documented or simulated) | Built, documented |
+| 7   | Machine configs: cobas e 411, Biolyte 2000, iFlash 1200, Swelab Lumi        | Each config passes its vendor traces (simulated) | cobas e 411, Biolyte 2000 and iFlash 1200 shipped at documented from their manuals; Swelab Lumi blocked; all wait for the lab's recordings |
+| 8   | Vendor formats: VIDAS Literal, Autolyser (start/end framing, tags, fixed width, polling dialog) | Each piece passes its vendor examples (documented or simulated) | Built, documented; VIDAS and Autolyser definitions shipped at documented |
 | 9   | Real-lab pilot with the six machines, admin page, installers, restore rehearsal, alerts with named responders, release process, docs for adding a machine | The six machines reach proven at the lab; another lab can install it | Software parts built (admin page, installers, restore, alerts, release process, machine guide); pilot not started |
 | 10  | Plugin interface, only if a real outside driver needs one                    | Contributors add machines                  | Not needed yet |
 

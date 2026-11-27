@@ -47,12 +47,12 @@
 </article>
 {%- endfor %}
 {%- if let Some(original) = original %}
-{% call layout::disclosure("Show the original message") %}
+{% call layout::disclosure(crate::admin::view::format::SHOW_ORIGINAL) %}
 <p class="muted note">{{ NOTES_HIDDEN }}</p>
 {%- if let Some(form) = original.form %}
 {% call forms::raw_request(form) %}{% endcall %}
 {%- else %}
-<p class="text"><a class="link" href="/login">Sign in</a> to show the original message.</p>
+<p class="text"><a class="link" href="/login">{{ crate::admin::server::SIGN_IN }}</a> to show the original message.</p>
 {%- endif %}
 {% endcall %}
 {%- endif %}

@@ -50,7 +50,7 @@ impl Confirm {
                     "Nothing is deleted, and nothing is sent to a machine or the lab app.",
                 ),
                 "For example: settled with the lab app team",
-                "Mark resolved",
+                format::MARK_RESOLVED,
             ),
             Self::Reprocess => (
                 "reprocess",
@@ -61,7 +61,7 @@ impl Confirm {
                     "the usual correction rules. Nothing is sent to the machine.",
                 ),
                 "For example: machine definition corrected",
-                "Process again",
+                format::PROCESS_AGAIN,
             ),
         };
         ReasonDialog {
@@ -274,7 +274,7 @@ impl Done {
     async fn page(self, state: &Context, session: &Session, id: i64) -> Response {
         let (title, tone, alert, text) = match self {
             Self::Resolved => (
-                "Marked resolved",
+                format::MARKED_RESOLVED,
                 Tone::Good,
                 format!("Item {id} is marked resolved"),
                 String::from(concat!(
@@ -290,7 +290,7 @@ impl Done {
                     )
                 });
                 (
-                    "Processed again",
+                    format::PROCESSED_AGAIN,
                     if review { Tone::Attention } else { Tone::Good },
                     format!("Reading {} was recorded", commit.version),
                     format!(
@@ -305,12 +305,12 @@ impl Done {
             links: vec![
                 Button {
                     href: Tab::NeedsReview.href().to_owned(),
-                    label: "Back to Needs review",
+                    label: Tab::NeedsReview.back(),
                     class: "btn--primary",
                 },
                 Button {
                     href: format::parked_href(id),
-                    label: "Open the item",
+                    label: format::OPEN_ITEM,
                     class: "btn--outline",
                 },
             ],
