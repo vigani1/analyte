@@ -920,6 +920,21 @@ async fn settings_render_in_albanian_from_browser_or_saved_choice() -> Result<()
     scene.stop().await
 }
 
+// ADR 0039: a French browser preference renders the page in French, and the
+// picker names French in its own wording.
+#[tokio::test(flavor = "multi_thread")]
+async fn settings_render_in_french_from_browser_choice() -> Result<(), Error> {
+    let scene = Scene::start(false).await?;
+    let host = &scene.started.3;
+    let preferred = format!("{}Accept-Language: fr-CH, en;q=0.5\r\n", scene.auth);
+    let page = request(host, "/settings", &preferred, None).await?;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    assert!(page.contains("<html lang=\"fr\""));
+    assert!(page.contains("<h1>Paramètres</h1>"));
+    assert!(page.contains("<option value=\"fr\" lang=\"fr\" selected>Français</option>"));
+    scene.stop().await
+}
+
 // Owner request 2026-11-20 (admin restyle b5, Sidebar mockup): every page's
 // More group lists Machine orders, Cancelled by machine, Deliveries, Data
 // keeping and Settings, opened and marked on the page that is one of them.
