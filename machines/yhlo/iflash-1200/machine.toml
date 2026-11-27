@@ -31,8 +31,8 @@ operation_timeout_ms = 10000
 limit = 1048576
 
 [dialog]
-# Analyte's own bounds (AGENTS rule 7). Service §6.4.2.1: the PC waits 15 s
-# by default for the LIS, so the reply deadline stays at 15 s.
+# Analyte's own bounds (AGENTS rule 7). The 15 s bound uses the PC's
+# default LIS timeout setting as a reference (service §6.4.2.1, p. 97).
 receive_timeout_ms = 30000
 send_timeout_ms = 15000
 # LIS V1.1 §2.2.1.2 and §2.3.2: every ORU^R01 gets an ACK^R01; Analyte sends
@@ -82,10 +82,11 @@ repetition = 1
 
 # ADR 0035 recipe: the barcode (sample above), the sample serial number in
 # OBR-3 and the observation end time in OBR-8, with the channel number. A
-# result missing any of them stays held for an operator. LIS V1.1 §2.3.4.1
-# gives no per-run uniqueness or resend guarantee for OBR-3. Section 2.4.1.1
-# shows an upload with OBR-8 empty. The manual documents only F in OBX-11,
-# so no correction or rerun code is declared:
+# result missing any of them stays held for an operator. The manual
+# does not say whether OBR-3 changes on a rerun or stays stable on a
+# resend (LIS V1.1 §2.3.4.1, p. 17 and §2.3.2, p. 12). Its patient
+# example leaves OBR-8 blank (§2.4.1.1, p. 30). The manual documents only
+# F in OBX-11, so no correction or rerun code is declared:
 # changed content under the same key is held, never merged.
 [mappings.identity]
 order_id = {group="order",record="OBR",field=3,component=1,repetition=1}
@@ -93,7 +94,7 @@ order_namespace = {fixed="iflash-sample-serial"}
 sub_id = "none"
 run = [{group="order",record="OBR",field=8,component=1,repetition=1}]
 correction_status_codes = []
-evidence = {manual="YHLO LIS Protocol Manual V1.1 (2018)", section="2.3.4.1 OBR fields 2, 3 and 8"}
+evidence = {manual="YHLO LIS Protocol Manual V1.1 (2018)", section="2.3.4.1, p. 17 (OBR fields 2, 3 and 8)"}
 
 # Barcode queries (LIS V1.1 §§2.2.2, 2.3.6-2.3.11, 2.4.2.1). Used only when
 # the lab picks two-way below, and answered only from a trusted order cache:
@@ -104,7 +105,7 @@ send_ahead = false
 # The app's "urgent" has no documented code, so such orders are refused.
 priorities = [{app="routine",machine="N"},{app="stat",machine="Y"}]
 [orders.query]
-# Service §6.4.2.1: the PC's default respond timeout is 15 s.
+# Use the same host-side bound as the dialog's send timeout.
 deadline_ms = 15000
 when_untrusted = "error"
 [orders.hl7]
@@ -116,7 +117,7 @@ filters = [{field=9,value="OTH"},{field=12,value="T"}]
 # manual. The 1200 runs the same iFlash 3000 PC software (service §6.3); a
 # different QRF-1 gets an AE, never an answer (README, open questions).
 record_location = "iFlash3000"
-# Service §6.4.2.1: the same 15 s default for the ACK^Q03 of each page.
+# Use the same host-side bound for the ACK^Q03 of each page.
 acknowledgment_ms = 15000
 lines = []
 
@@ -138,7 +139,8 @@ label = "Two-way (send results and query sample information by barcode)"
 orders = "on"
 departures = ["hl7_msh16_message_category", "hl7_categorized_oru_results", "hl7_record_display_query"]
 
-# Service §6.3.2.1, Figures 6-39 and 6-40: the installer shows this PC build.
+# Service §6.3.2.1, p. 93, Figures 6-39 and 6-40: the iFlash 1200
+# installer's confirmation and completion screens show this exact build.
 [[choices]]
 name = "software_version"
 kind = "software_version"
