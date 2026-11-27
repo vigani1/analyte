@@ -592,7 +592,7 @@ mod tests {
         assert_eq!(added, "– item 5 added: test code missing");
         assert!(order.ends_with("– cancel requested"), "{order}");
         assert_eq!(settled, "rerun queued");
-        let german = analyte_i18n::Language::negotiate(["de"]).expect("German is installed");
+        let german = Language::negotiate(["de"]).expect("German is installed");
         let (added, order, settled) = german.sync_scope(lines);
         assert_eq!(added, "– Eintrag 5 hinzugefügt: Testcode fehlt");
         assert!(order.ends_with("– Stornierung angefordert"), "{order}");
