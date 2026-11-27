@@ -1742,3 +1742,75 @@ async fn machine_and_lab_app_commands_report_an_unreadable_site() -> Result<(), 
     }
     Ok(())
 }
+
+/// The `repeated_results` value of machine `id`'s site file, if written.
+fn site_repeats(install: &Install, id: &str) -> Result<Option<toml::Value>, Error> {
+    let site: toml::Table =
+        std::fs::read_to_string(install.root.join(format!("{id}.site.toml")))?.parse()?;
+    Ok(site.get("repeated_results").cloned())
+}
+
+// ADR 0035 (2026-11-26), ADR 0027 (one code path): `machines set
+// --repeated-results always_ask` writes the same key as step 2's Save, a later
+// change keeps it, the audit row and `machines list` name it, `automatic`
+// removes it again, and a value off the list is refused and changes nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn repeated_results_option_saves_what_step_two_saves() -> Result<(), Error> {
+    let install = install()?;
+    install.set_up().await?;
+    assert_eq!(
+        site_repeats(&install, "cobas-1")?,
+        None,
+        "automatic stays unwritten"
+    );
+    let ask = ["set", "cobas-1", "--repeated-results", "always_ask"];
+    assert_eq!(install.machines(&ask).await?, Outcome::Done);
+    assert_eq!(
+        site_repeats(&install, "cobas-1")?,
+        Some(toml::Value::String("always_ask".into()))
+    );
+    let other = ["set", "cobas-1", "--stop-bits", "2"];
+    assert_eq!(install.machines(&other).await?, Outcome::Done);
+    assert_eq!(
+        site_repeats(&install, "cobas-1")?,
+        Some(toml::Value::String("always_ask".into())),
+        "a later change keeps the saved choice"
+    );
+    let audits = install.audits().await?;
+    assert!(
+        audits
+            .iter()
+            .any(|(_, action, _, reason)| action == "setup-save"
+                && reason.contains("repeated results: always ask me")),
+        "{audits:?}"
+    );
+    let installation = super::Installation::load(&install.config, install.seams())?;
+    let rows = machines::settings_rows(&installation)?;
+    let row = rows
+        .iter()
+        .find(|row| row.id == "cobas-1")
+        .ok_or("no row")?;
+    assert_eq!(
+        row.repeated_results,
+        Some(analyte_config::RepeatedResults::AlwaysAsk)
+    );
+    let before = install.settings()?;
+    for value in ["ask", "Always_Ask", "manual"] {
+        let error = refusal(
+            install
+                .machines(&["set", "cobas-1", "--repeated-results", value])
+                .await,
+        )?;
+        assert!(
+            error
+                .to_string()
+                .contains("choose how repeated results are handled: automatic or always_ask"),
+            "{error}"
+        );
+        assert_eq!(install.settings()?, before, "a refusal changes nothing");
+    }
+    let back = ["set", "cobas-1", "--repeated-results", "automatic"];
+    assert_eq!(install.machines(&back).await?, Outcome::Done);
+    assert_eq!(site_repeats(&install, "cobas-1")?, None);
+    Ok(())
+}

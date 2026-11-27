@@ -87,6 +87,12 @@
 {%- if let Some(seconds) = autolyser_poll_seconds %}
 <div class="field"><label class="field__label" for="s2-poll">Seconds between report polls</label><input id="s2-poll" class="input mono" name="poll_seconds" type="number" min="{{ normal_poll_range.start() }}" max="{{ normal_poll_range.end() }}" required value="{{ seconds }}"><span class="field__hint">Enter the lab&#39;s polling interval in whole seconds.</span></div>
 {%- endif %}
+{%- if let Some(field) = repeated_results %}
+<div class="field"><label class="field__label" for="{{ field.id }}">{{ field.label }}</label><select id="{{ field.id }}" class="select" name="{{ field.name }}" required>
+{%- if !field.chosen %}<option value="" selected>Choose</option>{% endif %}
+{%- for option in field.options %}<option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>{% endfor -%}
+</select><span class="field__hint">{{ field.hint }}</span></div>
+{%- endif %}
 {%- if let Some(recording) = recording %}
 {%- match recording %}
 {%- when Recording::Vidas { acknowledgment } %}

@@ -25,7 +25,7 @@ pub(crate) fn syntax_reason(error: &analyte_poct::MessageError) -> String {
 pub(crate) const EDIT_GUARD_REASON: &str = "edited POCT observation with no detectable common-content change; source context may have changed";
 /// Guards edits of independent POCT readings, which carry no execution context.
 pub(crate) fn policy() -> crate::machine::interpretation::policy::Policy {
-    crate::machine::interpretation::policy::Policy::independent(EDIT_GUARD_REASON)
+    crate::machine::interpretation::policy::Policy::EditGuard(EDIT_GUARD_REASON)
 }
 pub(crate) fn closure_reason(normal: bool, unresolved: &str) -> String {
     format!(
