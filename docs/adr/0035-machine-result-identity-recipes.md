@@ -92,8 +92,8 @@ The owner approved a per-machine site setting, **Repeated results**, on
 - The switch can only make handling more manual. It never creates a recipe,
   never resolves an unresolved result and never relaxes a hold. A held repeat
   reaches the protocol as any other held result does. For example, HL7 answers
-  it with the content-error acknowledgment that it already uses for a held
-  conflict.
+  it AA after durable storage, as ADR 0010 (amended 2026-11-26) answers every
+  stored upload held for an operator.
 - The store makes the decision in one place, the revision assignment for
   ordinary reconciliation. The host passes the machine's effective setting in
   through `ReconcileMode::Standard`. IHE LAW and POCT keep their
