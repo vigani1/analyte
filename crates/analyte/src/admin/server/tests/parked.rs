@@ -988,3 +988,49 @@ async fn measurement_comparison_requires_sign_in_and_confirms_once() -> Result<(
     assert!(!String::from_utf8_lossy(&logs).contains(VALUE));
     Ok(())
 }
+
+// Owner request 2026-11-27 (ADRs 0035 and 0038): the Needs review list and an
+// item page explain each choice beside the decisions, in the page's language.
+#[tokio::test(flavor = "multi_thread")]
+async fn choices_help_renders_beside_the_decisions_in_english_and_german() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    let (store, (state, stopper, owner, host), auth, _) = started(directory.path()).await?;
+    let item = store
+        .request::<_, FixtureError>(fixture_deadline()?, |s| {
+            let receipt = uuid::Uuid::from(receive(s, "chemistry", 1_795_046_077)?).to_string();
+            park(
+                s,
+                "result_reconciliation",
+                "result reconciliation: Conflict",
+                std::slice::from_ref(&receipt),
+            )
+        })
+        .await?;
+    let german = format!("{auth}Accept-Language: de-AT, en;q=0.5\r\n");
+    for path in ["/parked".to_owned(), format!("/parked/{item}")] {
+        let page = request(&host, &path, &auth, None).await?;
+        assert!(page.starts_with("HTTP/1.1 200"), "{path}: {page}");
+        assert_eq!(page.matches("What each choice means</summary>").count(), 1, "{path}");
+        for shown in [
+            "<dt>Rerun</dt><dd>The same sample and test were measured again.</dd>",
+            "<dt>This is a rerun</dt><dd>Sends the held result to the lab app once, as a new result. The earlier result stays; the lab app decides which value to report.</dd>",
+            "<dt>Send again</dt><dd>Queues the same delivery for the lab app again, unchanged and with the same ID. The item stays open until someone marks it resolved.</dd>",
+            "An item that nobody decides on stays here. Analyte never sends or deletes it by itself.",
+        ] {
+            assert!(page.contains(shown), "{path}: {shown}");
+        }
+        let page = request(&host, &path, &german, None).await?;
+        assert!(page.starts_with("HTTP/1.1 200"), "{path}: {page}");
+        assert!(page.contains("<html lang=\"de\""), "{path}");
+        assert_eq!(page.matches("Was jede Wahl bedeutet</summary>").count(), 1, "{path}");
+        for shown in [
+            "<dt>Wiederholungsmessung</dt><dd>Dieselbe Probe und derselbe Test wurden noch einmal gemessen.</dd>",
+            "<dt>Dies ist eine Wiederholungsmessung</dt><dd>Sendet das zurückgehaltene Ergebnis einmal als neues Ergebnis an die Labor-App.",
+            "Ein Eintrag, über den niemand entscheidet, bleibt hier.",
+        ] {
+            assert!(page.contains(shown), "{path}: {shown}");
+        }
+        assert!(!page.contains("What each choice means"), "{path}");
+    }
+    stop(state, stopper, owner, store).await
+}

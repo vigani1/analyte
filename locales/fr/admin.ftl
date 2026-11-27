@@ -421,6 +421,44 @@ admin-this-is-a-resend = Il s’agit d’un renvoi
 
 admin-this-is-a-rerun = Il s’agit d’une réanalyse
 
+admin-help-what-each-choice-means = Ce que signifie chaque choix
+
+admin-help-three-cases = Un résultat peut revenir pour trois raisons :
+
+admin-help-case-resend = Renvoi
+
+admin-help-case-resend-text = L’automate a envoyé de nouveau le même résultat.
+
+admin-help-case-rerun = Réanalyse
+
+admin-help-case-rerun-text = Le même échantillon et la même analyse ont été mesurés de nouveau.
+
+admin-help-case-correction = Correction
+
+admin-help-case-correction-text = L’automate a modifié un résultat qu’il avait envoyé.
+
+admin-help-correction-note = Aucun bouton n’envoie une modification retenue comme correction. Une correction que l’automate signale comme telle part d’elle-même vers l’application de laboratoire, comme nouvelle révision du résultat, sauf si l’automate est réglé sur « Toujours me demander ». Si un résultat modifié attend ici, vérifiez sur l’automate quelle valeur est la bonne avant de choisir.
+
+admin-help-buttons = Ce que fait chaque bouton :
+
+admin-help-resend-does = Enregistre le résultat retenu comme le même résultat que le précédent. Rien de nouveau n’est envoyé à l’application de laboratoire.
+
+admin-help-rerun-does = Envoie une fois le résultat retenu à l’application de laboratoire, comme nouveau résultat. Le résultat précédent reste ; l’application de laboratoire décide quelle valeur rendre.
+
+admin-help-resolve-held-does = Proposé quand un résultat retenu sans ID d’échantillon correspond à un message ultérieur du même automate qui en a un. Le message ultérieur fait foi, et rien de plus n’est envoyé.
+
+admin-help-process-again-does = Relit le message d’origine avec les réglages actuels et enregistre la lecture comme nouvelle version ; la lecture précédente est conservée. Si le message est maintenant lu correctement, l’élément est réglé et ses résultats partent vers l’application de laboratoire comme d’habitude. Sinon, l’élément reste ouvert.
+
+admin-help-send-again-does = Remet en file d’attente la même transmission pour l’application de laboratoire, inchangée et avec le même ID. L’élément reste ouvert jusqu’à ce que quelqu’un le marque comme résolu.
+
+admin-help-mark-resolved-does = Enregistre que quelqu’un a vérifié l’élément. Rien n’est envoyé à un automate ni à l’application de laboratoire. L’élément passe dans Résolus et reste dans l’historique.
+
+admin-help-audited = Chaque choix demande une raison et enregistre qui l’a fait et quand. Le message d’origine n’est jamais modifié.
+
+admin-help-left-alone = Un élément sur lequel personne ne décide reste ici. Analyte ne l’envoie ni ne le supprime jamais de lui-même.
+
+admin-help-notices = Si les avis À vérifier sont activés pour une application de laboratoire, celle-ci affiche les éléments qui attendent ici et reçoit un avis de clôture dès que chacun est réglé. La décision se prend toujours ici seulement.
+
 admin-left-every-byte-exactly-in-hex-right-the-same = À gauche : chaque octet exactement, en hexadécimal. À droite : les mêmes octets sous forme de texte, les octets qui ne sont pas de simples lettres ou signes étant affichés sous forme de points.
 
 admin-sign-in-to-analyte = Se connecter à Analyte

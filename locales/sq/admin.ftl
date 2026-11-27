@@ -421,6 +421,44 @@ admin-this-is-a-resend = Ky është një ridërgim
 
 admin-this-is-a-rerun = Kjo është një rimatje
 
+admin-help-what-each-choice-means = Çfarë do të thotë secila zgjedhje
+
+admin-help-three-cases = Një rezultat mund të vijë përsëri për tre arsye:
+
+admin-help-case-resend = Ridërgim
+
+admin-help-case-resend-text = Pajisja dërgoi përsëri të njëjtin rezultat.
+
+admin-help-case-rerun = Rimatje
+
+admin-help-case-rerun-text = E njëjta mostër dhe e njëjta analizë u matën përsëri.
+
+admin-help-case-correction = Korrigjim
+
+admin-help-case-correction-text = Pajisja ndryshoi një rezultat që e kishte dërguar.
+
+admin-help-correction-note = Asnjë buton nuk e dërgon një ndryshim të mbajtur për shqyrtim si korrigjim. Një korrigjim që pajisja e shënon si të tillë shkon vetë te aplikacioni i laboratorit si version i ri i rezultatit, përveç kur pajisja është vendosur te «Më pyet gjithmonë». Nëse një rezultat i ndryshuar pret këtu, kontrolloni në pajisje cila vlerë është e saktë para se të zgjidhni.
+
+admin-help-buttons = Çfarë bën secili buton:
+
+admin-help-resend-does = E regjistron rezultatin e mbajtur për shqyrtim si të njëjtin rezultat me atë të mëparshmin. Asgjë e re nuk i dërgohet aplikacionit të laboratorit.
+
+admin-help-rerun-does = Ia dërgon rezultatin e mbajtur për shqyrtim aplikacionit të laboratorit një herë, si rezultat të ri. Rezultati i mëparshëm mbetet; aplikacioni i laboratorit vendos cilën vlerë të raportojë.
+
+admin-help-resolve-held-does = Ofrohet kur një rezultat i mbajtur për shqyrtim pa ID-në e mostrës përputhet me një mesazh të mëvonshëm nga e njëjta pajisje që e ka atë. Vlen mesazhi i mëvonshëm dhe asgjë shtesë nuk dërgohet.
+
+admin-help-process-again-does = E lexon përsëri mesazhin origjinal me cilësimet aktuale dhe e ruan leximin si version të ri; leximi i mëparshëm mbahet. Nëse mesazhi tani lexohet saktë, artikulli zgjidhet dhe rezultatet e tij shkojnë te aplikacioni i laboratorit si zakonisht. Nëse jo, artikulli mbetet i hapur.
+
+admin-help-send-again-does = E vendos përsëri në radhë të njëjtën dërgesë për aplikacionin e laboratorit, të pandryshuar dhe me të njëjtën ID. Artikulli mbetet i hapur derisa dikush ta shënojë si të zgjidhur.
+
+admin-help-mark-resolved-does = Regjistron se dikush e kontrolloi artikullin. Asgjë nuk i dërgohet një pajisjeje apo aplikacionit të laboratorit. Artikulli kalon te «E zgjidhur» dhe mbetet në histori.
+
+admin-help-audited = Çdo zgjedhje kërkon një arsye dhe regjistron kush e bëri dhe kur. Mesazhi origjinal nuk ndryshohet kurrë.
+
+admin-help-left-alone = Një artikull për të cilin askush nuk vendos mbetet këtu. Analyte nuk e dërgon dhe nuk e fshin kurrë vetë.
+
+admin-help-notices = Nëse njoftimet për shqyrtim janë aktive për një aplikacion laboratori, ai aplikacion shfaq artikujt që presin këtu dhe merr një njoftim mbyllës sapo secili zgjidhet. Vendimi merret gjithmonë vetëm këtu.
+
 admin-left-every-byte-exactly-in-hex-right-the-same = Majtas: çdo bajt saktësisht, në heks. Djathtas: të njëjtat bajtë si teksti, me bajtë që nuk janë shkronja të thjeshta ose shenja të shfaqura si pika.
 
 admin-sign-in-to-analyte = Hyni në Analyte

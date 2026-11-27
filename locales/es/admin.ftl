@@ -423,6 +423,44 @@ admin-this-is-a-resend = Es un reenvío
 
 admin-this-is-a-rerun = Es una repetición
 
+admin-help-what-each-choice-means = Qué significa cada opción
+
+admin-help-three-cases = Un resultado puede volver por tres motivos:
+
+admin-help-case-resend = Reenvío
+
+admin-help-case-resend-text = El equipo envió de nuevo el mismo resultado.
+
+admin-help-case-rerun = Repetición
+
+admin-help-case-rerun-text = La misma muestra y la misma prueba se midieron de nuevo.
+
+admin-help-case-correction = Corrección
+
+admin-help-case-correction-text = El equipo cambió un resultado que ya había enviado.
+
+admin-help-correction-note = Ningún botón envía un cambio retenido como corrección. Una corrección que el equipo marca como tal va sola a la aplicación del laboratorio, como nueva revisión del resultado, salvo que el equipo esté en «Preguntarme siempre». Si aquí espera un resultado cambiado, compruebe en el equipo qué valor es el correcto antes de elegir.
+
+admin-help-buttons = Qué hace cada botón:
+
+admin-help-resend-does = Registra el resultado retenido como el mismo resultado que el anterior. No se envía nada nuevo a la aplicación del laboratorio.
+
+admin-help-rerun-does = Envía una vez el resultado retenido a la aplicación del laboratorio, como resultado nuevo. El resultado anterior se mantiene; la aplicación del laboratorio decide qué valor informar.
+
+admin-help-resolve-held-does = Se ofrece cuando un resultado retenido sin ID de muestra coincide con un mensaje posterior del mismo equipo que sí lo tiene. Cuenta el mensaje posterior y no se envía nada más.
+
+admin-help-process-again-does = Vuelve a leer el mensaje original con los ajustes actuales y guarda la lectura como una versión nueva; la lectura anterior se conserva. Si ahora el mensaje se lee bien, el elemento queda resuelto y sus resultados van a la aplicación del laboratorio como siempre. Si no, el elemento sigue abierto.
+
+admin-help-send-again-does = Vuelve a poner en cola la misma entrega para la aplicación del laboratorio, sin cambios y con el mismo ID. El elemento sigue abierto hasta que alguien lo marque como resuelto.
+
+admin-help-mark-resolved-does = Registra que alguien revisó el elemento. No se envía nada a ningún equipo ni a la aplicación del laboratorio. El elemento pasa a Resueltos y queda en el historial.
+
+admin-help-audited = Cada opción pide un motivo y registra quién la tomó y cuándo. El mensaje original nunca se cambia.
+
+admin-help-left-alone = Un elemento sobre el que nadie decide se queda aquí. Analyte nunca lo envía ni lo borra por sí solo.
+
+admin-help-notices = Si los avisos de Requiere revisión están activados para una aplicación del laboratorio, esa aplicación muestra los elementos que esperan aquí y recibe un aviso de cierre cuando cada uno se resuelve. La decisión se sigue tomando solo aquí.
+
 admin-left-every-byte-exactly-in-hex-right-the-same = Izquierda: cada byte exactamente, en hexadecimal. Derecha: los mismos bytes como texto; los bytes que no son letras o signos simples se muestran como puntos.
 
 admin-sign-in-to-analyte = Iniciar sesión en Analyte

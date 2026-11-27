@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Needs review pages explain each choice in a "What each choice means"
+  section beside the decisions: resend, rerun and correction, what each
+  button does and whether the lab app receives anything, the audit, what
+  happens to an item left alone and the review notices (ADRs 0035, 0038).
+
 - Add French (`fr`) for the admin pages, Setup, command line and desktop
   app. Choose Français in admin Settings or use `analyte --lang fr`. The
 

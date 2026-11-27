@@ -423,6 +423,44 @@ admin-this-is-a-resend = Dies ist eine erneute Übertragung
 
 admin-this-is-a-rerun = Dies ist eine Wiederholungsmessung
 
+admin-help-what-each-choice-means = Was jede Wahl bedeutet
+
+admin-help-three-cases = Ein Ergebnis kann aus drei Gründen erneut kommen:
+
+admin-help-case-resend = Erneute Übertragung
+
+admin-help-case-resend-text = Das Gerät hat dasselbe Ergebnis noch einmal gesendet.
+
+admin-help-case-rerun = Wiederholungsmessung
+
+admin-help-case-rerun-text = Dieselbe Probe und derselbe Test wurden noch einmal gemessen.
+
+admin-help-case-correction = Korrektur
+
+admin-help-case-correction-text = Das Gerät hat ein bereits gesendetes Ergebnis geändert.
+
+admin-help-correction-note = Keine Schaltfläche sendet eine zurückgehaltene Änderung als Korrektur. Eine Korrektur, die das Gerät als solche kennzeichnet, geht von selbst als neue Revision des Ergebnisses an die Labor-App, außer das Gerät steht auf „Immer nachfragen“. Wartet hier ein geändertes Ergebnis, prüfen Sie am Gerät, welcher Wert stimmt, bevor Sie wählen.
+
+admin-help-buttons = Was jede Schaltfläche tut:
+
+admin-help-resend-does = Hält das zurückgehaltene Ergebnis als dasselbe Ergebnis wie das frühere fest. An die Labor-App wird nichts Neues gesendet.
+
+admin-help-rerun-does = Sendet das zurückgehaltene Ergebnis einmal als neues Ergebnis an die Labor-App. Das frühere Ergebnis bleibt; die Labor-App entscheidet, welcher Wert berichtet wird.
+
+admin-help-resolve-held-does = Wird angeboten, wenn ein zurückgehaltenes Ergebnis ohne Proben-ID zu einer späteren Nachricht desselben Geräts mit Proben-ID passt. Die spätere Nachricht gilt, und es wird nichts zusätzlich gesendet.
+
+admin-help-process-again-does = Liest die Originalnachricht mit den aktuellen Einstellungen erneut und speichert die Auswertung als neue Version; die frühere Auswertung bleibt erhalten. Wird die Nachricht jetzt richtig gelesen, ist der Eintrag geklärt und seine Ergebnisse gehen wie gewohnt an die Labor-App. Sonst bleibt der Eintrag offen.
+
+admin-help-send-again-does = Reiht dieselbe Übermittlung für die Labor-App erneut ein, unverändert und mit derselben ID. Der Eintrag bleibt offen, bis jemand ihn als geklärt markiert.
+
+admin-help-mark-resolved-does = Hält fest, dass jemand den Eintrag geprüft hat. An ein Gerät oder die Labor-App wird nichts gesendet. Der Eintrag wird nach „Geklärt“ verschoben und bleibt im Verlauf.
+
+admin-help-audited = Jede Wahl verlangt einen Grund und hält fest, wer sie wann getroffen hat. Die Originalnachricht wird nie geändert.
+
+admin-help-left-alone = Ein Eintrag, über den niemand entscheidet, bleibt hier. Analyte sendet oder löscht ihn nie von selbst.
+
+admin-help-notices = Sind Hinweise zu „Prüfung erforderlich“ für eine Labor-App eingeschaltet, zeigt diese Labor-App die hier wartenden Einträge an und erhält einen abschließenden Hinweis, sobald jeder geklärt ist. Entschieden wird weiterhin nur hier.
+
 admin-left-every-byte-exactly-in-hex-right-the-same = Links: jedes Byte genau, hexadezimal. Rechts: dieselben Bytes als Text, wobei Bytes, die keine einfachen Buchstaben oder Zeichen sind, als Punkte erscheinen.
 
 admin-sign-in-to-analyte = Bei Analyte anmelden

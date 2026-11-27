@@ -414,6 +414,44 @@ admin-this-is-a-resend = This is a resend
 
 admin-this-is-a-rerun = This is a rerun
 
+admin-help-what-each-choice-means = What each choice means
+
+admin-help-three-cases = A result can come back for three reasons:
+
+admin-help-case-resend = Resend
+
+admin-help-case-resend-text = The machine sent the same result again.
+
+admin-help-case-rerun = Rerun
+
+admin-help-case-rerun-text = The same sample and test were measured again.
+
+admin-help-case-correction = Correction
+
+admin-help-case-correction-text = The machine changed a result it had sent.
+
+admin-help-correction-note = No button sends a held change as a correction. A correction the machine marks as one goes to the lab app by itself, as a new revision of the result, unless the machine is set to Always ask me. If a changed result waits here, check on the machine which value is right before you choose.
+
+admin-help-buttons = What each button does:
+
+admin-help-resend-does = Records the held result as the same result as the earlier one. Nothing new is sent to the lab app.
+
+admin-help-rerun-does = Sends the held result to the lab app once, as a new result. The earlier result stays; the lab app decides which value to report.
+
+admin-help-resolve-held-does = Offered when a held result without a sample ID matches a later message from the same machine that has one. The later message counts, and nothing extra is sent.
+
+admin-help-process-again-does = Reads the original message again with the current settings and saves the reading as a new version; the earlier reading is kept. If the message now reads correctly, the item is settled and its results go to the lab app as usual. If not, the item stays open.
+
+admin-help-send-again-does = Queues the same delivery for the lab app again, unchanged and with the same ID. The item stays open until someone marks it resolved.
+
+admin-help-mark-resolved-does = Records that someone checked the item. Nothing is sent to a machine or the lab app. The item moves to Resolved and stays in the history.
+
+admin-help-audited = Every choice asks for a reason and records who made it and when. The original message is never changed.
+
+admin-help-left-alone = An item that nobody decides on stays here. Analyte never sends or deletes it by itself.
+
+admin-help-notices = If Needs review notices are on for a lab app, that lab app shows the items waiting here and gets a closing notice once each one is settled. The decision is still made only here.
+
 admin-left-every-byte-exactly-in-hex-right-the-same = Left: every byte exactly, in hex. Right: the same bytes as text, with bytes that are not plain letters or signs shown as dots.
 
 admin-sign-in-to-analyte = Sign in to Analyte
