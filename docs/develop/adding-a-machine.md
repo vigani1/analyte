@@ -565,11 +565,17 @@ Follow [ADR 0009](../adr/0009-recording-format.md) and the
 from a machine trace, lab-PC sniffer or hardware tap. Keep original captures
 with patient data protected, outside Git and ordinary logs.
 
-Make a reviewed de-identified copy or an original synthetic recording. Inspect
-decoded bytes and metadata: base64 is not de-identification. Replace identifiers
-and patient details consistently, preserving lengths/layout where needed;
-recalculate checksums affected by replacements. Document changes. Preserve
-intentional faults, directions and split/merged read boundaries.
+Make a de-identified copy on the lab PC with `analyte captures de-identify
+<machine> <file>.rec.jsonl --to <folder> --reason "..."`
+([ADR 0037](../adr/0037-de-identified-recording-copies.md)), or write an
+original synthetic recording. The command replaces patient fields with
+synthetic values of the same shape, the same value always with the same
+stand-in, and recomputes the checksums; lengths, frame numbers, directions,
+times, split and merged reads and recorded faults stay. It refuses the whole
+file when it cannot place every patient field (POCT, M records, Z segments,
+unknown tags it cannot read) and says which event. Then review the decoded
+copy yourself: base64 is not de-identification, and free text inside results
+is kept. Document what you changed by hand.
 
 Store one UTF-8 `.rec.jsonl` with LF endings: a version-1 header naming stack,
 machine/software, evidence origin, source and de-identification statement,
