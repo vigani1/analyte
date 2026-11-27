@@ -1093,7 +1093,13 @@ setup-key-owner-lab-app = Aplicación del laboratorio { $name }
 
 setup-key-owner-alert-target = Destino de alertas { $target }
 
-setup-paste-the-key = Pegue la { $key }
+setup-paste-the-api-key = Pegue la clave de API
+
+setup-paste-the-signing-key = Pegue la clave de firma
+
+setup-new-api-key = Nueva clave de API
+
+setup-new-signing-key = Nueva clave de firma
 
 setup-no-answer = sin respuesta
 

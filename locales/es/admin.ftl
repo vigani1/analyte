@@ -221,8 +221,6 @@ admin-paste-it-from-your-lab-app-team-s-message = Péguela del mensaje del equip
 
 admin-replace = Sustituir
 
-admin-new = Nueva
-
 admin-back = Atrás
 
 admin-next = Siguiente

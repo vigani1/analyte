@@ -219,8 +219,6 @@ admin-paste-it-from-your-lab-app-team-s-message = Collez-la depuis le message de
 
 admin-replace = Remplacer
 
-admin-new = Nouveau
-
 admin-back = Retour
 
 admin-next = Suivant

@@ -219,8 +219,6 @@ admin-paste-it-from-your-lab-app-team-s-message = Ngjitni atë nga mesazhi i eki
 
 admin-replace = Zëvendësoni
 
-admin-new = E re
-
 admin-back = Mbrapa
 
 admin-next = Tjetra

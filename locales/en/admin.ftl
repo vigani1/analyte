@@ -212,8 +212,6 @@ admin-paste-it-from-your-lab-app-team-s-message = Paste it from your lab app tea
 
 admin-replace = Replace
 
-admin-new = New
-
 admin-back = Back
 
 admin-next = Next

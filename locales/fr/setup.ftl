@@ -1087,7 +1087,13 @@ setup-key-owner-lab-app = Application de laboratoire { $name }
 
 setup-key-owner-alert-target = Destinataire d’alerte { $target }
 
-setup-paste-the-key = Collez la { $key }
+setup-paste-the-api-key = Collez la clé API
+
+setup-paste-the-signing-key = Collez la clé de signature
+
+setup-new-api-key = Nouvelle clé API
+
+setup-new-signing-key = Nouvelle clé de signature
 
 setup-no-answer = pas de réponse
 

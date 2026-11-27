@@ -19,14 +19,43 @@ use analyte_model::Identifier;
 use jiff::Timestamp;
 use std::sync::Arc;
 
-/// A lab app's API key: its label, form field and field id.
-pub(in crate::admin::setup) fn api_key() -> (&'static str, &'static str, &'static str) {
-    (tr("setup-api-key"), "api_key", "la-api")
+/// One of a lab app's two keys as a form shows it. The prompt and the
+/// replacing field's label are their own messages, so no language's label is
+/// changed in code.
+#[derive(Clone, Copy)]
+pub(in crate::admin::setup) struct KeyForm {
+    /// "API key" or "Signing key".
+    pub(in crate::admin::setup) label: &'static str,
+    /// The empty field's prompt: "Paste the API key".
+    pub(super) placeholder: &'static str,
+    /// The replacing field's label: "New API key".
+    pub(super) replacement: &'static str,
+    /// The form field that takes a new value.
+    pub(super) field: &'static str,
+    /// The field's element id on the page.
+    pub(super) input: &'static str,
 }
 
-/// A lab app's signing key: its label, form field and field id.
-pub(in crate::admin::setup) fn signing_key() -> (&'static str, &'static str, &'static str) {
-    (tr("setup-signing-key"), "signing_key", "la-signing")
+/// A lab app's API key: its label, prompt, form field and field id.
+pub(in crate::admin::setup) fn api_key() -> KeyForm {
+    KeyForm {
+        label: tr("setup-api-key"),
+        placeholder: tr("setup-paste-the-api-key"),
+        replacement: tr("setup-new-api-key"),
+        field: "api_key",
+        input: "la-api",
+    }
+}
+
+/// A lab app's signing key: its label, prompt, form field and field id.
+pub(in crate::admin::setup) fn signing_key() -> KeyForm {
+    KeyForm {
+        label: tr("setup-signing-key"),
+        placeholder: tr("setup-paste-the-signing-key"),
+        replacement: tr("setup-new-signing-key"),
+        field: "signing_key",
+        input: "la-signing",
+    }
 }
 
 /// Where a page finds keys, by the service's own rule (`secrets::source`):
@@ -57,7 +86,7 @@ impl KeySource {
     /// environment variable show, as it wins at startup too.
     pub(in crate::admin::setup) fn key(
         &self,
-        (label, field, input): (&'static str, &'static str, &'static str),
+        form: KeyForm,
         name: &Identifier,
         now: Timestamp,
     ) -> Key {
@@ -104,9 +133,11 @@ impl KeySource {
                 },
             };
         Key {
-            label,
-            field,
-            input,
+            label: form.label,
+            placeholder: form.placeholder,
+            replacement: form.replacement,
+            field: form.field,
+            input: form.input,
             tone,
             word,
             exact,
@@ -157,7 +188,8 @@ pub(in crate::admin) async fn key_sources(
     off_thread(state, move |state| {
         let source = KeySource::read(&state.setup);
         let status = |name: &Identifier| {
-            let key = source.key(("", "", ""), name, now);
+            // Only the state is read; which key form names it does not matter.
+            let key = source.key(api_key(), name, now);
             Status {
                 tone: key.tone,
                 icon: key.tone.icon(),
@@ -170,8 +202,8 @@ pub(in crate::admin) async fn key_sources(
         let listed = scan(state.setup.config()).map(|scan| {
             for settings in scan.settings() {
                 for (label, name) in [
-                    (api_key().0, &settings.api_key_name),
-                    (signing_key().0, &settings.signing_key_name),
+                    (api_key().label, &settings.api_key_name),
+                    (signing_key().label, &settings.signing_key_name),
                 ] {
                     found.push(Found {
                         owner: tr_args(
@@ -190,7 +222,7 @@ pub(in crate::admin) async fn key_sources(
                     "setup-key-owner-alert-target",
                     [("target", target.as_str().into())],
                 ),
-                label: signing_key().0,
+                label: signing_key().label,
                 status: status(name),
             });
         }
@@ -233,4 +265,23 @@ pub(in crate::admin::setup) fn missing_keys(
             format::keys_apply()
         )
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use analyte_i18n::Language;
+
+    // A placeholder once lowercased the translated label, so Spanish showed
+    // "clave de api". Each prompt is now its own message.
+    #[test]
+    fn key_prompts_keep_each_language_s_own_wording() {
+        let spanish = Language::select(["es"]);
+        let (placeholder, replacement) =
+            spanish.sync_scope(|| (api_key().placeholder, api_key().replacement));
+        assert_eq!(placeholder, "Pegue la clave de API");
+        assert_eq!(replacement, "Nueva clave de API");
+        assert_eq!(api_key().placeholder, "Paste the API key");
+        assert_eq!(signing_key().replacement, "New signing key");
+    }
 }

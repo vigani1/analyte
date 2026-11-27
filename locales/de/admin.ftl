@@ -221,8 +221,6 @@ admin-paste-it-from-your-lab-app-team-s-message = Fügen Sie ihn aus der Nachric
 
 admin-replace = Ersetzen
 
-admin-new = Neu
-
 admin-back = Zurück
 
 admin-next = Weiter

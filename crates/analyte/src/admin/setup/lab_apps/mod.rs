@@ -20,7 +20,7 @@ use change::{
     save_blocking, waiting,
 };
 pub(in crate::admin) use keys::{Found, key_sources};
-pub(super) use keys::{KeySource, api_key, missing_keys, signing_key};
+pub(super) use keys::{KeyForm, KeySource, api_key, missing_keys, signing_key};
 use scan::Known;
 pub(super) use scan::{
     Scan, SiteLabApp, conflict_sentence, scan, scan_with_site, site_lab_app, where_written,
@@ -368,10 +368,12 @@ fn form_page(
     let mut head = Section::LabApps(None).head(title.clone());
     head.crumbs
         .extend(settings.map(|settings| Crumb::here(settings.name.as_str())));
-    let new = |(label, field, input)| Key {
-        label,
-        field,
-        input,
+    let new = |form: KeyForm| Key {
+        label: form.label,
+        placeholder: form.placeholder,
+        replacement: form.replacement,
+        field: form.field,
+        input: form.input,
         tone: Tone::Neutral,
         word: String::new(),
         exact: String::new(),

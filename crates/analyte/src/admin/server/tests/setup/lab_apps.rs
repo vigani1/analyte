@@ -454,7 +454,7 @@ async fn lab_app_form_says_where_keys_are_and_never_their_values() -> Result<(),
         "<input id=\"la-name\" class=\"input\" value=\"demo\" readonly>",
         "<p class=\"alert__title\">Still kept in the settings of synthetic</p>",
         "<li><a class=\"link\" href=\"/machines/synthetic\">synthetic</a></li>",
-        "<input id=\"la-api\" class=\"input mono\" type=\"password\" name=\"api_key\" autocomplete=\"off\" maxlength=\"4096\" placeholder=\"Paste the api key\"",
+        "<input id=\"la-api\" class=\"input mono\" type=\"password\" name=\"api_key\" autocomplete=\"off\" maxlength=\"4096\" placeholder=\"Paste the API key\"",
         "</svg>Needed before Analyte can send results.</span>",
         "href=\"/setup/lab-apps/demo/remove\">Remove this lab app</a>",
     ] {
@@ -481,7 +481,7 @@ async fn lab_app_form_says_where_keys_are_and_never_their_values() -> Result<(),
         "{set}"
     );
     assert!(set.contains("<span class=\"btn btn--outline btn--sm\">Replace</span></summary>"));
-    assert!(set.contains("<label class=\"field__label\" for=\"la-api\">New api key</label>"));
+    assert!(set.contains("<label class=\"field__label\" for=\"la-api\">New API key</label>"));
     assert!(!set.contains("Needed before Analyte can send results."));
     let unknown = fixture.get("/setup/lab-apps/nowhere").await?;
     assert!(unknown.starts_with("HTTP/1.1 409"), "{unknown}");

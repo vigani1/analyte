@@ -1091,7 +1091,13 @@ setup-key-owner-lab-app = Labor-App { $name }
 
 setup-key-owner-alert-target = Warnungsziel { $target }
 
-setup-paste-the-key = Fügen Sie den { $key } ein
+setup-paste-the-api-key = Fügen Sie den API-Schlüssel ein
+
+setup-paste-the-signing-key = Fügen Sie den Signaturschlüssel ein
+
+setup-new-api-key = Neuer API-Schlüssel
+
+setup-new-signing-key = Neuer Signaturschlüssel
 
 setup-no-answer = keine Antwort
 

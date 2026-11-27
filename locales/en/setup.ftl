@@ -1076,7 +1076,13 @@ setup-key-owner-lab-app = Lab app { $name }
 
 setup-key-owner-alert-target = Alert target { $target }
 
-setup-paste-the-key = Paste the { $key }
+setup-paste-the-api-key = Paste the API key
+
+setup-paste-the-signing-key = Paste the signing key
+
+setup-new-api-key = New API key
+
+setup-new-signing-key = New signing key
 
 setup-no-answer = no answer
 
