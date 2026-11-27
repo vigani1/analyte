@@ -1,3 +1,38 @@
+# Site answers for replaying each recording through machine.toml.
+["barcode-query.rec.jsonl".choices]
+communication_type = "one-way"
+software_version = "other"
+
+# ADR 0010: a held upload gets AA and keeps its interpretation with no delivery.
+["malformed.rec.jsonl"]
+interpretation = { receipts = 1, results = 0, deliveries = 0 }
+["malformed.rec.jsonl".choices]
+communication_type = "one-way"
+software_version = "v1-01-10-01-10"
+
+["qualitative.rec.jsonl"]
+interpretation = { receipts = 1, results = 1, deliveries = 0 }
+["qualitative.rec.jsonl".choices]
+communication_type = "one-way"
+software_version = "v1-01-10-01-10"
+
+["quality-control.rec.jsonl"]
+interpretation = { receipts = 1, results = 1, deliveries = 0 }
+["quality-control.rec.jsonl".choices]
+communication_type = "one-way"
+software_version = "v1-01-10-01-10"
+
+["quantitative.rec.jsonl"]
+interpretation = { receipts = 1, results = 1, deliveries = 0 }
+["quantitative.rec.jsonl".choices]
+communication_type = "one-way"
+software_version = "v1-01-10-01-10"
+
+["query-unavailable.rec.jsonl".choices]
+communication_type = "one-way"
+software_version = "other"
+
+# Synthetic normal-mode query replays with the settings in replay-orders.toml.
 ["barcode-orders.rec.jsonl"]
 order_cache = "seeded"
 
