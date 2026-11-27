@@ -6,7 +6,9 @@ mod encode;
 mod syntax;
 mod version;
 mod views;
-pub use encode::ack::{AckError, OwnedAckError, Response, Responsibility, acknowledgment};
+pub use encode::ack::{
+    AckError, OwnedAckError, Response, Responsibility, acknowledgment, rejection,
+};
 pub use syntax::{
     Charset, Component, ControlProfile, Delimiters, Error, EscapePolicy, Field, HeaderZone, Limits,
     Message, Options, Repetition, Segment, Terminator, TextEscape, decode_characters, decode_text,
@@ -62,3 +64,7 @@ pub fn is_safe_field(value: &[u8], maximum: usize, syntax: FieldSyntax) -> bool 
 
 /// Application internal error from HL7 2.5.1 §2.15.5, table 0357 (ERR-3).
 pub const APPLICATION_INTERNAL_ERROR: &[u8] = b"207";
+
+/// Unsupported version id from HL7 2.5.1 §2.15.5, table 0357 (ERR-3): a
+/// rejection for an MSH-12 the receiver does not accept.
+pub const UNSUPPORTED_VERSION: &[u8] = b"203";

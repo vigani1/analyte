@@ -457,6 +457,7 @@ impl DefinitionDetails {
         }
         let document: MachineDocument = load_table(path, table, None)?;
         choices::check(&document, path)?;
+        let analyzer_mode = recording::definition_mode(&document, path)?;
         let asks_repeated_results =
             selection::derive(&document.protocol, document.transport.kind, path)?
                 .asks_repeated_results();
@@ -469,7 +470,7 @@ impl DefinitionDetails {
             kind: document.transport.kind,
             serial: document.transport.serial,
             choices: document.choices,
-            analyzer_mode: None,
+            analyzer_mode,
         })
     }
 }

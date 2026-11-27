@@ -25,9 +25,7 @@ pub(super) use scan::{
     Scan, SiteLabApp, conflict_sentence, scan, scan_with_site, site_lab_app, where_written,
 };
 
-use super::{
-    Csrf, RELOAD, RESTART_REQUIRED, SETTINGS_UNCHANGED, SetupError, Via, audit, copies, off_thread,
-};
+use super::{Csrf, RELOAD, RESTART_REQUIRED, SetupError, Via, audit, copies, off_thread};
 use crate::admin::machines::{DialogItem, RemoveDialog};
 use crate::admin::overview::{self, Delivery, Standing};
 use crate::admin::removed;
@@ -177,7 +175,7 @@ fn list_page(
     read: ListRead,
     now: Timestamp,
 ) -> (StatusCode, List) {
-    let frame = Section::LabApps(None).frame(state, "Lab apps", Some(session));
+    let frame = Section::LabApps(None).frame(state, view::Tab::LabApps.label(), Some(session));
     let ListRead {
         settings,
         delivered,
@@ -192,7 +190,7 @@ fn list_page(
                 frame,
                 problems: vec![Notice {
                     tone: Tone::Problem,
-                    title: "The lab apps file could not be read".into(),
+                    title: crate::admin::setup::LAB_APPS_UNREADABLE.into(),
                     text: format::sentence(&error.to_string()),
                 }],
                 cards: Vec::new(),
@@ -229,7 +227,7 @@ fn list_page(
         Err(error) => {
             problems.push(Notice {
                 tone: Tone::Problem,
-                title: "Results still waiting from removed machines could not be counted".into(),
+                title: removed::COUNT_FAILED.into(),
                 text: String::new(),
             });
             support.push(error);
@@ -293,13 +291,13 @@ fn card(
         Some(Todo {
             text: format::KEYS_ADVICE,
             href: href.clone(),
-            label: "Add keys",
+            label: crate::admin::setup::ADD_KEYS,
         })
     } else if runs && delivery == Delivery::NotDelivering {
         Some(Todo {
             text: format::FAILING_ADVICE,
             href: view::Tab::Deliveries.href().to_owned(),
-            label: "Deliveries",
+            label: view::Tab::Deliveries.label(),
         })
     } else {
         None
@@ -355,7 +353,7 @@ fn form_page(
     let (existing, source) = existing.unzip();
     let settings = existing.map(|known| &known.settings);
     let title = settings.map_or_else(
-        || "Add a lab app".to_owned(),
+        || crate::admin::setup::ADD_LAB_APP.to_owned(),
         |settings| format!("Edit {}", settings.name.as_str()),
     );
     let mut head = Section::LabApps(None).head(title.clone());
@@ -574,7 +572,7 @@ fn dialog(
             DialogItem {
                 tone: Tone::Neutral,
                 icon: Icon::Ok,
-                text: "Analyte keeps a dated copy of the old settings.".into(),
+                text: crate::admin::setup::BACKUP_ADVICE.into(),
             },
         ]
     };
@@ -591,11 +589,11 @@ fn dialog(
         list_title: if blocked {
             "It cannot be removed now"
         } else {
-            "Before you remove it"
+            crate::admin::setup::BEFORE_REMOVAL
         },
         items,
         anyway: false,
-        button: (!blocked).then_some("Remove"),
+        button: (!blocked).then_some(crate::admin::setup::REMOVE),
     }
 }
 
@@ -651,24 +649,9 @@ fn saved_page(
         Change::Added => "Lab app added",
         Change::Saved => "Lab app saved",
     };
-    let mut lines = vec![
-        format!("Address: {}", saved.settings.base_url.as_str()),
-        saved.usage_line("Used by no machine yet: pick it on a machine’s setup page."),
-    ];
-    if !saved.changed {
-        lines.push(SETTINGS_UNCHANGED.into());
-    }
-    lines.extend(
-        saved
-            .replaced
-            .iter()
-            .map(|key| format!("Key stored: {key}")),
-    );
-    if !saved.replaced.is_empty() {
-        lines.push(format::KEYS_APPLY.into());
-    }
+    let mut lines = saved.details("Used by no machine yet: pick it on a machine’s setup page.");
     if !saved.backups.is_empty() {
-        lines.push("A dated copy of the old settings was kept.".into());
+        lines.push(crate::admin::setup::BACKUP_KEPT.into());
     }
     let page = Report {
         lines,
@@ -801,7 +784,7 @@ pub(in crate::admin) async fn remove(
         lines: if backups.is_empty() {
             Vec::new()
         } else {
-            vec!["A dated copy of the old settings was kept.".into()]
+            vec![crate::admin::setup::BACKUP_KEPT.into()]
         },
         problems: audited
             .err()

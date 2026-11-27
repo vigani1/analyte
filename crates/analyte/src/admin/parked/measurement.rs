@@ -126,7 +126,7 @@ pub(in crate::admin) async fn show(
         frame: Frame::new(
             &state,
             Tab::NeedsReview,
-            "Compare measurements",
+            crate::admin::view::format::COMPARE_MEASUREMENTS,
             None,
             Some(session),
             Timestamp::now(),

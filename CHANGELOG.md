@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- An HL7 v2 upload whose MSH-12 version Analyte does not recognise is still
+  stored and parked for review, and the analyzer now gets a rejection with the
+  reason instead of no answer: AR (CR in enhanced mode) with ERR code 203,
+  "unsupported version id". The reply is written as HL7 2.5.1 and echoes the
+  message control ID. The connection stays open for the next message
+  (ADR 0010, amended 2026-11-27).
+
 - The plan, guides and READMEs no longer call cobas e 411, iFlash 1200,
   Biolyte 2000, VIDAS and Autolyser blocked: they ship definitions at level
   documented. Swelab Lumi stays blocked.
@@ -11,6 +18,13 @@
   version never implies a limit. Software 4.0.0 answers 12 and VU_06 answers
   17, as before; an existing VIDAS site file needs the new
   `sample_id_length` answer before it loads (ADR 0032).
+
+- Record only for a model with a full machine definition now keeps the ASTM
+  link departures the definition declares. A Roche cobas e 411 recorded in a
+  cobas protocol type has its packed frames acknowledged after storage
+  instead of refused, and the BioCARE Biolyte 2000's repeated ENQ is
+  accepted. Setup asks the cobas protocol type for record only. A frame that
+  fails its checksum is still refused and kept (ADR 0034).
 
 - `analyte captures de-identify` writes a de-identified copy of a recording on
   the lab PC: patient fields become synthetic values of the same shape and
@@ -24,6 +38,7 @@
   me** holds every repeat of a measurement in Needs review for a person, while
   new measurements still flow. The machine's page and `machines list` show the
   setting (ADR 0035, amended 2026-11-26).
+
 - The Dialab Autolyser has a full machine definition written from its
   Operator's Manual Rev18 (evidence level documented) and replaces its
   record-only settings. It reads results and holds them for staff, since

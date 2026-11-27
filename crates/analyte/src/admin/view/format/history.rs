@@ -62,8 +62,8 @@ pub(in crate::admin) fn settled(action: &str, targets: &[&str]) -> String {
 /// resolved", "Processed again", or "Resolved" for an action recorded elsewhere.
 pub(in crate::admin) fn settled_action(action: &str) -> &'static str {
     match action {
-        recovery::RESOLVE_ACTION => "Marked resolved",
-        recovery::REPROCESS_ACTION => "Processed again",
+        recovery::RESOLVE_ACTION => crate::admin::view::format::MARKED_RESOLVED,
+        recovery::REPROCESS_ACTION => crate::admin::view::format::PROCESSED_AGAIN,
         analyte_store::RESEND_MEASUREMENT_ACTION => "Recorded as a resend",
         analyte_store::RERUN_MEASUREMENT_ACTION => "Rerun queued",
         analyte_store::SUPERSEDE_SAMPLE_ACTION => "Superseded by the receipt with a tube ID",

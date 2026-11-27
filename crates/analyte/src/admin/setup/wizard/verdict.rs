@@ -174,7 +174,7 @@ pub(super) fn verdict(
     let nothing = if ended {
         "Nothing received"
     } else {
-        "Nothing received yet"
+        format::NOTHING_RECEIVED_YET
     };
     let receiving = |seen: &str| {
         if fits(guess, model) {
@@ -281,7 +281,7 @@ fn nothing_received(route: &Route, connected: bool, ended: bool) -> (Tone, Strin
     match route {
         Route::Serial => (
             Tone::Attention,
-            tense("Nothing received yet", "Nothing received"),
+            tense(format::NOTHING_RECEIVED_YET, "Nothing received"),
             concat!(
                 "Check the cable and the machine’s host settings, then ask the machine to send ",
                 "a result again."
@@ -375,6 +375,29 @@ fn fits(guess: Guess, model: Family) -> bool {
         Guess::Nothing | Guess::Unknown => false,
     }
 }
+
+/// How many test bytes arrived, and whether the byte limit stopped the read.
+pub(in crate::admin::setup) fn received(view: &listen::View, byte_limit: usize) -> String {
+    let count = u64::try_from(view.seen).unwrap_or(u64::MAX);
+    let mut received = format!("{} received", format::amount(count, "byte", "bytes"));
+    if view.size_limit_reached {
+        let limit = format::bytes(u64::try_from(byte_limit).unwrap_or(u64::MAX));
+        received.push_str(&format!(" · reading stopped at the {limit} limit"));
+    }
+    received
+}
+
+/// The control characters observed during the test, or the empty state.
+pub(in crate::admin::setup) fn framing(bytes: &[u8]) -> String {
+    if bytes.is_empty() {
+        "None yet".to_owned()
+    } else {
+        format::control_names(bytes)
+    }
+}
+
+/// Labels the control characters observed during a connection test.
+pub(in crate::admin::setup) const FRAMING_CHARACTERS: &str = "Framing characters";
 
 #[cfg(test)]
 mod tests {

@@ -390,24 +390,39 @@ pub(in crate::admin::setup) fn removed_reason(via: Via, name: &str) -> String {
 /// a key value. The command prints these whether it saved itself or the
 /// engine did.
 pub(in crate::admin::setup) fn saved_lines(change: Change, saved: &Saved) -> Vec<String> {
-    let mut lines = vec![
-        format!("{} is {}.", saved.settings.name.as_str(), change.verb()),
-        format!("Address: {}", saved.settings.base_url.as_str()),
-        saved.usage_line(
-            "Used by no machine yet: pick it with analyte machines set <machine> --lab-app <name>.",
-        ),
-    ];
-    if !saved.changed {
-        lines.push(SETTINGS_UNCHANGED.to_owned());
-    }
-    for key in &saved.replaced {
-        lines.push(format!("Key stored: {key}"));
-    }
-    if !saved.replaced.is_empty() {
-        lines.push(format::KEYS_APPLY.to_owned());
-    }
+    let mut lines = vec![format!(
+        "{} is {}.",
+        saved.settings.name.as_str(),
+        change.verb()
+    )];
+    lines.extend(saved.details(
+        "Used by no machine yet: pick it with analyte machines set <machine> --lab-app <name>.",
+    ));
     lines.extend(copies(&saved.backups));
     lines
+}
+
+impl Saved {
+    /// The address, usage and key status after saving a lab app.
+    pub(super) fn details(&self, unused: &str) -> Vec<String> {
+        let mut lines = vec![
+            address_line(self.settings.base_url.as_str()),
+            self.usage_line(unused),
+        ];
+        if !self.changed {
+            lines.push(SETTINGS_UNCHANGED.to_owned());
+        }
+        lines.extend(self.replaced.iter().map(|key| format!("Key stored: {key}")));
+        if !self.replaced.is_empty() {
+            lines.push(format::KEYS_APPLY.to_owned());
+        }
+        lines
+    }
+}
+
+/// Formats the address line for a lab app.
+pub(in crate::admin::setup) fn address_line(address: &str) -> String {
+    format!("Address: {address}")
 }
 
 #[cfg(test)]

@@ -58,7 +58,11 @@ pub(in crate::admin) const fn order_look(state: OrderState) -> StateLook {
 /// A delivery's state as every page shows it; pages keep the stored state on hover.
 pub(in crate::admin) const fn delivery_look(state: DeliveryState) -> StateLook {
     match state {
-        DeliveryState::Pending => StateLook::of(Tone::Neutral, Icon::Waiting, "Waiting to be sent"),
+        DeliveryState::Pending => StateLook::of(
+            Tone::Neutral,
+            Icon::Waiting,
+            crate::admin::view::format::WAITING_TO_SEND,
+        ),
         DeliveryState::InFlight => StateLook::of(Tone::Neutral, Icon::Send, "Sending"),
         DeliveryState::Done => StateLook::of(Tone::Good, Icon::Ok, "Delivered"),
         // Owner decision 2026-11-20: a rejected delivery needs someone.

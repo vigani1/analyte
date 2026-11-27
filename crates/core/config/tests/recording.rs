@@ -479,3 +479,93 @@ fn record_file_departures_stay_narrow_and_evidenced() -> TestResult {
     );
     Ok(())
 }
+
+/// A shipped ready definition, as record only reads it from its model folder.
+fn shipped(
+    model: &str,
+    text: &str,
+    answers: &str,
+) -> Result<analyte_config::RecordStack, Box<dyn std::error::Error>> {
+    let validated = recording::load(
+        (&format!("machines/{model}/machine.toml"), text),
+        ("site.toml", &cobas_site(answers)),
+    )?;
+    let Stack::Record(stack) = validated.effective().stack() else {
+        return Err("record-only stack".into());
+    };
+    Ok((**stack).clone())
+}
+
+const COBAS_DEFINITION: &str = include_str!("../../../../machines/roche/cobas-e411/machine.toml");
+
+// cobas e 411 HIM v2.3 section 5 (p. 14) and v2.2 D section 1 (p. D-2), with
+// ADR 0034 (amendment of 2026-11-27): record only through the ready
+// definition keeps the packing its cobas protocol types declare, and the
+// Elecsys type stays one record per frame. The lab answers the definition's
+// own protocol_type values; nothing is assumed.
+#[test]
+fn ready_cobas_definition_packs_only_in_its_cobas_protocol_types() -> TestResult {
+    for (mode, packed) in [("elecsys", false), ("cobas", true), ("cobas_qc_lot", true)] {
+        let stack = shipped(
+            "roche/cobas-e411",
+            COBAS_DEFINITION,
+            &format!("analyzer_mode = \"{mode}\"\n"),
+        )?;
+        assert_eq!(stack.packed_records(), packed, "{mode}");
+        assert!(!stack.repeat_enq(), "{mode}");
+    }
+    let missing = shipped("roche/cobas-e411", COBAS_DEFINITION, "")
+        .err()
+        .ok_or("no answer accepted")?
+        .to_string();
+    assert!(
+        missing.contains("recording.analyzer_mode") && missing.contains("cobas_qc_lot"),
+        "{missing}"
+    );
+    let details = analyte_config::DefinitionDetails::parse(
+        "machines/roche/cobas-e411/machine.toml",
+        COBAS_DEFINITION,
+    )?;
+    let mode = details
+        .analyzer_mode
+        .ok_or("Setup asks the protocol type")?;
+    assert_eq!(mode.allowed(), "elecsys, cobas, cobas_qc_lot");
+    // Only the link departure carries: the definition's narrower frame limit
+    // and receive timeout stay with a normal connection.
+    let validated = recording::load(
+        ("machines/roche/cobas-e411/machine.toml", COBAS_DEFINITION),
+        ("site.toml", &cobas_site("analyzer_mode = \"cobas\"\n")),
+    )?;
+    let tags: Vec<&str> = validated
+        .effective()
+        .machine()
+        .deviations
+        .iter()
+        .map(analyte_config::MachineDeparture::tag)
+        .collect();
+    assert_eq!(tags, ["astm_packed_records_in_frame"]);
+    Ok(())
+}
+
+// BioCARE Biolyte 2000 Service Manual V4.2A Appendix VI 2.1 (p. 80) and
+// ADR 0034 (amendment of 2026-11-27): record only through the ready
+// definition accepts the analyzer's one repeated ENQ, a link rule; the empty
+// H.12 reading (Appendix VI p. 82) is interpretation and stays out, and no
+// analyzer mode is asked.
+#[test]
+fn ready_biolyte_definition_keeps_its_repeated_enq_only() -> TestResult {
+    let text = include_str!("../../../../machines/biocare/biolyte-2000/machine.toml");
+    let stack = shipped("biocare/biolyte-2000", text, "")?;
+    assert!(stack.repeat_enq());
+    assert!(!stack.packed_records());
+    let validated = recording::load(
+        ("machines/biocare/biolyte-2000/machine.toml", text),
+        ("site.toml", &cobas_site("")),
+    )?;
+    assert!(
+        !validated
+            .canonical()
+            .contains("astm_absent_h12_means_production")
+    );
+    Ok(())
+}

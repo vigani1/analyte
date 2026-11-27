@@ -10,12 +10,12 @@
 <div class="stack stack--lg narrow">
 {% call layout::label_card("dk-times", "Keeping times") %}
 {%- if policies.is_empty() %}
-<p class="muted text--sm">No machine is set up.</p>
+<p class="muted text--sm">{{ crate::admin::view::format::NO_MACHINE_SET_UP }}</p>
 {%- else %}
 <dl class="kv">{% for (machine, policy) in policies %}<dt>{{ machine }}</dt><dd>{{ policy }}</dd>{% endfor %}</dl>
 {%- endif %}
 {% endcall %}
-{% call layout::label_card("dk-clean", "Last clean-up") %}
+{% call layout::label_card("dk-clean", crate::admin::more::retention::LAST_CLEAN_UP) %}
 {%- if clean_up.is_none() %}
 <p class="muted text--sm">No clean-up has run yet.</p>
 {%- endif %}
@@ -25,7 +25,7 @@
 </dl>
 {% endcall %}
 <section class="section" aria-labelledby="dk-holds">
-<div class="section__head">{% call layout::label("dk-holds", "Holds", "") %}{% endcall %}{% if form.is_some() %}{% call forms::link_button("#dk-add", "Add a hold", "btn--outline btn--sm") %}{% endcall %}{% endif %}</div>
+<div class="section__head">{% call layout::label("dk-holds", crate::admin::more::retention::HOLDS, "") %}{% endcall %}{% if form.is_some() %}{% call forms::link_button("#dk-add", crate::admin::more::retention::ADD_HOLD, "btn--outline btn--sm") %}{% endcall %}{% endif %}</div>
 <p class="muted text--sm">{{ HOLDS_TEXT }}</p>
 {%- if holds.is_empty() %}
 {% call feedback::empty_card("No holds", "Nothing is held now; clean-up follows the keeping times.") %}{% endcall %}
@@ -33,7 +33,7 @@
 <ul class="card rows">
 {%- for hold in holds %}
 <li class="row more-row" title="{{ hold.exact }}">{% call draw::icon(crate::admin::view::icon::Icon::Lock, "") %}{% endcall %}<div class="row__main"><p class="more-row__title">{% call display::words(hold.title) %}{% endcall %}</p><p class="subtle text--sm">{% call display::words(hold.sub) %}{% endcall %}</p></div>
-{%- if let Some(href) = hold.release %}{% call forms::link_button(href, "Release", "btn--quiet btn--sm") %}{% endcall %}{% endif -%}
+{%- if let Some(href) = hold.release %}{% call forms::link_button(href, crate::admin::more::retention::RELEASE, "btn--quiet btn--sm") %}{% endcall %}{% endif -%}
 </li>
 {%- endfor %}
 </ul>
@@ -44,7 +44,7 @@
 </section>
 {%- if let Some(csrf) = form %}
 <section class="card card--pad stack" id="dk-add" aria-labelledby="dk-add-title">
-<h2 id="dk-add-title" class="label">Add a hold</h2>
+<h2 id="dk-add-title" class="label">{{ crate::admin::more::retention::ADD_HOLD }}</h2>
 <form class="stack" method="post" action="/retention">
 <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="operation" value="place">
 <div class="form-grid">

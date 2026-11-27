@@ -15,7 +15,7 @@ use crate::admin::view::{
 /// The alerts table's columns.
 pub(super) const ALERT_COLUMNS: [Column; 5] = [
     Column::text("Alert"),
-    Column::text("Machine"),
+    Column::text(format::MACHINE),
     Column::text("Responder"),
     Column::text("Raised"),
     Column::number("Last value"),

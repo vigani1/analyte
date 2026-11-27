@@ -3,6 +3,8 @@
 Status: accepted, 2026-11-15. Extends [ADR 0003](0003-clinical-safety-rules.md).
 Extended by [ADR 0034](0034-record-only-connections.md) (the record-only row).
 Amended 2026-11-26: HL7 v2 accepts a stored upload whose interpretation is held.
+Amended 2026-11-27: HL7 v2 rejects a stored upload whose MSH-12 it does not
+recognise, with the reason, instead of staying silent.
 
 ## Context
 
@@ -54,7 +56,8 @@ What still refuses, unchanged:
 - storage failure or a nearly full disk: AR in original mode, CE in enhanced
   mode, never AA or CA;
 - bytes the HL7 parser rejects (no usable MSH, a bad escape, an unsupported
-  application acknowledgment channel): kept and parked with no reply;
+  application acknowledgment channel): kept and parked with no reply (an
+  unrecognised MSH-12 now gets a reply, see the 2026-11-27 amendment);
 - an HL7 syntax or data-type error first found while reading a parsed
   message: AE with the ERR location;
 - a message type or event the result connection does not read (anything but
@@ -64,6 +67,33 @@ What still refuses, unchanged:
 
 IHE LAW (LAB-29) keeps its own acknowledgment rules and is not changed by this
 amendment. Record-only connections keep their row from ADR 0034.
+
+## Amendment 2026-11-27: unrecognised HL7 versions are rejected with a reason
+
+Found while fixing the held-upload rule. An HL7 v2 upload whose MSH-12 names
+an edition Analyte does not recognise was kept and parked, which was right,
+but the analyzer got no answer at all: it waited, resent or gave up, and the
+lab never learned why.
+
+Now, once the raw message is durably stored and parked with its reason,
+Analyte answers a rejection that says why. HL7 2.5.1 §2.9.2.1 b names an
+unacceptable version as a reason to reject, and table 0357 gives it error
+code 203.
+
+- Original mode: AR, with an ERR segment located at MSH-12 carrying 203.
+- Enhanced mode: the commit reject CR with the same ERR (§2.9.3.2 b), only
+  when MSH-15 asks for it; no application acknowledgment follows.
+- The reply is written as HL7 2.5.1 and says so in its MSH-12. It never
+  echoes an edition we cannot write, and it reads only the header of the
+  incoming message. MSA-2 still echoes MSH-10.
+- It is never AA or CA.
+- A storage failure still gets AR or CE, with no ERR, as before.
+- The old silent path stays when no reply can be built: MSH-10 missing or
+  unsafe to echo, MSH-15 or MSH-16 unreadable, a header that is not ASCII, a
+  truncation character the 2.5.1 reply cannot carry, or a message that
+  carries MSA, since an acknowledgment is never acknowledged.
+
+The other HL7 answers, IHE LAW and record-only connections are unchanged.
 
 ## Consequences
 

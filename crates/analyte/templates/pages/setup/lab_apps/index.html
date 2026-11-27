@@ -8,14 +8,14 @@
 {%- block main %}
 {% call layout::intro_head("", "Lab apps", "The lab software that receives results and sends orders. Each machine picks one in its setup; changes apply after a restart.") %}
 {%- if add %}
-{% call forms::icon_button("/setup/lab-apps/new", crate::admin::view::icon::Icon::Plus, "Add a lab app", "btn--primary") %}{% endcall %}
+{% call forms::icon_button("/setup/lab-apps/new", crate::admin::view::icon::Icon::Plus, crate::admin::setup::ADD_LAB_APP, "btn--primary") %}{% endcall %}
 {%- endif %}
 {% endcall %}
 {%- for notice in problems %}
 {% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
 {%- endfor %}
 {%- if add && cards.is_empty() %}
-{% call feedback::empty_card("No lab app is set up yet", "Add one; machines can then send results to it.") %}{% call forms::link_button("/setup/lab-apps/new", "Add a lab app", "btn--outline btn--sm") %}{% endcall %}{% endcall %}
+{% call feedback::empty_card(crate::admin::setup::NO_LAB_APP, "Add one; machines can then send results to it.") %}{% call forms::link_button("/setup/lab-apps/new", crate::admin::setup::ADD_LAB_APP, "btn--outline btn--sm") %}{% endcall %}{% endcall %}
 {%- endif %}
 {%- if !cards.is_empty() %}
 <div class="stack stack--lg">
@@ -29,7 +29,7 @@
 {%- for key in card.keys %}
 <dt>{{ key.label }}</dt><dd>{% call display::key_status(key) %}{% endcall %}</dd>
 {%- endfor %}
-<dt>Waiting to be sent</dt><dd>{% call display::words(card.waiting) %}{% endcall %}</dd>
+<dt>{{ crate::admin::view::format::WAITING_TO_SEND }}</dt><dd>{% call display::words(card.waiting) %}{% endcall %}</dd>
 {%- if let Some(failing) = card.failing %}
 <dt>Tries</dt><dd>{% call display::words(failing) %}{% endcall %}</dd>
 {%- endif %}
@@ -47,7 +47,7 @@
 {% call feedback::whattodo(todo.text, todo.href, todo.label) %}{% endcall %}
 {%- endif %}
 </div>
-<div class="card__foot">{% call forms::link_button(card.href, "Edit", "btn--quiet btn--sm") %}{% endcall %}{% call forms::link_button(card.remove, "Remove", "btn--danger-quiet btn--sm") %}{% endcall %}</div>
+<div class="card__foot">{% call forms::link_button(card.href, "Edit", "btn--quiet btn--sm") %}{% endcall %}{% call forms::link_button(card.remove, crate::admin::setup::REMOVE, "btn--danger-quiet btn--sm") %}{% endcall %}</div>
 </article>
 {%- endfor %}
 </div>

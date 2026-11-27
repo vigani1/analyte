@@ -264,34 +264,6 @@ the declared `group` and `record`. Confirm them from source and recordings.
 `mappings.sample.source` describes how the machine got the ID; the field
 selector determines where Analyte reads it. Sample IDs remain strings.
 
-### Declare a result identity recipe
-
-Add `evidence = { manual = "title and revision", section = "section and table" }`
-under `[mappings.identity]` for the installed model, firmware and mode. When
-choices select the whole mapping, put the recipe in each applicable mapping.
-Choose `order_id`, its `order_namespace` and `sub_id` from their source fields.
-Use `sub_id = "none"` when the profile has no sub-ID. The recipe also uses the
-configured sample ID and the machine's namespaced test code.
-
-List the required `run` selectors in order. For example, when a manual
-establishes ASTM R.13 as stable completion evidence, its selector is
-`{ group = "observation", record = "R", field = 13, component = 1, repetition = 1 }`.
-Confirm that two measurements of the same sample and test have different keys,
-that resends repeat the key, and that corrections keep it. Use this recipe
-for sources with one measurement per observation record.
-
-Declare the manual's exact `correction_status_codes` and `rerun_status_codes`.
-A rerun code overrides the generic status meaning and needs source evidence
-that distinguishes the run from earlier runs. Select the raw marker in `run`
-only if its documented stability and distinctness make it part of the key.
-Check resends, multiple reruns and missing fields with synthetic tests and a
-de-identified recording before qualification.
-
-For VIDAS use `[codes.vidas_identity]` with `sample_namespace` and the same
-`evidence` citation. It selects the source sample, assay, completion date and
-completion time. Verify the date and time have sufficient precision for the
-installed profile. See [ADR 0035](../adr/0035-machine-result-identity-recipes.md).
-
 For ASTM only, an optional section can split one R.3 component into exact parts:
 
 ```toml
@@ -363,6 +335,76 @@ patient field and rejects `patient_namespace`. Follow the
 Sent, accepted, done and cancelled are different outcomes. A lost reply or
 restart never authorizes an automatic resend to a machine.
 
+## Automatic handling: what to write and how Analyte uses it
+
+The shared loader applies these declarations to the selected settings. Cite
+the exact manual revision and section in the definition and explain gaps in
+the machine README. The examples below use invented names and values.
+
+### Identify resends, reruns and corrections
+
+An identity recipe tells Analyte which received results describe the same
+measurement. In ASTM and HL7, add the recipe to `[mappings.identity]`, or to
+`[choices.values.mappings.identity]` if a choice owns the mapping.
+
+```toml
+[mappings.identity]
+order_id = { group = "order", record = "O", field = 3, component = 1, repetition = 1 }
+order_namespace = { fixed = "example-specimen-id" }
+sub_id = "none"
+run = [{ group = "observation", record = "R", field = 13, component = 1, repetition = 1 }]
+correction_status_codes = ["C"]
+rerun_status_codes = []
+evidence = { manual = "Example Interface Guide rev 1", section = "Result fields and correction rules" }
+```
+
+Use the documented order or specimen identifier and its assigning namespace.
+`order_namespace` takes either `{ fixed = "…" }` or `{ field = { … } }`
+when the analyzer sends the namespace. Select a documented sub-ID or use
+`sub_id = "none"` for a profile with no sub-ID. Select `run` fields that stay
+stable on a resend and distinguish successive measurements of the same
+sample and test, such as a unique analyzer run number or a completion
+timestamp with sufficient precision. The configured sample ID must also be
+present and the machine's namespaced assay code is part of the identity.
+
+List only exact documented codes in `correction_status_codes` and
+`rerun_status_codes`. A correction must retain the measurement key. A
+rerun gets a separate key when its run evidence changes. A generic rerun
+marker can describe every rerun, so only include it in `run` if the manual
+establishes that it also distinguishes individual measurements. Use empty
+code lists where no override is documented.
+
+For VIDAS the shared recipe uses sample ID, assay, completion date and
+completion time. Enable it only when those fields identify a measurement in
+the documented profile.
+
+```toml
+[codes.vidas_identity]
+sample_namespace = "example-sample-id"
+evidence = { manual = "Example BCI Guide rev 1", section = "Completion date and time" }
+```
+
+Analyte keeps each receipt. Same key and same content is a resend. If the
+result qualifies for production delivery, it is delivered once across both
+receipts. A different key starts a new result at
+revision zero. Changed content under the same key needs a documented
+correction to advance the revision. Otherwise Analyte keeps it for review.
+For ASTM and HL7 without reliable run fields, leave `run = []` and omit
+`evidence` unless it cites a documented rerun marker for status only. Leave
+out `codes.vidas_identity` if VIDAS lacks qualifying evidence. Analyte holds
+results when required identity evidence is missing. LAW and POCT use their
+own protocol rules. [ADR 0035](../adr/0035-machine-result-identity-recipes.md)
+
+Worked examples: [cobas e 411](../../machines/roche/cobas-e411/machine.toml)
+puts a completion-time recipe in its Elecsys mode and a status-only rerun
+code in its two cobas modes, which stay unresolved.
+[VIDAS](../../machines/biomerieux/vidas/machine.toml) uses the fixed recipe;
+it reconciles stored measurements, but its uploads lack the processing mode
+needed for production delivery.
+[Biolyte 2000](../../machines/biocare/biolyte-2000/machine.toml) and
+[Autolyser](../../machines/dialab/autolyser/machine.toml) document that no
+stable run field exists and keep their results for operator review.
+
 ### Declare the lab's choices
 
 Some settings are the lab's to choose because the analyzer offers them on its
@@ -408,7 +450,12 @@ vidas = {sample_limit = 17}
 
 The whole synthetic example is
 [`vidas_choices.toml`](../../crates/core/config/examples/vidas_choices.toml).
-The rules the loader checks:
+Name the actual screen or setting in `label`. Use `suggested` only when the
+manual recommends a value for that setting. If the manual gives no
+recommendation, leave `suggested` out and the lab must explicitly choose.
+If the manual gives no options or describes an unsupported one, leave that
+choice or value out and explain the supported scope in the README.
+The loader checks the following rules.
 
 | Rule | Why |
 | --- | --- |
@@ -426,6 +473,12 @@ The lab's values go in the site file's `[choices]`, which Setup writes (see
 [connect](../operations/connect.md#analyzer-settings)). A new kind of building
 block needs a change in the config crate with its tests, not a config
 feature; ask the maintainers.
+
+An explicit site value takes precedence over the suggestion. The effective
+configuration keeps the selected values and settings. See the control and
+recovery choices in [Autolyser](../../machines/dialab/autolyser/machine.toml).
+
+### Offer software versions and check the wire when possible
 
 For a definition shipping with manual coverage, list the versions those
 manuals cover and offer an unchecked value for other versions. The following
@@ -449,17 +502,97 @@ When offering this value, leave behavior settings out of all the software
 version values. For a setting that can vary by version, use a separate mode
 choice with no suggestion. For example, give staff a separate choice for the
 12- or 17-character VIDAS sample ID limit and explain how to confirm the limit
-on their installation. A version outside the manuals still needs that
-confirmation. If you declare a wire selector under
-[ADR 0036](../adr/0036-machine-software-version-warning.md), only the checked
-values have entries in `[software_version.bands]`.
+on their installation. Use the covered versions and the location staff can
+read them from the manual. Leave `suggested` out when only the lab knows the
+installed version. If the manual gives no checked version to offer, omit
+the version choice and record the gap. Selecting the unchecked value shows
+"Software version not checked against a manual" in Setup, Overview and
+`analyte machines list`, before the first upload. Results continue through
+the usual checks. A checked value raises no such warning.
+
+Use a wire selector only if the manual documents a software token in a
+supported position. `astm_sender_second_component` and
+`astm_sender_third_component` read the second or third component of ASTM
+H.5. `hl7_sending_application` and `hl7_sending_facility` read the first
+component of MSH-3 or MSH-4. MSH-12 identifies the HL7 protocol edition.
+
+```toml
+[software_version]
+selector = "astm_sender_third_component"
+source = "Example Interface Guide rev 1, Sender fields"
+
+[software_version.bands]
+v1 = ["1.0", "1.1"]
+```
+
+With a version choice, give every checked value a band of exact wire tokens.
+Omit the unchecked value from `bands`. Name each token separately in an
+`[[evidence.capabilities]]` entry's `firmware` field. With a selector and no
+version choice, omit `bands` and the comparison uses the valid firmware
+tokens in evidence. A token is at most 64 ASCII bytes, contains a digit and
+uses only letters, digits, `.`, `-`, `_` or `+`. Matching is exact. An
+unexpected, blank or malformed report raises a warning while result
+processing continues. Leave out the
+selector if the manual is silent about the wire position or exact tokens.
+Analyte then makes no wire comparison. Picking the unchecked value also
+disables the comparison and keeps the unchecked warning active.
+[ADR 0036](../adr/0036-machine-software-version-warning.md)
+
+Worked examples: [Biolyte 2000](../../machines/biocare/biolyte-2000/machine.toml)
+has a checked band with exact wire tokens and the unchecked value.
+[VIDAS](../../machines/biomerieux/vidas/machine.toml) has versions staff read
+on the About screen, because its wire carries no version field.
+[cobas e 411](../../machines/roche/cobas-e411/machine.toml) has a selector
+with no version choice, so it compares against its evidence tokens.
 
 ### Declare departures, do not program around them
 
-Keep `deviations = []` for the strict example. Under
+Keep `deviations = []` when standard behavior applies or the manual gives
+no basis for a departure. Under
 [ADR 0015](../adr/0015-named-machine-departures.md) each entry is one variant of a
 closed list, with its own scope, evidence references and evidence level. No
 field path, pattern, script or free status mapping can select behavior.
+
+```toml
+[departure_scope]
+model = "example/analyzer"
+firmware = "1.0"
+mode = "upload"
+edition = { protocol = "astm" }
+direction = "machine_to_host"
+message = "astm_results"
+
+[[deviations]]
+rule = "astm_packed_records_in_frame"
+
+[deviations.declaration]
+level = "documented"
+scope = { model = "example/analyzer", firmware = "1.0", mode = "upload", edition = { protocol = "astm" }, direction = "machine_to_host", message = "astm_results" }
+
+[[deviations.declaration.evidence]]
+kind = "manual"
+reference = "example-link-guide-rev1"
+title = "Example Link Guide"
+revision = "1"
+section = "Upload framing"
+guarantee = "packed_records"
+covers_unknown_firmware = false
+contradicts = false
+```
+
+For a selectable mode, list rule tags in `[[choices.values]]` as
+`departures = ["astm_packed_records_in_frame"]` and use `departures = []`
+for values with none. Write each scoped declaration under
+`[[choice_departures]]` using the same `rule`, `declaration.scope`,
+`declaration.level` and `declaration.evidence` keys. Use the choice value
+as `scope.mode` and keep the rest of its scope consistent with
+`[departure_scope]`. The chosen stack uses only the active departures.
+The stored interpretation records which rules were enabled and applied.
+Without a qualifying declaration, the strict behavior stays in force and
+nonconforming input may be refused or held. The
+[cobas e 411](../../machines/roche/cobas-e411/machine.toml) definition shows
+scoped modes. [Biolyte 2000](../../machines/biocare/biolyte-2000/machine.toml)
+shows fixed departures.
 
 | Variant | What it allows | Evidence it needs |
 | --- | --- | --- |
@@ -494,6 +627,26 @@ and ask maintainers. A reviewed
 code change belongs in the owning layer; do not weaken a shared standard or
 invent a config key. A new subsystem, protocol family, format, dependency or
 unplanned ADR requires agreement before building it.
+
+### Checklist for a new machine
+
+- [ ] Cite each stable identity field and exact status code. Leave uncertain
+  identity unresolved (`run = []`, or no `codes.vidas_identity`).
+- [ ] Declare only the choices the analyzer really offers. Add `suggested`
+  only where the manual recommends a value.
+- [ ] List the checked software versions and add "Other version (not
+  checked)". Keep behavior settings out of the version values.
+- [ ] Add `[software_version]` only for a documented wire position, and list
+  every band token as a capability `firmware`.
+- [ ] Declare only evidenced departures, scoped to the mode that needs them.
+- [ ] Set the same evidence level in `machine.toml` and the README `Level:`.
+- [ ] Run `cargo test -p analyte --all-features --test service shipped_`.
+  These tests read every `machines/*/*/machine.toml` without naming any.
+  They load every choice combination and check the README level. They check
+  the unchecked-version warning and the wire tokens against evidence. For
+  each combination with an active identity recipe, they build synthetic
+  uploads from your selectors: an exact resend keeps one delivery, and
+  changed content under the same key is held for review.
 
 ## Validate before connecting
 
@@ -690,15 +843,7 @@ Machine definitions use `schema_version = 2`: set `protocol` and
 sections carry no `kind` key. Any other machine schema version is refused as
 unsupported.
 
-### Mode-specific departures and site poll intervals
-
-A mode that needs a departure lists its rule tag in
-`[[choices.values]]` using `departures = ["astm_packed_records_in_frame"]`.
-Use `departures = []` for the other modes. Declare the rule under
-`[[choice_departures]]` with its exact mode (the value name), firmware, traffic
-scope and source evidence. Add the common installed scope under
-`[departure_scope]`. The loader checks every offered mode and refuses missing
-or mismatched declarations. The effective snapshot records the active rules.
+### Site poll intervals
 
 Choice values can also set `encoding` to a supported encoding documented by
 the machine, or set individual `autolyser.controls`,

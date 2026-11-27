@@ -424,8 +424,8 @@ fn machine_rows(
             let running = state.setup.running(id);
             let (tone, word) = match (running, &entry.definition) {
                 (Some(_), _) => (Tone::Good, "Running"),
-                (None, None) => (Tone::Neutral, "Not set up yet"),
-                (None, Some(_)) => (Tone::Attention, "Saved: starts after a restart"),
+                (None, None) => (Tone::Neutral, format::NOT_SET_UP),
+                (None, Some(_)) => (Tone::Attention, format::STARTS_AFTER_RESTART),
             };
             page::Machine {
                 id: id.clone(),
@@ -446,7 +446,7 @@ fn machine_rows(
                 id: gone.id.as_str().to_owned(),
                 links: None,
                 model: None,
-                status: status(Tone::Attention, "Removed: stops at the restart"),
+                status: status(Tone::Attention, format::STOPS_AT_RESTART),
                 version: settings_version(Some(gone)),
             }),
     );
@@ -551,7 +551,7 @@ pub(super) async fn index(
             .collect(),
         Err(error) => vec![Notice {
             tone: Tone::Problem,
-            title: "Results still waiting from removed machines could not be counted".into(),
+            title: crate::admin::removed::COUNT_FAILED.into(),
             text: format::sentence(&error.to_string()),
         }],
     };
@@ -594,7 +594,7 @@ pub(super) async fn index(
         frame: Frame::new(
             &state,
             Tab::Setup,
-            "Setup",
+            Tab::Setup.label(),
             None,
             session.as_deref(),
             Timestamp::now(),
@@ -832,7 +832,7 @@ pub(super) async fn restart(
         frame: Frame::new(
             &state,
             Tab::Setup,
-            "Restarting",
+            RESTARTING,
             None,
             Some(&session),
             Timestamp::now(),
@@ -851,3 +851,41 @@ pub(super) async fn restart(
     );
     response
 }
+
+/// Confirms that setup kept a dated backup.
+pub(in crate::admin) const BACKUP_KEPT: &str = "A dated copy of the old settings was kept.";
+
+/// Explains what happens to old settings when setup removes an entry.
+pub(in crate::admin) const BACKUP_ADVICE: &str = "Analyte keeps a dated copy of the old settings.";
+
+/// Heads the checks before a settings entry is removed.
+pub(in crate::admin) const BEFORE_REMOVAL: &str = "Before you remove it";
+
+/// Explains what a reused machine name does with the earlier history.
+pub(in crate::admin) const REUSED_MACHINE_HISTORY: &str =
+    "It joins the stored history of the earlier machine with this name.";
+
+/// Confirms that saving a machine moved its lab app into the shared list.
+pub(in crate::admin) const LAB_APP_MOVED: &str =
+    "This lab app is now kept on the Lab apps page; nothing else changed.";
+
+/// Labels the action to remove a setup entry.
+pub(in crate::admin) const REMOVE: &str = "Remove";
+
+/// Labels the action to save settings.
+pub(in crate::admin) const SAVE: &str = "Save";
+
+/// Heads the page shown during an engine restart.
+pub(in crate::admin) const RESTARTING: &str = "Restarting";
+
+/// Labels the action to add a lab app in Setup.
+pub(in crate::admin) const ADD_LAB_APP: &str = "Add a lab app";
+
+/// Says the site has no lab app configured.
+pub(in crate::admin) const NO_LAB_APP: &str = "No lab app is set up yet";
+
+/// Heads the warning when the lab apps file cannot be read.
+pub(in crate::admin) const LAB_APPS_UNREADABLE: &str = "The lab apps file could not be read";
+
+/// Labels the action to enter lab app keys.
+pub(in crate::admin) const ADD_KEYS: &str = "Add keys";

@@ -18,10 +18,14 @@
 - `site`: The lab's site-file settings: retention, time zone and repeated results (ADR 0035).
 - `schema/law`: Explicit LAW profile selection (re-exported at the crate root).
 
-A software-version choice can pair a single documented band with
-`checked = false` for "Other version (not checked)". A choice that offers
-this value cannot select any settings. Use separate, explicitly selected
-modes for any settings that vary by version. A wire selector's bands list
-only the checked values.
+The machine guide gives exact TOML keys and synthetic examples for identity
+recipes, lab choices, software versions and departures. The loader validates
+all offered choice combinations. A software version choice with
+`checked = false` for "Other version (not checked)" identifies software
+only. Keep any settings that vary by version in separate mode choices.
+With a wire selector and a software version choice, `software_version.bands`
+has one entry per checked value. Every exact wire token must also appear
+as `firmware` in `evidence.capabilities`.
+[Automatic handling](../../../docs/develop/adding-a-machine.md#automatic-handling-what-to-write-and-how-analyte-uses-it)
 
 [Technical details and safety guidance](DETAILS.md).
