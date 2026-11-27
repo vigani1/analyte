@@ -13,10 +13,17 @@
 //! (`[analyzer_mode]`), and may declare the one ADR 0015 departure a recording
 //! can need, packed ASTM records in one frame, scoped to the mode that packs.
 //! The lab's answer selects it; no other mode, model or protocol gets it.
+//!
+//! A ready `machine.toml` keeps the ASTM link departures its definition
+//! declares (packed records, a repeated ENQ), checked as the normal loader
+//! checks them; when a mode choice selects one, record only asks that choice
+//! as its analyzer mode. Departures that read records or narrow a bound the
+//! capture profile holds at the standard's value stay with a normal connection.
 mod profile;
 use profile::Profile;
 pub use profile::{AstmCapture, AutolyserCapture, CaptureProtocol, Hl7Capture, VidasCapture};
 
+use crate::schema::{ChoiceValue, MachineChoice, MachineDocument};
 use crate::stack::{DialogTimeouts, StreamTransport, SyntaxLimits};
 use crate::{
     AckPoint, ChoiceLabel, ChoiceName, Error, Evidence, EvidenceLevel, LabAppSource, Machine,
@@ -176,6 +183,14 @@ impl RecordStack {
             .iter()
             .any(|d| matches!(d, MachineDeparture::AstmPackedRecordsInFrame(_)))
     }
+    /// Whether one repeated ENQ before the first frame is acknowledged: the
+    /// ready definition declares it for its upload (ADR 0015).
+    #[must_use]
+    pub fn repeat_enq(&self) -> bool {
+        self.departures
+            .iter()
+            .any(|d| matches!(d, MachineDeparture::AstmRepeatEnqAfterLostAck(_)))
+    }
     pub(crate) const fn limits(&self) -> &SyntaxLimits {
         &self.limits
     }
@@ -203,27 +218,112 @@ struct ModelFile {
     protocol: CaptureProtocol,
     transport: ModelTransport,
     analyzer_mode: Option<AnalyzerMode>,
-    deviations: Vec<MachineDeparture>,
+    departures: Declared,
+}
+
+/// Where a recording's departures come from.
+enum Declared {
+    /// A `record.toml`'s, each scoped to one mode it offers.
+    Record(Vec<MachineDeparture>),
+    /// A ready definition, its link departures checked as its normal loader
+    /// checks them, and the position of the mode choice record only asks.
+    Definition {
+        document: Box<MachineDocument>,
+        mode: Option<usize>,
+    },
+}
+
+/// Whether a ready definition's departure changes only the ASTM link a
+/// recording speaks, so it carries into record only (ADR 0034, amendment of
+/// 2026-11-27).
+const fn link_departure(departure: &MachineDeparture) -> bool {
+    match departure {
+        // Framing and establishment: without them a verified frame or a
+        // repeated ENQ is refused and the analyzer raises alarms.
+        MachineDeparture::AstmPackedRecordsInFrame(_)
+        | MachineDeparture::AstmRepeatEnqAfterLostAck(_) => true,
+        // The profile keeps LIS01-A2's own frame limit and timers, which a
+        // narrower definition bound fits inside; the computer always yields on
+        // contention; checksum digits stay strict, and a refused frame is kept.
+        MachineDeparture::AstmFrameLimit(_)
+        | MachineDeparture::AstmReceiveTimeout(_)
+        | MachineDeparture::AstmSendTimeout(_)
+        | MachineDeparture::AstmHostContentionPriority(_)
+        | MachineDeparture::AstmLowercaseChecksumHex(_)
+        // Interpretation: record only reads no record.
+        | MachineDeparture::AstmAbsentH12MeansProduction(_)
+        // HL7: the capture reads only MSH, with its own profile.
+        | MachineDeparture::Hl7AbsentObr25MeansFinal(_)
+        | MachineDeparture::Hl7AbsentObx11MeansFinal(_)
+        | MachineDeparture::Hl7CategorizedOruResults(_)
+        | MachineDeparture::Hl7RecordDisplayQuery(_)
+        | MachineDeparture::Hl7Msh16MessageCategory(_)
+        | MachineDeparture::Hl7Utf8InV231(_)
+        | MachineDeparture::Hl7CrLfTerminators(_)
+        | MachineDeparture::Hl7LfTerminators(_)
+        | MachineDeparture::Hl7PreserveUnsupportedEscapes(_) => false,
+    }
+}
+
+/// Whether a choice value selects a link departure.
+fn selects_link(document: &MachineDocument, value: &ChoiceValue) -> bool {
+    let rules = value.departures.as_deref().unwrap_or_default();
+    document.choice_departures.iter().any(|d| {
+        link_departure(d)
+            && d.declaration().scope.mode.as_str() == value.value.as_str()
+            && rules.iter().any(|rule| rule.as_str() == d.tag())
+    })
+}
+
+/// The definition's mode choice whose values select a link departure, as the
+/// analyzer mode record only asks; at most one may.
+fn link_mode(
+    document: &MachineDocument,
+    path: &str,
+) -> Result<Option<(usize, AnalyzerMode)>, Error> {
+    let mut asked = document.choices.iter().enumerate().filter(|(_, choice)| {
+        choice
+            .values
+            .iter()
+            .any(|value| selects_link(document, value))
+    });
+    let found = asked.next();
+    if asked.next().is_some() {
+        return Err(invalid(
+            path,
+            "choices",
+            "record only asks one analyzer mode, so only one mode choice may select link departures",
+        ));
+    }
+    Ok(found.map(|(at, choice)| (at, asked_mode(choice))))
+}
+
+fn asked_mode(choice: &MachineChoice) -> AnalyzerMode {
+    AnalyzerMode {
+        label: choice.label.clone(),
+        values: choice
+            .values
+            .iter()
+            .map(|value| AnalyzerModeValue {
+                value: value.value.clone(),
+                label: value.label.clone(),
+            })
+            .collect(),
+    }
+}
+
+/// The analyzer mode record only asks for a ready definition, for Setup.
+pub(crate) fn definition_mode(
+    document: &MachineDocument,
+    path: &str,
+) -> Result<Option<AnalyzerMode>, Error> {
+    Ok(link_mode(document, path)?.map(|(_, mode)| mode))
 }
 
 /// The link part of a model file: its kind and the manual's serial values.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ModelTransport {
-    kind: TransportKind,
-    #[serde(default)]
-    serial: Option<SerialValues>,
-}
-
-/// A ready `machine.toml`'s link part; record only reads nothing else from it.
-#[derive(Deserialize)]
-struct DefinitionLink {
-    protocol: String,
-    transport: DefinitionTransport,
-}
-
-#[derive(Deserialize)]
-struct DefinitionTransport {
     kind: TransportKind,
     #[serde(default)]
     serial: Option<SerialValues>,
@@ -272,28 +372,40 @@ pub fn records_only(site: &str) -> bool {
 }
 
 /// The protocol and link a model file names: a `record.toml` (with its
-/// analyzer mode and departures), or the `protocol` and `[transport]` of a
-/// ready definition.
+/// analyzer mode and departures), or the `protocol`, `[transport]` and link
+/// departures of a ready definition.
 fn model_link(path: &str, text: &str) -> Result<ModelFile, Error> {
     let table = crate::parse_table(path, text)?;
     if is_record_file(&table) {
         return record_link(path, table);
     }
-    let link: DefinitionLink =
-        toml::Value::Table(table)
-            .try_into()
-            .map_err(|source| Error::Schema {
-                path: path.into(),
-                source,
-            })?;
+    let document: MachineDocument = crate::load_table(path, table, None)?;
+    let protocol = CaptureProtocol::of(&document.protocol, path)?;
+    crate::choices::check(&document, path)?;
+    if document
+        .deviations
+        .iter()
+        .chain(&document.choice_departures)
+        .any(link_departure)
+    {
+        // A carried departure keeps its ADR 0015 scope and evidence: check
+        // every offered combination exactly as a normal connection does. The
+        // site file gives the cable, so a serial value left to it is no fault.
+        let first = vec![0; document.choices.len()];
+        crate::choices::validate_offered(&document, &first, true, [path, path])?;
+    }
+    let mode = link_mode(&document, path)?;
     Ok(ModelFile {
-        protocol: CaptureProtocol::of(&link.protocol, path)?,
+        protocol,
         transport: ModelTransport {
-            kind: link.transport.kind,
-            serial: link.transport.serial,
+            kind: document.transport.kind,
+            serial: document.transport.serial.clone(),
         },
-        analyzer_mode: None,
-        deviations: Vec::new(),
+        analyzer_mode: mode.as_ref().map(|(_, asked)| asked.clone()),
+        departures: Declared::Definition {
+            document: Box::new(document),
+            mode: mode.map(|(at, _)| at),
+        },
     })
 }
 
@@ -333,7 +445,7 @@ fn record_link(path: &str, table: toml::Table) -> Result<ModelFile, Error> {
         protocol,
         transport: file.transport,
         analyzer_mode: file.analyzer_mode,
-        deviations: file.deviations,
+        departures: Declared::Record(file.deviations),
     })
 }
 
@@ -390,8 +502,50 @@ fn chosen_departures(
     answers: &ProfileAnswers,
     site: &str,
 ) -> Result<Vec<MachineDeparture>, Error> {
+    let chosen = chosen_mode(file, answers, site)?;
+    Ok(match &file.departures {
+        Declared::Record(declared) => declared
+            .iter()
+            .filter(|d| chosen.is_some_and(|mode| d.declaration().scope.mode.as_str() == mode))
+            .cloned()
+            .collect(),
+        Declared::Definition { document, mode } => {
+            // The normal loader's own rule decides what the chosen value
+            // selects; no other choice selects a link departure.
+            let combination: Vec<usize> = document
+                .choices
+                .iter()
+                .enumerate()
+                .map(|(at, choice)| {
+                    chosen
+                        .filter(|_| *mode == Some(at))
+                        .and_then(|name| {
+                            choice
+                                .values
+                                .iter()
+                                .position(|value| value.value.as_str() == name)
+                        })
+                        .unwrap_or(0)
+                })
+                .collect();
+            crate::choices::applied(document, &combination)
+                .deviations
+                .into_iter()
+                .filter(link_departure)
+                .collect()
+        }
+    })
+}
+
+/// The analyzer mode the site file answers: required when the model asks it,
+/// one of its values, and refused when it asks none.
+fn chosen_mode<'a>(
+    file: &ModelFile,
+    answers: &'a ProfileAnswers,
+    site: &str,
+) -> Result<Option<&'a str>, Error> {
     let chosen = match (&file.analyzer_mode, &answers.analyzer_mode) {
-        (None, None) => return Ok(Vec::new()),
+        (None, None) => return Ok(None),
         (None, Some(_)) => {
             return Err(invalid(
                 site,
@@ -417,12 +571,7 @@ fn chosen_departures(
             chosen
         }
     };
-    Ok(file
-        .deviations
-        .iter()
-        .filter(|d| d.declaration().scope.mode.as_str() == chosen.as_str())
-        .cloned()
-        .collect())
+    Ok(Some(chosen.as_str()))
 }
 
 /// Refuses a record-only site file on the normal loader: it loads only as a

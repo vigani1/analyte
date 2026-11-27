@@ -56,9 +56,11 @@ uploads, real-time patient inquiries and batch order downloads. Calibration
 results and QC order queries are outside these workflows. See HIM v2.3
 §4, Tables 4–5.
 
-Ready models use the shared ASTM profile in record-only connections
-(ADR 0034). That profile stores chunks and refuses a packed frame with
-NAK. A normal cobas connection accepts verified packed frames.
+A record-only connection (ADR 0034, note of 2026-11-27) uses the shared
+ASTM capture profile and stores every chunk before any reply. It asks the
+protocol type and keeps this definition's packing departure for the two
+cobas types, so a verified packed frame is acknowledged there and refused
+with NAK in Elecsys. A frame failing its checksum is refused and kept.
 
 ### Gaps closed by this definition
 
