@@ -688,3 +688,82 @@ fn charset_is_edition_specific() -> Result<(), Error> {
     }
     Ok(())
 }
+
+// HL7 2.5.1 §2.9.2.1 b, §2.9.3.2 b, §2.15.5 (table 0357 code 203): an MSH-12
+// we do not recognise is refused by a 2.5.1 reply whose MSA-2 echoes MSH-10.
+#[test]
+fn unsupported_version_rejection_declares_fallback() -> Result<(), Error> {
+    for (accept, application, code, msa) in [
+        ("", "", AckCode::Ar, "MSA|AR|00017\r"),
+        ("AL", "AL", AckCode::Cr, "MSA|CR|00017\r"),
+    ] {
+        let raw = wire("9.9", accept, application, "", "OBX|1|ST|SYN||caf\u{e9}\r");
+        assert_eq!(
+            parse(&raw).err(),
+            Some(Error::Control {
+                segment: "MSH",
+                field: 12
+            })
+        );
+        let header = Message::parse_header(&raw, Options::default())?;
+        assert_eq!(header.segments().count(), 1);
+        let msh = Msh::unsupported_version(&header)?.ok_or(Error::AckMode)?;
+        let ack = rejection(
+            msh,
+            response()?,
+            code,
+            Responsibility::Stored,
+            Some(AckError {
+                segment: b"MSH",
+                occurrence: 1,
+                field: 12,
+                code: UNSUPPORTED_VERSION,
+                application_code: b"",
+            }),
+            Options::default(),
+        )?
+        .ok_or(Error::AckMode)?;
+        let ack = String::from_utf8_lossy(ack.raw()).into_owned();
+        assert!(
+            ack.starts_with(
+                "MSH|^~\\&|RECEIVER|RF|SENDER|SF|202601011201||ACK^R01^ACK|reply-1|P|2.5.1"
+            ),
+            "{ack}"
+        );
+        assert!(ack.contains(msa), "{ack}");
+        assert!(ack.ends_with("ERR||MSH^1^12|203|E|\r"), "{ack}");
+    }
+    Ok(())
+}
+
+// HL7 2.5.1 §2.9.2: AA and CA claim acceptance, which an unsupported version never gets.
+#[test]
+fn rejection_never_builds_a_positive_code() -> Result<(), Error> {
+    let header = Message::parse_header(&wire("9.9", "AL", "AL", "", ""), Options::default())?;
+    let msh = Msh::unsupported_version(&header)?.ok_or(Error::AckMode)?;
+    for code in [AckCode::Aa, AckCode::Ca] {
+        assert_eq!(
+            rejection(
+                msh,
+                response()?,
+                code,
+                Responsibility::StoredAndInterpreted,
+                None,
+                Options::default(),
+            )
+            .err(),
+            Some(Error::AckMode)
+        );
+    }
+    Ok(())
+}
+
+// HL7 2.5.1 §2.15.9.12: a recognised edition uses the ordinary header view.
+#[test]
+fn unsupported_version_view_refuses_recognised_editions() -> Result<(), Error> {
+    for version in ["2.3.1", "2.5.1", "2.9.1"] {
+        let header = Message::parse_header(&wire(version, "", "", "", ""), Options::default())?;
+        assert!(Msh::unsupported_version(&header)?.is_none());
+    }
+    Ok(())
+}

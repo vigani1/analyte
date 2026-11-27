@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- An HL7 v2 upload whose MSH-12 version Analyte does not recognise is still
+  stored and parked for review, and the analyzer now gets a rejection with the
+  reason instead of no answer: AR (CR in enhanced mode) with ERR code 203,
+  "unsupported version id". The reply is written as HL7 2.5.1 and echoes the
+  message control ID. The connection stays open for the next message
+  (ADR 0010, amended 2026-11-27).
+
 - The plan, guides and READMEs no longer call cobas e 411, iFlash 1200,
   Biolyte 2000, VIDAS and Autolyser blocked: they ship definitions at level
   documented. Swelab Lumi stays blocked.

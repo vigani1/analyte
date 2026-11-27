@@ -73,6 +73,33 @@ pub fn acknowledgment(
     )
 }
 
+/// Builds a negative ACK from an already-read header, such as
+/// [`Msh::unsupported_version`]; it never builds AA or CA.
+/// # Errors
+/// Refuses positive codes with [`Error::AckMode`], and otherwise fails as
+/// [`acknowledgment`] does.
+pub fn rejection(
+    msh: Msh<'_>,
+    response: Response<'_>,
+    code: AckCode,
+    responsibility: Responsibility,
+    error: Option<AckError<'_>>,
+    options: Options,
+) -> Result<Option<Message>, Error> {
+    if code.success() {
+        return Err(Error::AckMode);
+    }
+    acknowledgment_with_msh(
+        msh,
+        response,
+        code,
+        responsibility,
+        error,
+        options,
+        AckProfile::Base,
+    )
+}
+
 /// Selects the identity length and wire-version policy owned by the ACK caller.
 #[derive(Clone, Copy)]
 pub(crate) enum AckProfile {
@@ -124,6 +151,10 @@ pub(crate) fn acknowledgment_with_msh(
     let segment = msh.segment();
     let get = |number| segment.field(number).map_or(&[][..], |f| f.raw());
     let message_type = encode_message_type(msh, component);
+    let version = match msh.edition() {
+        crate::views::Edition::Declared => get(12),
+        crate::views::Edition::Fallback => msh.version().as_str().as_bytes(),
+    };
     let application_request: &[u8] = if msh.version().paired_application_ack()
         && matches!(msh.mode(), AckMode::Enhanced { .. })
         && !code.accept()
@@ -144,7 +175,7 @@ pub(crate) fn acknowledgment_with_msh(
         &message_type,
         response.control_id.raw(),
         get(11),
-        get(12),
+        version,
         b"",
         b"",
         application_request,

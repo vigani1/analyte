@@ -148,6 +148,16 @@ pub struct Msh<'a> {
     version: Version,
     mode: AckMode,
     category: Option<MessageCategory>,
+    edition: Edition,
+}
+
+/// Where a view's edition came from, which decides the reply's MSH-12.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Edition {
+    /// Read from MSH-12; a reply echoes MSH-12 unchanged.
+    Declared,
+    /// MSH-12 names no recognised edition; a reply declares the fallback.
+    Fallback,
 }
 impl<'a> Msh<'a> {
     /// Validates the required control fields and acknowledgment table values.
@@ -171,17 +181,7 @@ impl<'a> Msh<'a> {
                 });
             }
         }
-        let id = required(segment, 10)?;
-        if id.raw().iter().any(|b| {
-            !b.is_ascii_graphic()
-                || segment.delimiters.bytes().contains(b)
-                || segment.delimiters.truncation == Some(*b)
-        }) {
-            return Err(Error::Control {
-                segment: "MSH",
-                field: 10,
-            });
-        }
+        control_id_bytes(segment)?;
         let processing_field = required(segment, 11)?;
         let mut processing_parts = processing_field
             .raw()
@@ -210,6 +210,7 @@ impl<'a> Msh<'a> {
                 version,
                 mode: AckMode::Original,
                 category: None,
+                edition: Edition::Declared,
             });
         }
         validate_timestamp(segment, version)?;
@@ -251,7 +252,58 @@ impl<'a> Msh<'a> {
             version,
             mode,
             category,
+            edition: Edition::Declared,
         })
+    }
+    /// Reads only what a rejection needs from a header whose MSH-12 names no
+    /// edition this crate recognises, so the sender learns why its message was
+    /// refused (HL7 2.5.1 §2.9.2.1 b, §2.9.3.2 b; table 0357 code 203).
+    ///
+    /// The view's edition is the fallback HL7 2.5.1: it bounds MSH-10 and
+    /// shapes the reply (MSH-9 structure, MSH-7 form, ERR layout), and the
+    /// reply declares 2.5.1 in its MSH-12, the edition it is written in, rather
+    /// than echoing one we cannot write. MSA-2 still echoes MSH-10. Read the
+    /// header with [`Message::parse_header`]; reply only with [`crate::rejection`].
+    /// Returns `Ok(None)` when MSH-12 names a recognised edition: use [`Self::new`].
+    /// # Errors
+    /// Returns the exact MSH field when MSH-10, MSH-12, MSH-15 or MSH-16 cannot
+    /// be read; the message then gets no reply.
+    pub fn unsupported_version(message: &'a Message) -> Result<Option<Self>, Error> {
+        let segment = message.segments().next().ok_or(Error::Encoding)?;
+        if Version::parse(first_component(required(segment, 12)?)).is_some() {
+            return Ok(None);
+        }
+        let version = Version::V251;
+        let maximum = version.require_rules()?.control_bytes;
+        for (number, maximum) in [(10, maximum), (12, 60)] {
+            if required(segment, number)?.raw().len() > maximum {
+                return Err(Error::Control {
+                    segment: "MSH",
+                    field: number,
+                });
+            }
+        }
+        control_id_bytes(segment)?;
+        let (accept, application) = if message.control == crate::ControlProfile::RecordOnly {
+            (None, None)
+        } else {
+            (condition(segment, 15)?, condition(segment, 16)?)
+        };
+        let mode = if accept.is_none() && application.is_none() {
+            AckMode::Original
+        } else {
+            AckMode::Enhanced {
+                accept,
+                application,
+            }
+        };
+        Ok(Some(Self {
+            segment,
+            version,
+            mode,
+            category: None,
+            edition: Edition::Fallback,
+        }))
     }
     /// Constructs a view after LAW control-profile validation, including its
     /// compatible version and ignored-component policies.
@@ -260,6 +312,7 @@ impl<'a> Msh<'a> {
             segment,
             version: Version::V251,
             category: None,
+            edition: Edition::Declared,
             mode: if triggered {
                 AckMode::Enhanced {
                     accept: Some(Condition::Never),
@@ -286,6 +339,10 @@ impl<'a> Msh<'a> {
     #[must_use]
     pub fn version(self) -> Version {
         self.version
+    }
+    /// Tells whether the edition was declared or is the fallback.
+    pub(crate) fn edition(self) -> Edition {
+        self.edition
     }
     /// Returns the independently validated acknowledgment conditions.
     #[must_use]
@@ -380,6 +437,21 @@ fn condition(segment: Segment<'_>, field: usize) -> Result<Option<Condition>, Er
             field,
         }),
     }
+}
+// MSH-10 is echoed in MSA-2, so it must be printable and free of delimiters.
+fn control_id_bytes(segment: Segment<'_>) -> Result<(), Error> {
+    let id = required(segment, 10)?;
+    if id.raw().iter().any(|b| {
+        !b.is_ascii_graphic()
+            || segment.delimiters.bytes().contains(b)
+            || segment.delimiters.truncation == Some(*b)
+    }) {
+        return Err(Error::Control {
+            segment: "MSH",
+            field: 10,
+        });
+    }
+    Ok(())
 }
 fn first_component(field: Field<'_>) -> &[u8] {
     field

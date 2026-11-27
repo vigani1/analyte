@@ -859,3 +859,135 @@ fn enhanced_application_ack_needs_separate_channel() -> TestResult {
     }
     Ok(())
 }
+
+fn unsupported(mode: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    Ok(String::from_utf8(message(mode))?
+        .rewrite("|2.5.1", "|9.9")
+        .into_bytes())
+}
+fn parked_for_version(actions: &[Action], raw: &[u8]) -> bool {
+    actions.iter().any(|action| {
+        matches!(
+            action,
+            Action::Parked(
+                bytes,
+                Error::Syntax(analyte_hl7::Error::Control {
+                    segment: "MSH",
+                    field: 12
+                })
+            ) if bytes == raw
+        )
+    })
+}
+
+// HL7 2.5.1 §2.9.2.1 b and §2.15.5, table 0357 code 203; AGENTS.md safety
+// rules 1 and 2: an MSH-12 we do not recognise is stored and parked, then
+// rejected with AR and its reason, and the link stays usable.
+#[test]
+fn unsupported_version_is_parked_then_rejected() -> TestResult {
+    let mut d = dialog()?;
+    let raw = unsupported("")?;
+    let actions = feed(&mut d, &raw)?;
+    let id = receipt(&actions)?;
+    assert!(!actions.iter().any(|a| matches!(a, Action::Write(_))));
+    let actions = d.step(Duration::ZERO, Event::Stored(id))?;
+    let parked = actions
+        .iter()
+        .position(|a| matches!(a, Action::Parked(..)))
+        .ok_or("not parked")?;
+    let needed = actions
+        .iter()
+        .position(|a| matches!(a, Action::ResponseNeeded(_, AckCode::Ar)))
+        .ok_or("no rejection requested")?;
+    assert!(parked < needed, "the reason is parked before the reply");
+    assert!(parked_for_version(&actions, &raw));
+    assert!(!actions.iter().any(|a| matches!(a, Action::Interpret(..))));
+    let actions = respond(&mut d, id, b"reject1")?;
+    assert!(has_code(&actions, b"|ACK^R01^ACK|reject1|P|2.5.1|"));
+    assert!(has_code(&actions, b"MSA|AR|001\r"));
+    assert!(has_code(&actions, b"ERR||MSH^1^12|203|E|\r"));
+    assert!(!has_code(&actions, b"MSA|AA|"));
+
+    // The same connection reads the next, supported message as usual.
+    let id = receipt(&feed(&mut d, &message(""))?)?;
+    assert!(
+        d.step(Duration::ZERO, Event::Stored(id))?
+            .iter()
+            .any(|a| matches!(a, Action::Interpret(..)))
+    );
+    d.step(Duration::ZERO, Event::Interpreted(id))?;
+    let actions = respond(&mut d, id, b"accept1")?;
+    assert!(has_code(&actions, b"|accept1|P|2.5.1|"));
+    assert!(has_code(&actions, b"MSA|AA|001\r"));
+    assert!(!has_code(&actions, b"ERR|"));
+    Ok(())
+}
+
+// HL7 2.5.1 §2.9.3.2 b and §2.15.5, table 0357 code 203: in enhanced mode an
+// unrecognised MSH-12 gets a commit reject and no application acknowledgment.
+#[test]
+fn unsupported_version_gets_commit_reject_in_enhanced_mode() -> TestResult {
+    for (mode, answered) in [("AL|AL", true), ("ER|AL", true), ("NE|AL", false)] {
+        let mut d = dialog()?;
+        let raw = unsupported(mode)?;
+        let id = receipt(&feed(&mut d, &raw)?)?;
+        let actions = d.step(Duration::ZERO, Event::Stored(id))?;
+        assert!(parked_for_version(&actions, &raw));
+        assert!(
+            actions
+                .iter()
+                .any(|a| matches!(a, Action::ResponseNeeded(_, AckCode::Cr)))
+        );
+        let actions = respond(&mut d, id, b"reject1")?;
+        assert_eq!(has_code(&actions, b"MSA|CR|001\r"), answered, "{mode}");
+        assert_eq!(
+            has_code(&actions, b"ERR||MSH^1^12|203|E|\r"),
+            answered,
+            "{mode}"
+        );
+        assert!(!has_code(&actions, b"MSA|CA|") && !has_code(&actions, b"MSA|AA|"));
+        assert!(!actions.iter().any(|a| matches!(a, Action::Interpret(..))));
+
+        let id = receipt(&feed(&mut d, &message("AL|AL"))?)?;
+        d.step(Duration::ZERO, Event::Stored(id))?;
+        assert!(has_code(&respond(&mut d, id, b"commit1")?, b"MSA|CA|001\r"));
+    }
+    Ok(())
+}
+
+// HL7 2.5.1 §2.9.2, §2.9.3; ADR 0003 rule 1: an unsupported version whose
+// storage fails is refused like any other unstored message.
+#[test]
+fn unsupported_version_store_failure_is_refused() -> TestResult {
+    for (mode, code) in [("", b"MSA|AR|001\r"), ("AL|AL", b"MSA|CE|001\r")] {
+        let mut d = dialog()?;
+        let raw = unsupported(mode)?;
+        let id = receipt(&feed(&mut d, &raw)?)?;
+        let actions = d.step(Duration::ZERO, Event::StoreFailed(id))?;
+        assert!(!actions.iter().any(|a| matches!(a, Action::Parked(..))));
+        let actions = respond(&mut d, id, b"negative1")?;
+        assert!(has_code(&actions, code), "{mode}");
+        assert!(!has_code(&actions, b"ERR|"));
+    }
+    Ok(())
+}
+
+// HL7 2.5.1 §2.9: an acknowledgment is never acknowledged, and without a
+// readable MSH-10 there is nothing to echo in MSA-2; both stay parked unanswered.
+#[test]
+fn unsupported_version_without_reply_stays_parked() -> TestResult {
+    let ack = b"\x0bMSH|^~\\&|A|B|C|D|20261115||ACK^R01^ACK|002|P|9.9\rMSA|AA|001\r\x1c\r";
+    let no_id = b"\x0bMSH|^~\\&|A|B|C|D|20261115||ORU^R01^ORU_R01||P|9.9\r\x1c\r";
+    for raw in [ack.as_slice(), no_id.as_slice()] {
+        let mut d = dialog()?;
+        let id = receipt(&feed(&mut d, raw)?)?;
+        let actions = d.step(Duration::ZERO, Event::Stored(id))?;
+        assert!(parked_for_version(&actions, raw));
+        assert!(
+            !actions
+                .iter()
+                .any(|a| matches!(a, Action::ResponseNeeded(..) | Action::Write(_)))
+        );
+    }
+    Ok(())
+}

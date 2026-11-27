@@ -87,6 +87,25 @@ pub enum Error {
     AckMode,
 }
 
+/// Selects the edition and character-set checks of one parse.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Profile {
+    /// Every check, under the declared edition.
+    Standard,
+    /// LAW's compatible 2.5 declarations and required MSH-18.
+    Law,
+    /// An ASCII MSH segment alone, without the edition check.
+    Header,
+}
+
+fn ending_bytes(terminator: Terminator) -> &'static [u8] {
+    match terminator {
+        Terminator::Cr => b"\r",
+        Terminator::CrLf => b"\r\n",
+        Terminator::Lf => b"\n",
+    }
+}
+
 /// Explicit wire line-ending policy; strict CR is recommended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Terminator {
@@ -231,7 +250,28 @@ impl Message {
     /// # Errors
     /// Rejects invalid headers, delimiters, limits, escapes, versions and character encodings.
     pub fn parse(raw: &[u8], options: Options) -> Result<Self, Error> {
-        Self::parse_with_profile(raw, options, false)
+        Self::parse_with_profile(raw, options, Profile::Standard)
+    }
+
+    /// Reads only the MSH segment, with no edition check, so a message whose
+    /// MSH-12 names no edition we recognise can still be refused with a reason
+    /// (HL7 2.5.1 §2.9.2.1 b). The result holds the header alone; pass it only
+    /// to [`crate::Msh::unsupported_version`]. The full bytes stay with the caller.
+    /// # Errors
+    /// Fails as [`Self::parse`] does for the header, and when the header is not
+    /// ASCII, since no edition can tell how to read other bytes.
+    pub fn parse_header(raw: &[u8], options: Options) -> Result<Self, Error> {
+        let ending = ending_bytes(options.terminator);
+        let end = raw
+            .windows(ending.len())
+            .position(|window| window == ending)
+            .and_then(|start| start.checked_add(ending.len()))
+            .ok_or(Error::Terminator)?;
+        let header = raw.get(..end).ok_or(Error::Terminator)?;
+        if !header.is_ascii() {
+            return Err(Error::CharacterEncoding);
+        }
+        Self::parse_with_profile(header, options, Profile::Header)
     }
 
     /// Applies LAW version compatibility while retaining the shared bounded syntax checks.
@@ -242,11 +282,12 @@ impl Message {
                 control: ControlProfile::Standard,
                 ..options
             },
-            true,
+            Profile::Law,
         )
     }
 
-    fn parse_with_profile(raw: &[u8], options: Options, law: bool) -> Result<Self, Error> {
+    fn parse_with_profile(raw: &[u8], options: Options, profile: Profile) -> Result<Self, Error> {
+        let law = profile == Profile::Law;
         if raw.len() > options.limits.message_bytes {
             return Err(Error::Limit {
                 kind: "message bytes",
@@ -319,6 +360,10 @@ impl Message {
         let modern_encoding = crate::Version::defines_truncation(version_id);
         if delimiters.truncation.is_some() && !modern_encoding {
             return Err(Error::Truncation);
+        }
+        if profile == Profile::Header {
+            // Checked ASCII by the caller; the edition is not known.
+            return Ok(message);
         }
         if crate::Version::parse_wire(version_id, law).is_none() && !modern_encoding {
             return Err(Error::Control {
@@ -415,11 +460,7 @@ impl Message {
         Ok(())
     }
     fn ending(&self) -> &'static [u8] {
-        match self.terminator {
-            Terminator::Cr => b"\r",
-            Terminator::CrLf => b"\r\n",
-            Terminator::Lf => b"\n",
-        }
+        ending_bytes(self.terminator)
     }
     /// Serializes exactly the accepted bytes; no normalization or loss occurs.
     #[must_use]

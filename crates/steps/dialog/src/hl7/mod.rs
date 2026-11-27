@@ -306,6 +306,31 @@ struct Pending {
     responsibility: Responsibility,
     codes: VecDeque<AckCode>,
     error: Option<OwnedError>,
+    header: Header,
+}
+impl Pending {
+    fn header(&self) -> Result<Msh<'_>, Error> {
+        match self.header {
+            Header::Declared => Ok(Msh::new(&self.message)?),
+            Header::UnsupportedVersion(_) => Msh::unsupported_version(&self.message)?.ok_or(
+                Error::Syntax(analyte_hl7::Error::Control {
+                    segment: "MSH",
+                    field: 12,
+                }),
+            ),
+        }
+    }
+}
+
+/// How the pending message's header was read.
+#[derive(Debug)]
+enum Header {
+    /// MSH read under its declared edition.
+    Declared,
+    /// MSH-12 names no edition we recognise. The exact block and its reason are
+    /// parked once stored, then the message is rejected with ERR code 203
+    /// (HL7 2.5.1 §2.9.2.1 b, §2.9.3.2 b). `None` once parked.
+    UnsupportedVersion(Option<(Vec<u8>, Error)>),
 }
 
 /// One deterministic connection. Cancellation may leave a committed receipt or sent order;
@@ -441,8 +466,32 @@ impl Dialog {
             return Err(Error::Stale);
         }
         pending.responsibility = Responsibility::Stored;
+        if let Header::UnsupportedVersion(parked) = &mut pending.header {
+            // Park first: the rejection is written only after the reason is durable.
+            if let Some((raw, error)) = parked.take() {
+                out.push(Action::Parked(raw, error));
+            }
+            // HL7 2.5.1 §2.9.2.1 b: AR in original mode; §2.9.3.2 b: CR in
+            // enhanced mode, which then has no application acknowledgment.
+            let code = match pending.header()?.mode() {
+                AckMode::Original => AckCode::Ar,
+                AckMode::Enhanced { .. } => AckCode::Cr,
+            };
+            pending.error = Some(OwnedError::from(AckError {
+                segment: b"MSH",
+                occurrence: 1,
+                field: 12,
+                code: analyte_hl7::UNSUPPORTED_VERSION,
+                application_code: b"",
+            }));
+            pending.codes.push_back(code);
+            pending.phase = Phase::Respond;
+            out.push(Action::ResponseNeeded(id, code));
+            self.deadline = None;
+            return Ok(());
+        }
         pending.phase = Phase::Interpret;
-        if matches!(Msh::new(&pending.message)?.mode(), AckMode::Enhanced { .. }) {
+        if matches!(pending.header()?.mode(), AckMode::Enhanced { .. }) {
             pending.codes.push_back(AckCode::Ca);
             pending.phase = Phase::Respond;
             out.push(Action::ResponseNeeded(id, AckCode::Ca));
@@ -489,14 +538,25 @@ impl Dialog {
         }
         let code = pending.codes.front().copied().ok_or(Error::Stale)?;
         let error = pending.error.as_ref().map(OwnedError::view);
-        if let Some(message) = analyte_hl7::acknowledgment(
-            &pending.message,
-            response,
-            code,
-            pending.responsibility,
-            error,
-            self.config.options,
-        )? {
+        let reply = match pending.header {
+            Header::Declared => analyte_hl7::acknowledgment(
+                &pending.message,
+                response,
+                code,
+                pending.responsibility,
+                error,
+                self.config.options,
+            )?,
+            Header::UnsupportedVersion(_) => analyte_hl7::rejection(
+                pending.header()?,
+                response,
+                code,
+                pending.responsibility,
+                error,
+                self.config.options,
+            )?,
+        };
+        if let Some(message) = reply {
             out.push(Action::Write(crate::Write::encode(
                 message.raw(),
                 self.config.limit,
@@ -583,7 +643,7 @@ impl Dialog {
             // original mode, a commit error (CE) in enhanced mode. CR is reserved
             // for unacceptable message type, version or processing ID
             // (HL7 2.5.1 §2.9.3).
-            Finish::Refused if !interpreting => match Msh::new(&pending.message)?.mode() {
+            Finish::Refused if !interpreting => match pending.header()?.mode() {
                 AckMode::Original => (AckCode::Ar, None),
                 AckMode::Enhanced { .. } => (AckCode::Ce, None),
             },
@@ -640,16 +700,9 @@ impl Dialog {
         // Preserve first: even malformed syntax must pass through the host's protected journal.
         let result = mllp::payload(&raw)
             .ok_or(Error::Framing(mllp::Error::Incomplete))
-            .and_then(|bytes| Message::parse(bytes, self.config.options).map_err(Error::from));
-        match result.and_then(|message| {
-            let msh = Msh::new(&message)?;
-            if msh.version().paired_application_ack()
-                && matches!(msh.mode(), AckMode::Enhanced { application: Some(condition), .. } if condition != Condition::Never) {
-                return Err(Error::SeparateApplicationChannel);
-            }
-            Ok(message)
-        }) {
-            Ok(message) => {
+            .and_then(|bytes| read(bytes, &raw, self.config.options));
+        match result {
+            Ok((message, header)) => {
                 if self.route_order(&raw, &message, out) {
                     return;
                 }
@@ -667,6 +720,7 @@ impl Dialog {
                         responsibility: Responsibility::NotStored,
                         codes: VecDeque::new(),
                         error: None,
+                        header,
                     });
                     self.deadline = None;
                     out.push(Action::Store(id, raw));
@@ -762,6 +816,52 @@ impl Dialog {
         }
         self.frame_started = None;
     }
+}
+
+/// Reads a received payload. When MSH-12 names no edition we recognise, only
+/// the header is read, so the stored message can still be refused with a reason.
+fn read(payload: &[u8], raw: &[u8], options: Options) -> Result<(Message, Header), Error> {
+    let message = match Message::parse(payload, options) {
+        Ok(message) => message,
+        Err(
+            error @ analyte_hl7::Error::Control {
+                segment: "MSH",
+                field: 12,
+            },
+        ) => return unsupported_version(payload, raw, options).ok_or(Error::Syntax(error)),
+        Err(error) => return Err(error.into()),
+    };
+    let msh = Msh::new(&message)?;
+    if msh.version().paired_application_ack()
+        && matches!(msh.mode(), AckMode::Enhanced { application: Some(condition), .. } if condition != Condition::Never)
+    {
+        return Err(Error::SeparateApplicationChannel);
+    }
+    Ok((message, Header::Declared))
+}
+
+/// Reads the header of a message whose MSH-12 names no edition we recognise.
+/// `None` keeps the parked-only path without a reply; the parked reason is then
+/// the MSH-12 failure itself, which is why the header's own error is not kept.
+fn unsupported_version(payload: &[u8], raw: &[u8], options: Options) -> Option<(Message, Header)> {
+    // HL7 2.5.1 §2.9: an acknowledgment is never acknowledged.
+    let field = payload.get(3).copied();
+    if payload
+        .split(|byte| matches!(byte, b'\r' | b'\n'))
+        .any(|segment| segment.get(..3) == Some(b"MSA") && segment.get(3).copied() == field)
+    {
+        return None;
+    }
+    let header = Message::parse_header(payload, options).ok()?;
+    Msh::unsupported_version(&header).ok()??;
+    let reason = Error::Syntax(analyte_hl7::Error::Control {
+        segment: "MSH",
+        field: 12,
+    });
+    Some((
+        header,
+        Header::UnsupportedVersion(Some((raw.to_vec(), reason))),
+    ))
 }
 
 /// How the host ended the exchange it was asked to store or interpret.
