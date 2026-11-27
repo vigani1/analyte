@@ -27,21 +27,22 @@ use values::{Kind, Pseudonyms};
 pub const MARK: &str = "De-identified by Analyte captures de-identify";
 
 /// What the command prints after writing a copy.
-pub const CHECKLIST: &str = "Review the copy before sharing; free-text fields were replaced.";
+#[must_use]
+pub fn checklist() -> &'static str {
+    analyte_i18n::text("cli-deidentify-checklist")
+}
 
 /// Why no copy was made.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// The protocol has no de-identification rules.
-    #[error("de-identify is not supported for {0} recordings; nothing was written")]
+    #[error("{}", analyte_i18n::message("cli-deidentify-unsupported", [("protocol", (.0).to_string().into())]))]
     Unsupported(&'static str),
     /// The header names a protocol stack Analyte does not know.
-    #[error("the recording names a protocol stack Analyte does not know; nothing was written")]
+    #[error("{}", analyte_i18n::text("cli-deidentify-unknown-stack"))]
     UnknownStack,
     /// A message could not be read well enough to find every patient field.
-    #[error(
-        "event {event}: {reason}; Analyte cannot tell where every patient field is, so nothing was written"
-    )]
+    #[error("{}", analyte_i18n::message("cli-deidentify-unparsed", [("event", (event).to_string().into()), ("reason", (reason).to_string().into())]))]
     Unparsed {
         /// Zero-based event index (the file's line is this plus two).
         event: usize,
@@ -49,7 +50,7 @@ pub enum Error {
         reason: &'static str,
     },
     /// A checksum covering a replaced field cannot be recomputed.
-    #[error("event {event}: {reason}; nothing was written")]
+    #[error("{}", analyte_i18n::message("cli-deidentify-checksum", [("event", (event).to_string().into()), ("reason", (reason).to_string().into())]))]
     Checksum {
         /// Zero-based event index.
         event: usize,
@@ -57,13 +58,13 @@ pub enum Error {
         reason: &'static str,
     },
     /// The work took longer than its bound.
-    #[error("de-identifying took longer than {0} seconds; nothing was written")]
+    #[error("{}", analyte_i18n::message("cli-deidentify-deadline", [("seconds", (.0).to_string().into())]))]
     Deadline(u64),
     /// The system random source failed.
-    #[error("the system random source failed: {0}")]
+    #[error("{}", analyte_i18n::message("cli-deidentify-random", [("error", (.0).to_string().into())]))]
     Random(getrandom::Error),
     /// An internal bound was exceeded.
-    #[error("a de-identification bound was exceeded; nothing was written")]
+    #[error("{}", analyte_i18n::text("cli-deidentify-limit"))]
     Limit,
 }
 
@@ -332,7 +333,7 @@ fn fix_sums(
                     .and_then(|text| u8::from_str_radix(text, 16).ok())
                     .ok_or(Error::Checksum {
                         event,
-                        reason: "the original checksum is not two hex digits",
+                        reason: analyte_i18n::text("cli-deidentify-checksum-not-hex"),
                     })?;
                 let new = value.wrapping_add(delta);
                 let upper = format!("{new:02X}");
@@ -353,7 +354,7 @@ fn fix_sums(
                         None => {
                             return Err(Error::Checksum {
                                 event,
-                                reason: "the letter case of this checksum cannot be told from the recording; run again with --checksum-case upper or lower, as the machine's settings say",
+                                reason: analyte_i18n::text("cli-deidentify-checksum-case-unknown"),
                             });
                         }
                     },
@@ -365,7 +366,7 @@ fn fix_sums(
                     .and_then(|text| text.parse::<u8>().ok())
                     .ok_or(Error::Checksum {
                         event,
-                        reason: "the original checksum is not a three-digit sum modulo 256",
+                        reason: analyte_i18n::text("cli-deidentify-checksum-not-sum"),
                     })?;
                 format!("{:03}", value.wrapping_add(delta))
             }

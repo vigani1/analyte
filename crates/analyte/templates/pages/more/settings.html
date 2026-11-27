@@ -4,7 +4,7 @@
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("", "Settings", crate::admin::more::page::settings_lede()) %}{% endcall %}
+{% call layout::intro_head("", analyte_i18n::text("admin-settings"), crate::admin::more::page::settings_lede()) %}{% endcall %}
 {%- for problem in problems %}
 {% call feedback::alert(crate::admin::view::Tone::Attention, problem, "") %}{% endcall %}
 {%- endfor %}

@@ -140,8 +140,14 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
             "admin-removed-machines",
             [("machines", (names(&open.machines)).to_string().into())],
         ),
-        (1, true) => format!("Machine {}", names(&open.machines)),
-        (_, true) => format!("Machines {}", names(&open.machines)),
+        (1, true) => tr_args(
+            "admin-removed-machine-name",
+            [("machines", names(&open.machines).into())],
+        ),
+        (_, true) => tr_args(
+            "admin-removed-machine-names",
+            [("machines", names(&open.machines).into())],
+        ),
     };
     let held = if open.held > 0 {
         tr_args(

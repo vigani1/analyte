@@ -109,7 +109,7 @@ impl TryFrom<Vec<(String, String)>> for Draft {
 
     fn try_from(fields: Vec<(String, String)>) -> Result<Self, Self::Error> {
         if fields.len() > MOST_FIELDS {
-            return Err("too many fields".into());
+            return Err(analyte_i18n::text("setup-form-too-many-fields").into());
         }
         let mut draft = Self::default();
         for (name, value) in fields {
@@ -117,11 +117,19 @@ impl TryFrom<Vec<(String, String)>> for Draft {
                 Some(choice) => draft.choices.insert(choice.to_owned(), value),
                 None => draft
                     .slot(&name)
-                    .ok_or_else(|| format!("unknown field `{name}`"))?
+                    .ok_or_else(|| {
+                        analyte_i18n::message(
+                            "setup-form-unknown-field",
+                            [("name", name.as_str().into())],
+                        )
+                    })?
                     .replace(value),
             };
             if earlier.is_some() {
-                return Err(format!("duplicate field `{name}`"));
+                return Err(analyte_i18n::message(
+                    "setup-form-duplicate-field",
+                    [("name", name.as_str().into())],
+                ));
             }
         }
         Ok(draft)

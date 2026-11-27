@@ -93,5 +93,5 @@ pub fn checked_reason(typed: &str) -> Result<Reason, &'static str> {
     if line.chars().count() > 256 {
         return Err(tr("cli-keep-the-reason-to-256-characters"));
     }
-    Reason::new(&line).map_err(|_| "The reason holds a character that cannot be recorded.")
+    Reason::new(&line).map_err(|_| tr("cli-reason-character-cannot-be-recorded"))
 }

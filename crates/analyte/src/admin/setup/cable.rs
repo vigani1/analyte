@@ -59,13 +59,13 @@ fn flows() -> [(FlowControl, &'static str, &'static str, &'static str); 3] {
         (
             FlowControl::Hardware,
             "hardware",
-            "Hardware (RTS/CTS)",
+            tr("setup-flow-hardware"),
             tr("setup-hardware-flow-control-rts-cts"),
         ),
         (
             FlowControl::Software,
             "software",
-            "Software (XON/XOFF)",
+            tr("setup-flow-software"),
             tr("setup-software-flow-control-xon-xoff"),
         ),
     ]

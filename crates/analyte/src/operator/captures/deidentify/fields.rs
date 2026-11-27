@@ -150,7 +150,7 @@ fn escape_mask(bytes: &[u8], escape: u8, escapes: Escapes) -> Result<Vec<bool>, 
         };
         let end = content_start.saturating_add(length);
         if !escapes.allows(bytes.get(content_start..end).unwrap_or_default()) {
-            return Err("a patient field holds an escape sequence that could spell patient text");
+            return Err(analyte_i18n::text("cli-deidentify-field-escape"));
         }
         for slot in keep.get_mut(index..=end).unwrap_or_default() {
             *slot = true;

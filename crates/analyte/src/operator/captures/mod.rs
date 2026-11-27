@@ -24,7 +24,9 @@ const LIST_LIMIT: usize = 4096;
 const SUFFIX: &str = ".rec.jsonl";
 
 /// What every listing and export says first.
-pub const PATIENT_DATA: &str = "These recordings contain patient data. Keep them on this PC; before sharing one, make a de-identified copy with captures de-identify and review it (docs/develop/adding-a-machine.md, \"Capture, de-identify and replay\").";
+fn patient_data() -> &'static str {
+    tr("cli-captures-patient-data")
+}
 
 /// The `captures` commands.
 #[derive(Subcommand)]
@@ -88,15 +90,13 @@ pub enum Command {
 #[derive(Debug, thiserror::Error)]
 pub enum CaptureError {
     /// The machine name could not name a capture folder.
-    #[error("a machine name uses only letters, digits, - and _: {0}")]
+    #[error("{}", analyte_i18n::message("cli-captures-machine-name", [("name", (.0).to_string().into())]))]
     MachineName(String),
     /// The file name is not one recording in that folder.
-    #[error(
-        "name one recording as captures list shows it (a file name ending .rec.jsonl), not a path: {0}"
-    )]
+    #[error("{}", analyte_i18n::message("cli-captures-file-name", [("name", (.0).to_string().into())]))]
     FileName(String),
     /// No such recording.
-    #[error("machine {machine} has no recording called {file}")]
+    #[error("{}", analyte_i18n::message("cli-captures-missing", [("machine", (machine).to_string().into()), ("file", (file).to_string().into())]))]
     Missing {
         /// The machine.
         machine: String,
@@ -104,22 +104,22 @@ pub enum CaptureError {
         file: String,
     },
     /// The target folder is not a folder.
-    #[error("the folder {0} does not exist; create it first")]
+    #[error("{}", analyte_i18n::message("cli-captures-no-folder", [("path", (.0.display()).to_string().into())]))]
     NoFolder(PathBuf),
     /// A file of that name is already in the target folder.
-    #[error("{0} already exists; nothing was overwritten")]
+    #[error("{}", analyte_i18n::message("cli-captures-exists", [("path", (.0.display()).to_string().into())]))]
     Exists(PathBuf),
     /// Too many recordings to list safely.
-    #[error("machine {0} has more than 4096 recordings; move older ones out first")]
+    #[error("{}", analyte_i18n::message("cli-captures-too-many", [("machine", (.0).to_string().into())]))]
     TooMany(String),
     /// The recording is not a readable ADR 0009 file.
-    #[error("the recording cannot be read: {0}")]
+    #[error("{}", analyte_i18n::message("cli-captures-format", [("error", (.0).to_string().into())]))]
     Format(#[from] analyte_transport::recording::FormatError),
     /// No de-identified copy could be made.
     #[error(transparent)]
     DeIdentify(#[from] deidentify::Error),
     /// Reading or copying failed.
-    #[error("{operation} {path} failed: {source}")]
+    #[error("{}", analyte_i18n::message("cli-captures-io", [("operation", (operation).to_string().into()), ("path", (path.display()).to_string().into()), ("error", (source).to_string().into())]))]
     Io {
         /// What was done.
         operation: &'static str,
@@ -176,21 +176,28 @@ pub fn list(program: &Program, machine: &str) -> Result<Vec<Recording>, CaptureE
     let entries = match std::fs::read_dir(&folder) {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(io("read", &folder)(error)),
+        Err(error) => return Err(io(tr("cli-captures-op-read"), &folder)(error)),
     };
     let mut found = Vec::new();
     for entry in entries {
-        let entry = entry.map_err(io("read", &folder))?;
+        let entry = entry.map_err(io(tr("cli-captures-op-read"), &folder))?;
         let Some(file) = entry.file_name().to_str().map(str::to_owned) else {
             continue;
         };
-        if !file.ends_with(SUFFIX) || !entry.file_type().map_err(io("read", &folder))?.is_file() {
+        if !file.ends_with(SUFFIX)
+            || !entry
+                .file_type()
+                .map_err(io(tr("cli-captures-op-read"), &folder))?
+                .is_file()
+        {
             continue;
         }
         if found.len() >= LIST_LIMIT {
             return Err(CaptureError::TooMany(machine.to_owned()));
         }
-        let metadata = entry.metadata().map_err(io("read", &entry.path()))?;
+        let metadata = entry
+            .metadata()
+            .map_err(io(tr("cli-captures-op-read"), &entry.path()))?;
         let modified = metadata
             .modified()
             .ok()
@@ -220,9 +227,12 @@ pub fn export(
     let source = source(program, machine, file, to)?;
     let target = to.join(file);
     let mut output = create(&target)?;
-    let mut input = std::fs::File::open(&source).map_err(io("open", &source))?;
+    let mut input =
+        std::fs::File::open(&source).map_err(io(tr("cli-captures-op-open"), &source))?;
     std::io::copy(&mut input, &mut output).map_err(io(tr("cli-copy-to"), &target))?;
-    output.sync_all().map_err(io("flush", &target))?;
+    output
+        .sync_all()
+        .map_err(io(tr("cli-captures-op-flush"), &target))?;
     Ok(target)
 }
 
@@ -264,7 +274,7 @@ fn create(target: &Path) -> Result<std::fs::File, CaptureError> {
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
             Err(CaptureError::Exists(target.to_owned()))
         }
-        Err(error) => Err(io("create", target)(error)),
+        Err(error) => Err(io(tr("cli-captures-op-create"), target)(error)),
     }
 }
 
@@ -295,27 +305,27 @@ pub fn de_identify(
 ) -> Result<DeIdentified, CaptureError> {
     use analyte_transport::recording::{self, Limits};
     let source = source(program, machine, file, to)?;
-    let input = std::fs::File::open(&source).map_err(io("open", &source))?;
+    let input = std::fs::File::open(&source).map_err(io(tr("cli-captures-op-open"), &source))?;
     let (header, events) = recording::read(std::io::BufReader::new(input), Limits::default())?;
     let copy = deidentify::de_identify(&header, &events, case)?;
     let mut encoded = Vec::new();
     recording::write_header(&mut encoded, &copy.header, Limits::default())
-        .map_err(io("encode", &source))?;
+        .map_err(io(tr("cli-captures-op-encode"), &source))?;
     for event in &copy.events {
         recording::write_event(&mut encoded, event, Limits::default())
-            .map_err(io("encode", &source))?;
+            .map_err(io(tr("cli-captures-op-encode"), &source))?;
     }
     if encoded.len() > Limits::default().file_bytes {
-        return Err(io("encode", &source)(std::io::Error::other(tr(
-            "cli-the-copy-exceeds-the-recording-file-bound",
-        ))));
+        return Err(io(tr("cli-captures-op-encode"), &source)(
+            std::io::Error::other(tr("cli-the-copy-exceeds-the-recording-file-bound")),
+        ));
     }
     let stem = file.strip_suffix(SUFFIX).unwrap_or(file);
     let target = to.join(format!("{stem}.deidentified{SUFFIX}"));
     let mut output = create(&target)?;
     let written = std::io::Write::write_all(&mut output, &encoded)
         .and_then(|()| output.sync_all())
-        .map_err(io("write", &target));
+        .map_err(io(tr("cli-captures-op-write"), &target));
     if let Err(error) = written {
         drop(output);
         // A partial copy must not look like a finished one; the write error is what is reported.
@@ -358,16 +368,17 @@ fn show(program: &Program, machine: Option<String>) -> Result<(), Error> {
                     ("bytes", (recording.bytes).to_string().into()),
                     (
                         "at",
-                        (recording
-                            .modified
-                            .map_or_else(|| "unknown".to_owned(), |at| at.to_string()))
+                        (recording.modified.map_or_else(
+                            || tr("cli-captures-modified-unknown").to_owned(),
+                            |at| at.to_string(),
+                        ))
                         .to_string()
                         .into(),
                     ),
                     (
                         "else",
                         (if recording.failed {
-                            " (capture stopped early: incomplete)"
+                            tr("cli-captures-stopped-early")
                         } else {
                             ""
                         })
@@ -428,7 +439,7 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
         .await;
     store.shutdown(deadline()?).await?;
     audited?;
-    super::display::line(PATIENT_DATA)?;
+    super::display::line(patient_data())?;
     match command {
         Command::List { machine } => show(program, machine)?,
         Command::Export {
@@ -456,7 +467,7 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
                     ("distinct", (copy.distinct).to_string().into()),
                 ],
             ))?;
-            super::display::line(deidentify::CHECKLIST)?;
+            super::display::line(deidentify::checklist())?;
         }
     }
     Ok(())

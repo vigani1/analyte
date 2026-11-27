@@ -698,6 +698,17 @@ fn detail_page(
 
 /// What a running machine's page says about its setup, and the line under its
 /// name; what only support needs goes to `support`.
+/// The machine's link and settings version, exactly, for support.
+fn support_lines(link: &str, digest: &[u8]) -> [String; 2] {
+    [
+        tr_args("admin-support-link", [("link", link.into())]),
+        tr_args(
+            "admin-settings-version",
+            [("digest", format::digest_hex(digest).into())],
+        ),
+    ]
+}
+
 fn running_facts(
     entry: &Entry<'_>,
     machine: &Machine,
@@ -709,14 +720,7 @@ fn running_facts(
     let last = observed
         .last_data()
         .max(recent.first().map(|newest| newest.metadata.received_at));
-    support.push(format!("Link: {}", observed.link().as_str()));
-    support.push(tr_args(
-        "admin-settings-version",
-        [(
-            "digest",
-            (format::digest_hex(&machine.digest)).to_string().into(),
-        )],
-    ));
+    support.extend(support_lines(observed.link().as_str(), &machine.digest));
     let running = machine.running.load(Ordering::Acquire);
     let mut facts = vec![
         Fact {

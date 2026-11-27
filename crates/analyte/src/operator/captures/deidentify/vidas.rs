@@ -99,13 +99,25 @@ fn packets(lane: &Lane) -> Result<Vec<Packet>, Error> {
                         }
                         // STX, ENQ, EOT or ETX end an interrupted packet here.
                         STX | ENQ | EOT | ETX => break,
-                        _ => return Err(unparsed(lane, index, "a byte VIDAS packets never carry")),
+                        _ => {
+                            return Err(unparsed(
+                                lane,
+                                index,
+                                analyte_i18n::text("cli-deidentify-vidas-foreign-byte"),
+                            ));
+                        }
                     }
                 }
                 found.push(Packet { data, digits });
             }
             ENQ | ACK | NAK | EOT | ETX | CR | LF => index = index.saturating_add(1),
-            _ => return Err(unparsed(lane, index, "bytes outside VIDAS packets")),
+            _ => {
+                return Err(unparsed(
+                    lane,
+                    index,
+                    analyte_i18n::text("cli-deidentify-vidas-outside-packets"),
+                ));
+            }
         }
     }
     Ok(found)

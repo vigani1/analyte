@@ -236,7 +236,7 @@ impl TryFrom<Vec<(String, String)>> for Choice {
         let before = fields.len();
         fields.retain(|(name, _)| name != "csrf");
         if before.checked_sub(fields.len()) != Some(1) {
-            return Err("the csrf field is required once".into());
+            return Err(tr("setup-form-csrf-once").into());
         }
         Ok(Self {
             draft: wizard::Draft::try_from(fields)?,

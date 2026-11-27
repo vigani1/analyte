@@ -11,6 +11,9 @@ USE = re.compile(
     r'\b(?:analyte_i18n::(?:text|message|count)|tr|tr_args|tr_count|nonzero_count)'
     r'\(\s*"([a-z][a-z0-9-]*)"'
 )
+# The i18n crate formats shared calendar names with its own `message`.
+SHARED_USE = re.compile(r'\bmessage\(\s*"([a-z][a-z0-9-]*)"')
+SHARED = Path("crates") / "core" / "i18n" / "src" / "lib.rs"
 REFERENCE = re.compile(r"\{\s*([a-z][a-z0-9-]*)\s*\}")
 
 
@@ -46,6 +49,10 @@ def main():
     for source in production_sources():
         for key in USE.findall(source.read_text(encoding="utf-8")):
             uses.setdefault(key, source.relative_to(ROOT))
+    shared = (ROOT / SHARED).read_text(encoding="utf-8")
+    shared = shared.split("#[cfg(test)]", 1)[0]
+    for key in SHARED_USE.findall(shared):
+        uses.setdefault(key, SHARED)
     pending = list(uses)
     while pending:
         key = pending.pop()

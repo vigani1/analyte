@@ -62,7 +62,7 @@ impl Ask {
         drop(out);
         let only = choices.len() == 1;
         let answer = self.line(if only {
-            "Number [1]"
+            tr("setup-number-default-one")
         } else {
             tr("setup-number")
         })?;
@@ -83,7 +83,10 @@ impl Ask {
     /// Asks a yes or no question; only "y" or "yes" is yes. Never asked: no.
     pub(super) fn confirm(self, question: &str) -> io::Result<bool> {
         Ok(self
-            .line(&format!("{question} [y/N]"))?
+            .line(&tr_args(
+                "setup-confirm-yes-no",
+                [("question", question.into())],
+            ))?
             .is_some_and(|answer| matches!(answer.to_ascii_lowercase().as_str(), "y" | "yes")))
     }
 }

@@ -1380,9 +1380,9 @@ admin-no-set-up-machine-sends-here = No set-up machine sends here
 
 admin-its-keys-are-set-now-analyte-uses-them-after = Its keys are set now; Analyte uses them after it restarts.
 
-admin-set-on-d-b = Set on %-d %b
+admin-set-on-date = Set on { $day } { $month }
 
-admin-set-on-d-b-y = Set on %-d %b %Y
+admin-set-on-date-year = Set on { $day } { $month } { $year }
 
 admin-scheduled-on-the-machine = Scheduled on the machine
 
@@ -1979,3 +1979,95 @@ admin-message-cut-off = Message cut off
 admin-report-reload = Reload the page; if this keeps happening, give the details below to support.
 
 admin-report-reload-after = { $reason } { admin-report-reload }
+
+admin-duration-seconds = { $number } s
+
+admin-duration-minutes = { $number } min
+
+admin-duration-hours = { $number } h
+
+admin-ago = { $duration } ago
+
+admin-clock-this-year = { $day } { $month } { $time }
+
+admin-date-line = { $weekday } { $day } { $month } · { $time }
+
+admin-feed-day-today = Today · { $weekday } { $day } { $month }
+
+admin-feed-day = { $weekday } { $day } { $month }
+
+admin-feed-day-year = { $weekday } { $day } { $month } { $year }
+
+admin-support-link = Link: { $link }
+
+admin-item-number = Item { $index }
+
+admin-namespace = Namespace { $namespace }
+
+admin-execution-nothing = Nothing
+
+admin-support-delivery = Delivery { $id }
+
+admin-order-recorded = Recorded: { $recorded }
+
+admin-hold-reason = Reason: { $reason }
+
+admin-hold-message = Message { $id }
+
+admin-reason-lead = Reason:{ " " }
+
+admin-raw-receipt-offset = receipt raw view does not accept a frame offset
+
+admin-raw-cursor-outside = raw view cursor is outside retained evidence
+
+admin-raw-cursor-overflow = raw view cursor overflow
+
+admin-raw-corrupt = stored evidence is corrupt
+
+admin-raw-continued = { $what }, continued
+
+admin-removed-machine-name = Machine { $machines }
+
+admin-removed-machine-names = Machines { $machines }
+
+admin-recorded-as-new = new
+
+admin-recorded-as-correction = a correction
+
+admin-lab-app-answer-unreadable = Lab app’s answer could not be read
+
+admin-page-could-not-be-shown = This page could not be shown
+
+admin-activity-from = { $rest } – from { $machine }
+
+admin-activity-a-machine = A machine
+
+admin-warning = Warning
+
+admin-read-results = Read · { $results }
+
+admin-senders-from = From { $machines }
+
+admin-software-version-not-checked = Software version not checked against a manual
+
+admin-error-alert-snapshot-too-large = active alert snapshot exceeds 4096 rows
+
+admin-error-alert-retry-endpoint-missing = alert retry endpoint is not configured
+
+admin-error-receipt-machine-missing = receipt machine is absent from current configuration
+
+admin-error-receipt-page-lost-cursor = receipt page lost cursor
+
+admin-error-unknown-receipt = receipt does not exist
+
+admin-alert-unknown-number-waits = an unknown number of results or order messages wait
+
+admin-alert-count-waits = 
+    { $count ->
+        [one] { $number } result or order message waits
+       *[other] { $number } results or order messages wait
+    }
+
+admin-alert-cannot-deliver-not-configured = Cannot deliver: no machine and no lab app uses destination { $destination }; { $waiting }. Add lab app { $destination } on the Lab apps page and restart, or restore its settings; the results are kept and will be sent once it is configured.
+
+admin-alert-cannot-deliver-keys-missing = Cannot deliver: the API key or signing key for lab app destination { $destination } is missing; { $waiting }, paused. Enter the API key and signing key for lab app { $destination } on the Lab apps page or in the service environment, then restart; the results are kept and will be sent once the keys are set.

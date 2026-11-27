@@ -16,14 +16,14 @@ use crate::admin::engine::{Engine, EngineError};
 use crate::admin::setup::{
     Seams, Setup, SetupError, Via,
     lab_apps::{
-        API_KEY, KeySource, SIGNING_KEY,
+        KeySource, api_key,
         change::{
             Change, Entered, Saved, add_blocking, address_line, count, reason, remove_blocking,
             removed_reason, save_blocking, saved_lines, waiting,
         },
         conflict_sentence,
         relay::{Answer, PATH, Sent},
-        scan, where_written,
+        scan, signing_key, where_written,
     },
     off_thread,
 };
@@ -207,7 +207,7 @@ async fn keys_go(installation: &Installation) -> Result<Place, Failure> {
 
 /// Reads both keys.
 fn read_keys(keys: Keys) -> Result<[String; 2], Failure> {
-    let mut keys = keys(&[API_KEY.0, SIGNING_KEY.0])?.into_iter();
+    let mut keys = keys(&[api_key().0, signing_key().0])?.into_iter();
     Ok([
         keys.next().unwrap_or_default(),
         keys.next().unwrap_or_default(),
@@ -283,9 +283,7 @@ fn list(setup: &Setup) -> Result<Outcome, Failure> {
         say(&conflict_sentence(conflict))?;
     }
     if scan.known.is_empty() {
-        say(
-            "No lab app is set up yet. Add one with: analyte lab-apps add <name> --address <https://...>",
-        )?;
+        say(tr("setup-no-lab-app-yet-add-one"))?;
     }
     for known in &scan.known {
         let settings = &known.settings;
@@ -319,7 +317,7 @@ fn list(setup: &Setup) -> Result<Outcome, Failure> {
             [(
                 "join",
                 (if known.users.is_empty() {
-                    "no machine yet".to_owned()
+                    tr("setup-no-machine-yet").to_owned()
                 } else {
                     known.users.join(", ")
                 })
@@ -331,8 +329,8 @@ fn list(setup: &Setup) -> Result<Outcome, Failure> {
             say(&format!("  {place} ({exact})"))?;
         }
         for (label, name) in [
-            (API_KEY, &settings.api_key_name),
-            (SIGNING_KEY, &settings.signing_key_name),
+            (api_key(), &settings.api_key_name),
+            (signing_key(), &settings.signing_key_name),
         ] {
             let key = source.key(label, name, now);
             say(&format!("  {}: {} ({})", label.0, key.word, key.exact))?;
@@ -363,9 +361,7 @@ async fn add(
         ..Entered::default()
     });
     let asked = entered.base_url.trim().is_empty() && ask == Ask::Terminal;
-    if asked
-        && let Some(address) = ask.line("Its HTTPS address, such as https://lab.example.org")?
-    {
+    if asked && let Some(address) = ask.line(tr("setup-ask-https-address"))? {
         entered.base_url = address;
     }
     let place = keys_go(installation).await?;
@@ -378,7 +374,7 @@ async fn add(
             [("trim", (entered.name.trim()).to_string().into())],
         ))?;
         say(&address_line(entered.base_url.trim()))?;
-        if !ask.confirm("Save?")? {
+        if !ask.confirm(tr("setup-save-question"))? {
             return Err(Failure::NotConfirmed);
         }
     }

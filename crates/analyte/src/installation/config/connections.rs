@@ -12,20 +12,32 @@ use analyte_config::Endpoint;
 pub(crate) fn shared(left: (Link, &Endpoint), right: (Link, &Endpoint)) -> Option<String> {
     match (left, right) {
         ((Link::Serial, Endpoint::Fixed(a)), (Link::Serial, Endpoint::Fixed(b))) => {
-            same_port_name(a, b).then(|| format!("serial port {a}"))
+            same_port_name(a, b).then(|| {
+                analyte_i18n::message("setup-shared-serial-port", [("port", a.to_string().into())])
+            })
         }
         ((Link::Serial, Endpoint::UsbSerial(a)), (Link::Serial, Endpoint::UsbSerial(b))) => {
-            analyte_transport::serial::same_usb_serial(a.as_str(), b.as_str())
-                .then(|| format!("USB serial number {}", a.as_str()))
+            analyte_transport::serial::same_usb_serial(a.as_str(), b.as_str()).then(|| {
+                analyte_i18n::message("setup-shared-usb-serial", [("serial", a.as_str().into())])
+            })
         }
-        ((Link::TcpServer, a), (Link::TcpServer, b)) => {
-            listeners_overlap(a, b).then(|| format!("network address {}", text(a)))
-        }
-        ((Link::TcpClient, Endpoint::Fixed(a)), (Link::TcpClient, Endpoint::Fixed(b))) => {
-            (a == b).then(|| format!("network address {a}"))
-        }
+        ((Link::TcpServer, a), (Link::TcpServer, b)) => listeners_overlap(a, b).then(|| {
+            analyte_i18n::message(
+                "setup-shared-network-address",
+                [("address", text(a).into())],
+            )
+        }),
+        ((Link::TcpClient, Endpoint::Fixed(a)), (Link::TcpClient, Endpoint::Fixed(b))) => (a == b)
+            .then(|| {
+                analyte_i18n::message(
+                    "setup-shared-network-address",
+                    [("address", a.to_string().into())],
+                )
+            }),
         ((Link::Folder, Endpoint::Fixed(a)), (Link::Folder, Endpoint::Fixed(b))) => {
-            (a == b).then(|| format!("folder {a}"))
+            (a == b).then(|| {
+                analyte_i18n::message("setup-shared-folder", [("folder", a.to_string().into())])
+            })
         }
         ((Link::Serial | Link::TcpServer | Link::TcpClient | Link::Folder, _), _) => None,
     }

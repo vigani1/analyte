@@ -6,13 +6,11 @@ pub enum Error {
     #[error(transparent)]
     Encoding(#[from] std::string::FromUtf8Error),
     /// A required installation setting or relationship is refused.
-    #[error("ASTM receive dialog currently supports strict checksum hex only")]
+    #[error("{}", analyte_i18n::text("setup-config-astm-checksum-hex-only"))]
     UnsupportedChecksumMode,
     /// The machine definition is not in a `<vendor>/<model>/` folder, so its
     /// results and order events could not name the machine model (ADR 0033).
-    #[error(
-        "{definition}: a machine definition must sit in a <vendor>/<model>/ folder, such as machines/roche/cobas-e411/machine.toml, so results can name the machine model: {source}"
-    )]
+    #[error("{}", analyte_i18n::message("setup-config-definition-outside-model-folder", [("definition", (definition.display()).to_string().into()), ("error", (source).to_string().into())]))]
     DefinitionOutsideModelFolder {
         /// The definition file.
         definition: std::path::PathBuf,
@@ -24,13 +22,13 @@ pub enum Error {
     #[error("LAW gates require injected loopback listener")]
     MissingLawGateListener,
     /// A required installation setting or relationship is refused.
-    #[error("admin address must be 127.0.0.1")]
+    #[error("{}", analyte_i18n::text("setup-config-admin-address-loopback"))]
     AdminAddressNotLoopback,
     /// A required installation setting or relationship is refused.
-    #[error("admin port must be between 1 and 65535")]
+    #[error("{}", analyte_i18n::text("setup-config-admin-port-range"))]
     AdminPortOutOfRange,
     /// A required installation setting or relationship is refused.
-    #[error("capture machine ID must be one directory component")]
+    #[error("{}", analyte_i18n::text("setup-config-capture-machine-id"))]
     InvalidCaptureMachineId,
     /// A required installation setting or relationship is refused.
     #[cfg(feature = "test-hooks")]
@@ -49,28 +47,22 @@ pub enum Error {
     #[error("commit hook requires injected LAW loopback listener")]
     MissingLawCommitListener,
     /// A required installation setting or relationship is refused.
-    #[error("configuration exceeds 1 MiB")]
+    #[error("{}", analyte_i18n::text("setup-config-too-large"))]
     ConfigurationTooLarge,
     /// A required installation setting or relationship is refused.
-    #[error("configuration has no parent directory")]
+    #[error("{}", analyte_i18n::text("setup-config-no-parent-directory"))]
     ConfigurationHasNoParentDirectory,
     /// A machine without a definition waits for the setup page, which needs `[admin]`.
-    #[error(
-        "a machine listed without a definition waits for the setup page; enable [admin] or add its definition"
-    )]
+    #[error("{}", analyte_i18n::text("setup-config-setup-needs-admin"))]
     SetupNeedsAdmin,
     /// A machine waiting for setup has capture or overrides, which need a definition.
-    #[error(
-        "a machine listed without a definition cannot have capture or overrides until it is set up"
-    )]
+    #[error("{}", analyte_i18n::text("setup-config-awaiting-setup-with-settings"))]
     AwaitingSetupWithSettings,
     /// No machine is listed and there is no setup page to add one.
-    #[error(
-        "the program lists no machines; enable [admin] so the setup page can add one, or add a [[machines]] entry"
-    )]
+    #[error("{}", analyte_i18n::text("setup-config-no-machines"))]
     NoMachines,
     /// Two machines would open the same port, serial number, address or folder.
-    #[error("machines {first} and {second} both use {what}; give each machine its own connection")]
+    #[error("{}", analyte_i18n::message("setup-config-shared-connection", [("first", (first).to_string().into()), ("second", (second).to_string().into()), ("what", (what).to_string().into())]))]
     SharedConnection {
         /// The machine listed first.
         first: String,
@@ -80,13 +72,11 @@ pub enum Error {
         what: String,
     },
     /// A required installation setting or relationship is refused.
-    #[error("duplicate machine identity")]
+    #[error("{}", analyte_i18n::text("setup-config-duplicate-machine-identity"))]
     DuplicateMachineIdentity,
     /// One lab app name is written with different settings in two places, so
     /// which address or keys are meant is unknown; Analyte never guesses.
-    #[error(
-        "lab app {name} is written differently in {first} and in {second}; make both the same (or give one another name), then start again"
-    )]
+    #[error("{}", analyte_i18n::message("setup-config-conflicting-lab-app", [("name", (name).to_string().into()), ("first", (first).to_string().into()), ("second", (second).to_string().into())]))]
     ConflictingLabApp {
         /// The lab app name.
         name: String,
@@ -97,9 +87,7 @@ pub enum Error {
     },
     /// Two different lab app names, or two different key names, would share one
     /// environment variable, so one could be given the other's key.
-    #[error(
-        "{what} \"{first}\" and \"{second}\" clash: both would use the key name {variable}. Rename one so the names differ by more than letter case or - versus _, in the file that defines it (lab-apps.toml, a site file or the program file)"
-    )]
+    #[error("{}", analyte_i18n::message("setup-config-name-clash", [("what", (what).to_string().into()), ("first", (first).to_string().into()), ("second", (second).to_string().into()), ("variable", (variable).to_string().into())]))]
     NameClash {
         /// Whether lab app names or key names clash.
         what: Clashing,
@@ -111,24 +99,22 @@ pub enum Error {
         variable: String,
     },
     /// Two retired destinations share one name, so which address to use is unknown.
-    #[error(
-        "retired destination {0} is listed twice; keep one [[retired_destinations]] table per name"
-    )]
+    #[error("{}", analyte_i18n::message("setup-config-duplicate-retired-destination", [("name", (.0).to_string().into())]))]
     DuplicateRetiredDestination(String),
     /// Too many retired destinations to deliver from.
-    #[error("at most 128 retired destinations are supported")]
+    #[error("{}", analyte_i18n::text("setup-config-too-many-retired-destinations"))]
     TooManyRetiredDestinations,
     /// A required installation setting or relationship is refused.
-    #[error("invalid program version, machine count or storage limits")]
+    #[error("{}", analyte_i18n::text("setup-config-invalid-program-limits"))]
     InvalidProgramLimits,
     /// A required installation setting or relationship is refused.
-    #[error("invalid signing rotation references or count")]
+    #[error("{}", analyte_i18n::text("setup-config-invalid-signing-rotation"))]
     InvalidSigningRotation,
     /// A required installation setting or relationship is refused.
-    #[error("receive transport operation timeout cannot exceed 60000 ms")]
+    #[error("{}", analyte_i18n::text("setup-config-receive-timeout-too-long"))]
     ReceiveTimeoutTooLong,
     /// A required installation setting or relationship is refused.
-    #[error("store record limit is smaller than machine message or effective config")]
+    #[error("{}", analyte_i18n::text("setup-config-store-record-limit-too-small"))]
     StoreRecordLimitTooSmall,
     /// A required installation setting or relationship is refused.
     #[cfg(feature = "test-hooks")]
@@ -203,8 +189,8 @@ pub enum Clashing {
 impl std::fmt::Display for Clashing {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(match self {
-            Self::LabApps => "Lab apps",
-            Self::Keys => "Keys",
+            Self::LabApps => analyte_i18n::text("setup-config-clashing-lab-apps"),
+            Self::Keys => analyte_i18n::text("setup-config-clashing-keys"),
         })
     }
 }

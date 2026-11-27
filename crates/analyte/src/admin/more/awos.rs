@@ -521,7 +521,10 @@ fn detail_page(
             .map(|other| {
                 (
                     format::order_item_href(order.id, other.index),
-                    format!("Item {}", other.index),
+                    tr_args(
+                        "admin-item-number",
+                        [("index", other.index.to_string().into())],
+                    ),
                 )
             })
             .collect(),
@@ -666,7 +669,12 @@ fn item_facts(item: &MachineOrderItem, now: Timestamp) -> Vec<Fact> {
                 shown: item.placer.clone(),
                 exact: item.placer_namespace.as_ref().map_or_else(
                     || tr("admin-namespace-not-recorded").to_owned(),
-                    |namespace| format!("Namespace {}", namespace.as_str()),
+                    |namespace| {
+                        tr_args(
+                            "admin-namespace",
+                            [("namespace", namespace.as_str().into())],
+                        )
+                    },
                 ),
             },
         },
@@ -822,7 +830,7 @@ fn message_of(
             term: tr("admin-what-the-machine-reports"),
             value: Value::Text(
                 work.execution
-                    .map_or("Nothing", format::execution)
+                    .map_or(tr("admin-execution-nothing"), format::execution)
                     .to_owned(),
             ),
         });

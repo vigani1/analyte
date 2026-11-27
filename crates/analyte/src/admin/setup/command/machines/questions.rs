@@ -125,9 +125,7 @@ pub(super) fn fill(setup: &Setup, id: &str, draft: &mut Draft, ask: Ask) -> Resu
             })
             .collect();
         if choices.is_empty() {
-            say(
-                "There is no lab app yet; add one first with: analyte lab-apps add <name> --address <https://...>",
-            )?;
+            say(tr("setup-no-lab-app-yet-add-one-first"))?;
         }
         draft.lab_app = ask.choose(tr("setup-which-lab-app-does-it-send-results-to"), &choices)?;
     }
@@ -248,7 +246,10 @@ fn ask_recording(
             })
             .collect();
         draft.analyzer_mode = ask.choose(
-            &format!("Step 2, Recording: {}?", mode.label.as_str()),
+            &tr_args(
+                "setup-ask-recording-mode",
+                [("mode", mode.label.as_str().into())],
+            ),
             &options,
         )?;
     }
@@ -392,7 +393,9 @@ pub(super) fn port_line(port: &serial::Listed, used_by: Option<&Identifier>) -> 
     format!(
         "{} - {} - {}",
         port.name,
-        port.description.as_deref().unwrap_or("unknown adapter"),
+        port.description
+            .as_deref()
+            .unwrap_or(tr("setup-unknown-adapter")),
         used_by.map_or(remembered, |holder| tr_args(
             "setup-used-by-4",
             [("holder", (holder.as_str()).to_string().into())]

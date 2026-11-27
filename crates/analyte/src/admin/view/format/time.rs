@@ -5,9 +5,18 @@ use jiff::{Timestamp, tz::TimeZone};
 /// A length of time in its largest whole unit: "45 s", "3 min", "2 h", "1 day".
 pub(in crate::admin) fn duration(seconds: u64) -> String {
     match seconds {
-        0..60 => format!("{seconds} s"),
-        60..3_600 => format!("{} min", seconds / 60),
-        3_600..86_400 => format!("{} h", seconds / 3_600),
+        0..60 => tr_args(
+            "admin-duration-seconds",
+            [("number", seconds.to_string().into())],
+        ),
+        60..3_600 => tr_args(
+            "admin-duration-minutes",
+            [("number", (seconds / 60).to_string().into())],
+        ),
+        3_600..86_400 => tr_args(
+            "admin-duration-hours",
+            [("number", (seconds / 3_600).to_string().into())],
+        ),
         _ => tr_count("admin-count-days", seconds / 86_400),
     }
 }
@@ -20,7 +29,13 @@ pub(in crate::admin) fn limit(limit: std::time::Duration) -> String {
         return duration(limit.as_secs());
     }
     let fraction = format!("{millis:03}");
-    format!("{}.{} s", limit.as_secs(), fraction.trim_end_matches('0'))
+    tr_args(
+        "admin-duration-seconds",
+        [(
+            "number",
+            format!("{}.{}", limit.as_secs(), fraction.trim_end_matches('0')).into(),
+        )],
+    )
 }
 
 /// The time zone these pages show times in: this PC's, by its name when it
@@ -40,7 +55,7 @@ pub(in crate::admin) fn time_zone() -> String {
 pub(in crate::admin) fn ago(then: Timestamp, now: Timestamp) -> String {
     match u64::try_from(now.as_second().saturating_sub(then.as_second())) {
         Ok(0..60) => tr("admin-less-than-a-minute-ago").into(),
-        Ok(seconds) => format!("{} ago", duration(seconds)),
+        Ok(seconds) => tr_args("admin-ago", [("duration", duration(seconds).into())]),
         Err(_) => tr("admin-unknown-clock-moved-back").into(),
     }
 }
@@ -54,14 +69,20 @@ pub(in crate::admin) fn clock(at: Timestamp, now: Timestamp) -> String {
 pub(super) fn clock_in(at: Timestamp, now: Timestamp, zone: &TimeZone) -> String {
     let at = at.to_zoned(zone.clone());
     let now = now.to_zoned(zone.clone());
-    let pattern = if at.date() == now.date() {
-        "%H:%M"
+    if at.date() == now.date() {
+        at.strftime("%H:%M").to_string()
     } else if at.year() == now.year() {
-        "%-d %b %H:%M"
+        tr_args(
+            "admin-clock-this-year",
+            [
+                ("day", at.day().to_string().into()),
+                ("month", analyte_i18n::month_short(at.month()).into()),
+                ("time", at.strftime("%H:%M").to_string().into()),
+            ],
+        )
     } else {
-        "%Y-%m-%d %H:%M"
-    };
-    at.strftime(pattern).to_string()
+        at.strftime("%Y-%m-%d %H:%M").to_string()
+    }
 }
 
 /// What the sidebar says about when the page was made: "Page loaded 10:45",
@@ -93,9 +114,19 @@ pub(in crate::admin) fn today(now: Timestamp) -> String {
 }
 
 fn today_in(now: Timestamp, zone: &TimeZone) -> String {
-    now.to_zoned(zone.clone())
-        .strftime("%A %-d %B · %H:%M")
-        .to_string()
+    let now = now.to_zoned(zone.clone());
+    tr_args(
+        "admin-date-line",
+        [
+            (
+                "weekday",
+                analyte_i18n::weekday(now.weekday().to_monday_one_offset()).into(),
+            ),
+            ("day", now.day().to_string().into()),
+            ("month", analyte_i18n::month(now.month()).into()),
+            ("time", now.strftime("%H:%M").to_string().into()),
+        ],
+    )
 }
 
 /// Today, as [`clock`] reads it: the PC's local day that `now` falls in, as

@@ -6,7 +6,7 @@
 //! from a closed list ([`Reason`]), which the public `GET /status` names
 //! without any name or count (ADR 0023).
 use crate::admin::view::{Tab, Tone, format};
-use crate::machine::software_version::UNCHECKED_WARNING;
+use crate::machine::software_version::unchecked_warning;
 use analyte_i18n::{count as tr_count, message as tr_args, text as tr};
 use analyte_model::Identifier;
 use analyte_store::{AlertKey, AlertState, Undeliverable};
@@ -560,7 +560,7 @@ fn software_attention(facts: &Facts) -> impl Iterator<Item = Thing> + '_ {
                 tr_args(
                     "doctor-overview-for",
                     [
-                        ("UNCHECKED-WARNING", (UNCHECKED_WARNING).to_string().into()),
+                        ("UNCHECKED-WARNING", unchecked_warning().into()),
                         ("machine", (machine.as_str()).to_string().into()),
                     ],
                 ),

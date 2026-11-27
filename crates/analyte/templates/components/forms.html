@@ -83,7 +83,7 @@
 <div class="field replace__field"><label class="field__label" for="{{ key.input }}">{{ analyte_i18n::text("admin-new") }} {{ key.label|lower }}</label><input id="{{ key.input }}" class="input mono" type="password" name="{{ key.field }}" autocomplete="off" maxlength="4096"><span class="field__hint">{{ hint }}</span></div>
 </details></div>
 {%- when Entry::Needed(why) %}
-<div class="field"><label class="field__label" for="{{ key.input }}">{{ key.label }}</label><input id="{{ key.input }}" class="input mono" type="password" name="{{ key.field }}" autocomplete="off" maxlength="4096" placeholder="Paste the {{ key.label|lower }}" aria-describedby="{{ key.input }}-why"><span id="{{ key.input }}-why" class="field__error">{% call draw::icon(crate::admin::view::icon::Icon::Problem, "icon--sm") %}{% endcall %}{{ why }}</span></div>
+<div class="field"><label class="field__label" for="{{ key.input }}">{{ key.label }}</label><input id="{{ key.input }}" class="input mono" type="password" name="{{ key.field }}" autocomplete="off" maxlength="4096" placeholder="{{ key.placeholder() }}" aria-describedby="{{ key.input }}-why"><span id="{{ key.input }}-why" class="field__error">{% call draw::icon(crate::admin::view::icon::Icon::Problem, "icon--sm") %}{% endcall %}{{ why }}</span></div>
 {%- endmatch %}
 {%- endmacro %}
 

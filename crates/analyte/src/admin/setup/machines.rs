@@ -486,7 +486,7 @@ pub(in crate::admin) async fn confirm_remove(
 /// The dialog's lines about open work, or why it could not be counted; true
 /// when there is a warning, so removing needs "Remove anyway".
 fn warning(open: &Result<Unfinished, SetupError>) -> (Vec<DialogItem>, bool) {
-    const UNCOUNTED: &str = "Items to review that are not linked to one machine are not counted.";
+    let uncounted = tr("setup-remove-unlinked-items-not-counted");
     match open {
         Ok(open) if open.is_empty() => (
             vec![
@@ -498,7 +498,7 @@ fn warning(open: &Result<Unfinished, SetupError>) -> (Vec<DialogItem>, bool) {
                 DialogItem {
                     tone: Tone::Neutral,
                     icon: Icon::Info,
-                    text: UNCOUNTED.into(),
+                    text: uncounted.into(),
                 },
             ],
             false,
@@ -517,7 +517,7 @@ fn warning(open: &Result<Unfinished, SetupError>) -> (Vec<DialogItem>, bool) {
                 icon: Icon::Info,
                 text: tr_args(
                     "setup-removing-does-not-delete-any-of-this-finish-it",
-                    [("UNCOUNTED", (UNCOUNTED).to_string().into())],
+                    [("UNCOUNTED", (uncounted).to_string().into())],
                 ),
             });
             (items, true)

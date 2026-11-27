@@ -14,14 +14,20 @@ use crate::installation::{
     secrets,
 };
 use analyte_config::Destination;
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_model::Identifier;
 use jiff::Timestamp;
 use std::sync::Arc;
 
-/// The two keys of a lab app: their label, form field and field id.
-pub(in crate::admin::setup) const API_KEY: (&str, &str, &str) = ("API key", "api_key", "la-api");
-pub(in crate::admin::setup) const SIGNING_KEY: (&str, &str, &str) =
-    ("Signing key", "signing_key", "la-signing");
+/// A lab app's API key: its label, form field and field id.
+pub(in crate::admin::setup) fn api_key() -> (&'static str, &'static str, &'static str) {
+    (tr("setup-api-key"), "api_key", "la-api")
+}
+
+/// A lab app's signing key: its label, form field and field id.
+pub(in crate::admin::setup) fn signing_key() -> (&'static str, &'static str, &'static str) {
+    (tr("setup-signing-key"), "signing_key", "la-signing")
+}
 
 /// Where a page finds keys, by the service's own rule (`secrets::source`):
 /// the service environment, then the locked keys file, read once per page.
@@ -44,7 +50,7 @@ impl KeySource {
         self.stored
             .as_ref()
             .err()
-            .map(|error| format!("Keys file: {error}"))
+            .map(|error| tr_args("setup-keys-file", [("error", error.to_string().into())]))
     }
 
     /// One key's state, never its value. An unreadable file still lets a set
@@ -65,27 +71,33 @@ impl KeySource {
                     format::set_in_environment(&secrets::variable(name.as_str())),
                     named,
                     Entry::Replace {
-                        hint: "The service environment’s key wins over one stored here.",
+                        hint: tr("setup-key-hint-environment-wins"),
                     },
                 ),
                 secrets::Source::Stored { set_at, .. } => (
                     Tone::Good,
                     format::set_on(set_at, now),
-                    format!("{named}, stored {}", format::moment_unix(set_at, now).exact),
+                    tr_args(
+                        "setup-key-stored-at",
+                        [
+                            ("name", named.into()),
+                            ("time", format::moment_unix(set_at, now).exact.into()),
+                        ],
+                    ),
                     Entry::Replace {
-                        hint: "Leave it empty to keep the stored key.",
+                        hint: tr("setup-key-hint-leave-empty"),
                     },
                 ),
                 secrets::Source::Missing => match self.stored {
                     Ok(_) => (
                         Tone::Problem,
-                        "Missing".into(),
+                        tr("setup-key-missing").into(),
                         named,
                         Entry::Needed(format::key_needed()),
                     ),
                     Err(_) => (
                         Tone::Attention,
-                        "Cannot be checked".into(),
+                        tr("setup-key-cannot-be-checked").into(),
                         named,
                         Entry::Needed(format::key_unchecked()),
                     ),
@@ -109,18 +121,18 @@ impl KeySource {
                 if stored.value(settings.api_key_name.as_str()).is_some()
                     || stored.value(settings.signing_key_name.as_str()).is_some() =>
             {
-                "Its keys stay stored, locked."
+                tr("setup-keys-kept-locked")
             }
-            Ok(_) => "No key is stored for it, so none is kept.",
-            Err(_) => "Whether keys are stored for it cannot be checked; any that are stay locked.",
+            Ok(_) => tr("setup-keys-none-kept"),
+            Err(_) => tr("setup-keys-kept-unknown"),
         }
     }
 
     /// A lab app's two keys.
     pub(super) fn keys(&self, settings: &Destination, now: Timestamp) -> Vec<Key> {
         vec![
-            self.key(API_KEY, &settings.api_key_name, now),
-            self.key(SIGNING_KEY, &settings.signing_key_name, now),
+            self.key(api_key(), &settings.api_key_name, now),
+            self.key(signing_key(), &settings.signing_key_name, now),
         ]
     }
 }
@@ -158,11 +170,14 @@ pub(in crate::admin) async fn key_sources(
         let listed = scan(state.setup.config()).map(|scan| {
             for settings in scan.settings() {
                 for (label, name) in [
-                    (API_KEY.0, &settings.api_key_name),
-                    (SIGNING_KEY.0, &settings.signing_key_name),
+                    (api_key().0, &settings.api_key_name),
+                    (signing_key().0, &settings.signing_key_name),
                 ] {
                     found.push(Found {
-                        owner: format!("Lab app {}", settings.name.as_str()),
+                        owner: tr_args(
+                            "setup-key-owner-lab-app",
+                            [("name", settings.name.as_str().into())],
+                        ),
                         label,
                         status: status(name),
                     });
@@ -171,8 +186,11 @@ pub(in crate::admin) async fn key_sources(
         });
         for (target, name) in &alerts {
             found.push(Found {
-                owner: format!("Alert target {}", target.as_str()),
-                label: "Signing key",
+                owner: tr_args(
+                    "setup-key-owner-alert-target",
+                    [("target", target.as_str().into())],
+                ),
+                label: signing_key().0,
                 status: status(name),
             });
         }
@@ -196,8 +214,8 @@ pub(in crate::admin::setup) fn missing_keys(
     let source = KeySource::read(setup);
     let stored = source.stored.as_ref().ok()?;
     let missing: Vec<&str> = [
-        ("API key", &lab_app.api_key_name),
-        ("signing key", &lab_app.signing_key_name),
+        (tr("doctor-overview-api-key"), &lab_app.api_key_name),
+        (tr("doctor-overview-signing-key"), &lab_app.signing_key_name),
     ]
     .into_iter()
     .filter(|(_, name)| {

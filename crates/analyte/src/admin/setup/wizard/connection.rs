@@ -355,7 +355,9 @@ fn serial_choices(
                     Port {
                         meta: format!(
                             "{} – {}",
-                            port.description.as_deref().unwrap_or("unknown adapter"),
+                            port.description
+                                .as_deref()
+                                .unwrap_or(tr("setup-unknown-adapter")),
                             used_by.as_ref().map_or(saved, |holder| tr_args(
                                 "setup-used-by-4",
                                 [("holder", (holder).to_string().into())]

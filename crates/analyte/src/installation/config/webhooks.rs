@@ -9,28 +9,28 @@ use std::time::Duration;
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum WebhookConfigError {
     /// Endpoint cardinality exceeds the host worker bound.
-    #[error("at most 8 alert endpoints are supported")]
+    #[error("{}", analyte_i18n::text("setup-webhooks-too-many"))]
     TooMany,
     /// Two endpoints would share durable progress.
-    #[error("duplicate alert endpoint identity")]
+    #[error("{}", analyte_i18n::text("setup-webhooks-duplicate"))]
     Duplicate,
     /// An endpoint URL failed the HTTPS boundary.
-    #[error("invalid alert endpoint HTTPS URL")]
+    #[error("{}", analyte_i18n::text("setup-webhooks-url"))]
     Url,
     /// The reminder cadence is unsafe or unbounded.
-    #[error("alert reminder interval must be between 60 and 86400 seconds")]
+    #[error("{}", analyte_i18n::text("setup-webhooks-reminder"))]
     Reminder,
     /// Pending work must have a finite nonzero capacity.
-    #[error("alert queue capacity must be between 1 and 4096")]
+    #[error("{}", analyte_i18n::text("setup-webhooks-capacity"))]
     Capacity,
     /// An HTTP operation must finish within the host budget.
-    #[error("alert request timeout must be between 1 and 300 seconds")]
+    #[error("{}", analyte_i18n::text("setup-webhooks-timeout"))]
     Timeout,
     /// Retry bounds must be ordered and finite.
-    #[error("alert retry delays must satisfy 1 <= minimum <= maximum <= 86400 seconds")]
+    #[error("{}", analyte_i18n::text("setup-webhooks-backoff"))]
     Backoff,
     /// Every event has a finite retry budget.
-    #[error("alert attempt budget must be between 1 and 100")]
+    #[error("{}", analyte_i18n::text("setup-webhooks-attempts"))]
     Attempts,
 }
 

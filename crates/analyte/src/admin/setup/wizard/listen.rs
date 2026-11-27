@@ -320,14 +320,14 @@ async fn read(
         Target::TcpServer(address) => {
             let listener = match tokio::net::TcpListener::bind(address).await {
                 Ok(listener) => listener,
-                Err(error) => return failed("listen", &error),
+                Err(error) => return failed(tr("setup-test-action-listen"), &error),
             };
             match tokio::time::timeout_at(deadline, listener.accept()).await {
                 Ok(Ok((stream, from))) => {
                     peer = Some(from.ip().to_canonical());
                     stream
                 }
-                Ok(Err(error)) => return failed("accept", &error),
+                Ok(Err(error)) => return failed(tr("setup-test-action-accept"), &error),
                 Err(_) => return Some(End::TimeLimit),
             }
             // The listener drops here, so a second connection is refused.
@@ -335,7 +335,7 @@ async fn read(
         Target::TcpClient(address) => {
             match tokio::time::timeout_at(deadline, tokio::net::TcpStream::connect(address)).await {
                 Ok(Ok(stream)) => stream,
-                Ok(Err(error)) => return failed("connect", &error),
+                Ok(Err(error)) => return failed(tr("setup-test-action-connect"), &error),
                 Err(_) => return Some(End::TimeLimit),
             }
         }
@@ -357,7 +357,7 @@ async fn read(
                     return None;
                 }
             }
-            Err(error) => return failed("read", &error),
+            Err(error) => return failed(tr("setup-test-action-read"), &error),
         }
     }
 }

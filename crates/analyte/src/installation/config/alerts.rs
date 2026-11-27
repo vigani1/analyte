@@ -5,28 +5,28 @@ use serde::Deserialize;
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum AlertConfigError {
     /// Evaluation interval is outside the bounded range.
-    #[error("alert interval must be between 1 and 3600 seconds")]
+    #[error("{}", analyte_i18n::text("setup-alerts-interval"))]
     Interval,
     /// Too many configured policies.
-    #[error("at most 128 alert policies are supported")]
+    #[error("{}", analyte_i18n::text("setup-alerts-too-many"))]
     TooMany,
     /// Machine is not configured.
-    #[error("alert references an unknown machine")]
+    #[error("{}", analyte_i18n::text("setup-alerts-unknown-machine"))]
     UnknownMachine,
     /// Duplicate signal and selector.
-    #[error("duplicate alert kind and machine selector")]
+    #[error("{}", analyte_i18n::text("setup-alerts-duplicate"))]
     Duplicate,
     /// Unsupported kind.
-    #[error("unknown alert kind")]
+    #[error("{}", analyte_i18n::text("setup-alerts-unknown-kind"))]
     UnknownKind,
     /// Missing, oversized or multiline responder.
-    #[error("responder must be nonempty, single-line and at most 256 bytes")]
+    #[error("{}", analyte_i18n::text("setup-alerts-responder"))]
     Responder,
     /// Impossible numeric threshold.
-    #[error("invalid alert threshold")]
+    #[error("{}", analyte_i18n::text("setup-alerts-threshold"))]
     Threshold,
     /// Missing or inappropriate machine selector.
-    #[error("invalid alert machine selector")]
+    #[error("{}", analyte_i18n::text("setup-alerts-machine"))]
     Machine,
 }
 

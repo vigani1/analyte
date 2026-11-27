@@ -16,6 +16,7 @@ const ENGLISH: &[&str] = &[
     include_str!("../../../../locales/en/cli.ftl"),
     include_str!("../../../../locales/en/desktop.ftl"),
     include_str!("../../../../locales/en/doctor-overview.ftl"),
+    include_str!("../../../../locales/en/dates.ftl"),
 ];
 
 struct Catalog {
@@ -206,6 +207,24 @@ pub fn count(id: &str, count: impl Into<u64>) -> String {
     )
 }
 
+/// The full weekday name in the current language; Monday is 1, as in ISO 8601.
+#[must_use]
+pub fn weekday(day: i8) -> String {
+    message("date-weekday", [("day", day.into())])
+}
+
+/// The full month name in the current language; January is 1.
+#[must_use]
+pub fn month(month: i8) -> String {
+    message("date-month", [("month", month.into())])
+}
+
+/// The short month name in the current language, such as "Nov"; January is 1.
+#[must_use]
+pub fn month_short(month: i8) -> String {
+    message("date-month-short", [("month", month.into())])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -216,6 +235,15 @@ mod tests {
         assert_eq!(Language::select(["und"]).tag(), "en");
         assert!(Language::negotiate(["sq"]).is_none());
         assert_eq!(text("admin-language"), "Language");
+    }
+
+    #[test]
+    fn calendar_names_follow_iso_numbering() {
+        assert_eq!(weekday(1), "Monday");
+        assert_eq!(weekday(7), "Sunday");
+        assert_eq!(month(1), "January");
+        assert_eq!(month(12), "December");
+        assert_eq!(month_short(11), "Nov");
     }
 
     #[test]

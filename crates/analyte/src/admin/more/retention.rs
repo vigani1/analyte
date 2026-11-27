@@ -324,7 +324,10 @@ fn placed(audit: Option<&Audit>, now: Timestamp) -> Line {
             )],
         ))
         .then(Line::text("").time(format::moment_unix(audit.time, now)))
-        .then(Line::text(format!("Reason: {}", audit.reason.as_str())))
+        .then(Line::text(tr_args(
+            "admin-hold-reason",
+            [("reason", audit.reason.as_str().into())],
+        )))
         .then(Line::text(tr("admin-until-released"))),
         None => Line::text(tr("admin-who-placed-it-is-not-in-the-history-until")),
     }
@@ -334,7 +337,10 @@ fn placed(audit: Option<&Audit>, now: Timestamp) -> Line {
 /// ID, or "order" with the lab app and its order number.
 fn target(target: &HoldTarget) -> String {
     match target {
-        HoldTarget::Receipt(id) => format!("Message {}", uuid::Uuid::from(*id)),
+        HoldTarget::Receipt(id) => tr_args(
+            "admin-hold-message",
+            [("id", uuid::Uuid::from(*id).to_string().into())],
+        ),
         HoldTarget::Order { destination, order } => tr_args(
             "admin-order-lab-app",
             [

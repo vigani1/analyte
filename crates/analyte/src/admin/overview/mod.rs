@@ -376,7 +376,14 @@ async fn render(
         .collect();
     let orders = orders(&facts);
     let things = attention::things(&facts);
-    let frame = Frame::new(state, Tab::Overview, "Overview", Some(review), session, now);
+    let frame = Frame::new(
+        state,
+        Tab::Overview,
+        Tab::Overview.label(),
+        Some(review),
+        session,
+        now,
+    );
     // First run: no machine is set up, nothing needs anyone and nothing waits for a
     // lab app (a removed machine's results still being sent keep the full page).
     let html = if state.machines.is_empty() && things.is_empty() && kept.is_empty() {

@@ -491,3 +491,5 @@ doctor-overview-signal-path-flow = — machines → Analyte → lab apps
 doctor-overview-disk-alerts-section = 04 · Disk and alerts
 
 doctor-overview-lab-app-key-advice = enter its keys on the Lab apps page, then restart the engine
+
+doctor-overview-orders-section = 03 · Orders

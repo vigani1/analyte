@@ -274,12 +274,16 @@ pub(in crate::admin) fn reading(outcome: Option<&RecentOutcome>) -> String {
         None => tr("admin-not-read-yet").into(),
         Some(RecentOutcome::Failed) => tr("admin-could-not-be-read").into(),
         Some(RecentOutcome::Results { results: 0, .. }) => tr("admin-read-no-results").into(),
-        Some(RecentOutcome::Results { results, .. }) => format!(
-            "Read · {}",
-            tr_count(
-                "admin-count-results",
-                u64::try_from(*results).unwrap_or(u64::MAX)
-            )
+        Some(RecentOutcome::Results { results, .. }) => tr_args(
+            "admin-read-results",
+            [(
+                "results",
+                tr_count(
+                    "admin-count-results",
+                    u64::try_from(*results).unwrap_or(u64::MAX),
+                )
+                .into(),
+            )],
         ),
     }
 }

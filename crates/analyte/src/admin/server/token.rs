@@ -6,23 +6,23 @@ use std::{fs::OpenOptions, io::Write, path::Path};
 #[derive(Debug, thiserror::Error)]
 pub enum TokenError {
     /// The configured admin endpoint has no provisioned credential.
-    #[error("admin token file is missing; run analyte admin token --rotate")]
+    #[error("{}", analyte_i18n::text("cli-token-missing"))]
     Missing,
     /// The credential is not one canonical base64-encoded 256-bit value.
-    #[error("admin token file must contain one base64-encoded 256-bit token")]
+    #[error("{}", analyte_i18n::text("cli-token-invalid"))]
     Invalid,
     /// The credential file can be read by other users, or is not a regular file.
-    #[error("admin token file must be a protected regular file (Unix mode 0600)")]
+    #[error("{}", analyte_i18n::text("cli-token-permissions"))]
     Permissions,
     /// The Windows credential file grants access beyond the allowed principals.
     #[cfg(windows)]
-    #[error("admin token file: {0}")]
+    #[error("{}", analyte_i18n::message("cli-token-access", [("error", (.0).to_string().into())]))]
     Access(#[from] crate::runtime::service::acl::Error),
     /// The OS entropy source failed; no replacement credential was installed.
-    #[error("admin token OS random source failed: {0}")]
+    #[error("{}", analyte_i18n::message("cli-token-random", [("error", (.0).to_string().into())]))]
     Random(getrandom::Error),
     /// A credential operation failed; its OS cause is retained without secret bytes.
-    #[error("admin token {operation} failed: {source}")]
+    #[error("{}", analyte_i18n::message("cli-token-io", [("operation", (operation).to_string().into()), ("error", (source).to_string().into())]))]
     Io {
         /// Operation that failed, never credential contents.
         operation: &'static str,
@@ -63,7 +63,7 @@ impl Token {
             if e.kind() == std::io::ErrorKind::NotFound {
                 TokenError::Missing
             } else {
-                io("inspect credential", e)
+                io(analyte_i18n::text("cli-token-op-inspect"), e)
             }
         })?;
         if !metadata.is_file() {
@@ -84,7 +84,7 @@ impl Token {
         let mut bytes = Vec::new();
         std::fs::File::open(path)
             .and_then(|file| file.take(45).read_to_end(&mut bytes))
-            .map_err(|e| io("read credential", e))?;
+            .map_err(|e| io(analyte_i18n::text("cli-token-op-read"), e))?;
         let text = String::from_utf8(bytes).map_err(|_| TokenError::Invalid)?;
         let decoded = STANDARD.decode(&text).map_err(|_| TokenError::Invalid)?;
         if text.len() != 44 || decoded.len() != 32 || STANDARD.encode(decoded) != text {
@@ -192,18 +192,20 @@ pub fn rotate_token(directory: &Path) -> Result<String, crate::admin::Error> {
     }
     let mut file = options
         .open(&pending)
-        .map_err(|e| io("create protected staging file", e))?;
+        .map_err(|e| io(analyte_i18n::text("cli-token-op-create-staging"), e))?;
     // Never publish a partial credential. A failed staging file deliberately
     // blocks another rotation until the operator investigates the failure.
     file.write_all(token.as_bytes())
-        .map_err(|e| io("write staging file", e))?;
-    file.sync_all().map_err(|e| io("flush staging file", e))?;
+        .map_err(|e| io(analyte_i18n::text("cli-token-op-write-staging"), e))?;
+    file.sync_all()
+        .map_err(|e| io(analyte_i18n::text("cli-token-op-flush-staging"), e))?;
     drop(file);
-    std::fs::rename(&pending, &target).map_err(|e| io("install credential", e))?;
+    std::fs::rename(&pending, &target)
+        .map_err(|e| io(analyte_i18n::text("cli-token-op-install"), e))?;
     #[cfg(unix)]
     std::fs::File::open(directory)
         .and_then(|file| file.sync_all())
-        .map_err(|e| io("flush credential directory", e))?;
+        .map_err(|e| io(analyte_i18n::text("cli-token-op-flush-directory"), e))?;
     Ok(token)
 }
 

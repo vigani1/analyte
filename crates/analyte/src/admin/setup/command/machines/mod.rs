@@ -331,7 +331,10 @@ fn accepts(link: Link, peers: Option<&analyte_config::AllowedPeers>) -> Option<S
 fn summary(id: &str, plan: &Plan) -> std::io::Result<()> {
     let effective = plan.validated.effective();
     say(&tr_args("setup-machine", [("id", (id).to_string().into())]))?;
-    say(&format!("Model: {}", plan.model))?;
+    say(&tr_args(
+        "setup-summary-model",
+        [("model", plan.model.to_string().into())],
+    ))?;
     settings_summary(
         Link::of(effective.stack()),
         &plan.connection,
@@ -417,7 +420,7 @@ async fn set(
     let plan = plan::checked(&setup, id, &draft)?;
     if asked {
         summary(id, &plan)?;
-        if !ask.confirm("Save?")? {
+        if !ask.confirm(tr("setup-save-question"))? {
             return Err(Failure::NotConfirmed);
         }
     }

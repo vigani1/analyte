@@ -469,7 +469,7 @@ impl Problem {
     /// The page's title, the alert's title and what it says. The Overview
     /// keeps its own name as the title and says which read failed.
     fn words(&self, section: Section<'_>) -> (&'static str, &'static str, String) {
-        const FAILED: &str = "This page could not be shown";
+        let failed = tr("admin-page-could-not-be-shown");
         let overview = (
             Tab::Overview.label(),
             tr("admin-the-overview-could-not-be-shown-just-now"),
@@ -537,12 +537,12 @@ impl Problem {
                 tr("admin-go-back-to-the-item-to-see-its-other").into(),
             ),
             Self::Settings(_) => (
-                FAILED,
+                failed,
                 tr("admin-analyte-could-not-read-its-settings-just-now"),
                 tr("admin-report-reload").into(),
             ),
             Self::Store(_) => (
-                FAILED,
+                failed,
                 tr("admin-analyte-could-not-read-its-stored-data-just-now"),
                 tr("admin-report-reload").into(),
             ),
@@ -551,7 +551,7 @@ impl Problem {
                 let (title, alert) = if section == Section::Overview {
                     overview
                 } else {
-                    (FAILED, tr("admin-analyte-took-too-long"))
+                    (failed, tr("admin-analyte-took-too-long"))
                 };
                 (title, alert, reload_after(format::slow_read()))
             }

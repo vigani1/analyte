@@ -459,15 +459,15 @@ fn reconciliation(stored: &str) -> Explained {
             tr("admin-identity-missing"),
             tr("admin-the-message-does-not-give-this-result-an-identity"),
         ),
-        Some(RevisionOutcome::New(_)) => kept("new"),
-        Some(RevisionOutcome::Correction(_)) => kept("a correction"),
+        Some(RevisionOutcome::New(_)) => kept(tr("admin-recorded-as-new")),
+        Some(RevisionOutcome::Correction(_)) => kept(tr("admin-recorded-as-correction")),
         Some(RevisionOutcome::Retransmission(_)) => kept(tr("admin-already-received")),
         None => Explained::as_stored(),
     }
 }
 
 fn rejected_delivery(stored: &str) -> Explained {
-    const UNREADABLE: &str = "Lab app’s answer could not be read";
+    let unreadable = tr("admin-lab-app-answer-unreadable");
     if stored == analyte_sink::UNSUPPORTED_CONTRACT_REASON {
         return Explained::said(
             tr("admin-delivery-stored-for-another-contract"),
@@ -476,12 +476,12 @@ fn rejected_delivery(stored: &str) -> Explained {
     }
     match ReplyProblem::from_stored(stored) {
         Some(ReplyProblem::InvalidSuccess) => Explained::said(
-            UNREADABLE,
+            unreadable,
             tr("admin-the-lab-app-answered-that-it-took-the-delivery"),
         )
         .with_support(lab_app_answer("200")),
         Some(ReplyProblem::InvalidError) => Explained::said(
-            UNREADABLE,
+            unreadable,
             tr("admin-the-lab-app-refused-the-delivery-but-its-answer"),
         )
         .with_support(lab_app_answer("400 or 422")),

@@ -207,14 +207,17 @@ pub(in crate::admin::setup) fn where_written(known: &Known) -> Vec<(String, &'st
     let mut places = Vec::new();
     if !known.sites.is_empty() {
         places.push((
-            tr_args("setup-still-kept-in-the-settings-of-2", [("join", (known.sites.join(", ")).to_string().into())]),
-            "[destination] in the machine's site file; saving the machine moves it to lab-apps.toml",
+            tr_args(
+                "setup-still-kept-in-the-settings-of-2",
+                [("join", (known.sites.join(", ")).to_string().into())],
+            ),
+            tr("setup-written-in-site-file"),
         ));
     }
     if known.kept {
         places.push((
             tr("setup-kept-from-a-removed-machine").to_owned(),
-            "[[retired_destinations]] in the program file; saving it here moves it to lab-apps.toml",
+            tr("setup-written-in-program-file"),
         ));
     }
     places

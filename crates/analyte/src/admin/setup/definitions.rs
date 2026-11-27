@@ -125,16 +125,16 @@ pub(super) struct Source {
 /// Why the setup facts could not be read from a definition or capture profile.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum FileError {
-    #[error("reading the machine definition {path} failed: {source}")]
+    #[error("{}", analyte_i18n::message("setup-definition-read-failed", [("path", (path.display()).to_string().into()), ("error", (source).to_string().into())]))]
     Read {
         path: PathBuf,
         source: Box<crate::installation::config::Error>,
     },
-    #[error("the machine definition is invalid: {0}")]
+    #[error("{}", analyte_i18n::message("setup-definition-invalid", [("error", (.0).to_string().into())]))]
     Parse(#[from] analyte_config::Error),
-    #[error("{0} is a capture profile; use it as record.toml, not machine.toml")]
+    #[error("{}", analyte_i18n::message("setup-definition-is-capture-profile", [("path", (.0.display()).to_string().into())]))]
     CaptureProfile(PathBuf),
-    #[error("{0} is a complete definition; use it as machine.toml, not record.toml")]
+    #[error("{}", analyte_i18n::message("setup-definition-is-complete", [("path", (.0.display()).to_string().into())]))]
     CompleteDefinition(PathBuf),
 }
 
@@ -153,13 +153,11 @@ pub(super) fn read(path: &Path) -> Result<DefinitionDetails, FileError> {
 /// Why the definitions folder could not be listed.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ListError {
-    #[error(
-        "the machine models folder {0} is missing; copy the machines folder from the release next to Analyte's settings file"
-    )]
+    #[error("{}", analyte_i18n::message("setup-definitions-folder-missing", [("path", (.0.display()).to_string().into())]))]
     Missing(PathBuf),
-    #[error("more than 256 machine models are installed")]
+    #[error("{}", analyte_i18n::text("setup-definitions-too-many"))]
     TooMany,
-    #[error("listing the machine models in {path} failed: {source}")]
+    #[error("{}", analyte_i18n::message("setup-definitions-list-failed", [("path", (path.display()).to_string().into()), ("error", (source).to_string().into())]))]
     Io {
         path: PathBuf,
         source: std::io::Error,

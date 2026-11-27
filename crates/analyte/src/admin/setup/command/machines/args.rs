@@ -165,7 +165,7 @@ fn choice_pair(text: &str) -> Result<(String, String), String> {
     text.split_once('=')
         .map(|(name, value)| (name.trim().to_owned(), value.trim().to_owned()))
         .filter(|(name, value)| !name.is_empty() && !value.is_empty())
-        .ok_or_else(|| "write NAME=VALUE, such as protocol_mode=alternate".to_owned())
+        .ok_or_else(|| tr("cli-choice-write-name-value").to_owned())
 }
 
 impl Choice {

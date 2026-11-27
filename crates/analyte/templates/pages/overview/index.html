@@ -20,7 +20,7 @@
 
 <div class="split">
 <section class="section" id="orders" aria-labelledby="ov-orders">
-{% call layout::label("ov-orders", "03 · Orders", "") %}{% endcall %}
+{% call layout::label("ov-orders", analyte_i18n::text("doctor-overview-orders-section"), "") %}{% endcall %}
 {% call display::rows() %}
 {%- for order in orders %}
 {% call display::row(order.icon, order.tone, order.text, order.href, order.link) %}{% endcall %}

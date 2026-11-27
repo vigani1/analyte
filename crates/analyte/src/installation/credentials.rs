@@ -22,13 +22,11 @@ const KEY_LIMIT: usize = 32;
 #[derive(Debug, thiserror::Error)]
 pub enum CredentialError {
     /// Other users could read the file or folder, or it is not owned by this account.
-    #[error(
-        "credentials {0} must be owned by the service account and readable by no one else (folder mode 0700, file mode 0600)"
-    )]
+    #[error("{}", analyte_i18n::message("setup-credentials-exposed", [("path", (.0.display()).to_string().into())]))]
     Exposed(PathBuf),
     /// The Windows access list grants someone other than SYSTEM and the service account.
     #[cfg(windows)]
-    #[error("credentials {path}: {source}")]
+    #[error("{}", analyte_i18n::message("setup-credentials-access", [("path", (path.display()).to_string().into()), ("error", (source).to_string().into())]))]
     Access {
         /// Refused folder or file.
         path: PathBuf,
@@ -36,27 +34,23 @@ pub enum CredentialError {
         source: crate::runtime::service::acl::Error,
     },
     /// The credentials path is a link, folder or device rather than a regular file.
-    #[error("credentials file {0} is not a regular file")]
+    #[error("{}", analyte_i18n::message("setup-credentials-not-regular-file", [("path", (.0.display()).to_string().into())]))]
     NotRegularFile(PathBuf),
     /// The file exceeds the size or key-count bound.
-    #[error("credentials file exceeds 64 KiB or 32 keys")]
+    #[error("{}", analyte_i18n::text("setup-credentials-too-large"))]
     TooLarge,
     /// The file is not a version 1 credentials file; its text is never repeated.
-    #[error(
-        "credentials file is not a valid version 1 credentials file; replace the keys on the setup page"
-    )]
+    #[error("{}", analyte_i18n::text("setup-credentials-malformed"))]
     Malformed,
     /// A supplied value is empty, too long or not printable ASCII.
-    #[error("credential {0} must be 1 to 4096 printable ASCII characters")]
+    #[error("{}", analyte_i18n::message("setup-credentials-invalid-value", [("name", (.0).to_string().into())]))]
     InvalidValue(String),
     /// The locked folder does not exist yet, and this process does not run
     /// as the service account, so a folder it created would lock the service out.
-    #[error(
-        "the locked keys file does not exist yet and only the account the Analyte service runs as may create it"
-    )]
+    #[error("{}", analyte_i18n::text("setup-credentials-not-service-account"))]
     NotServiceAccount,
     /// A file operation failed; the OS cause is kept, the value is not.
-    #[error("credentials {operation} failed: {source}")]
+    #[error("{}", analyte_i18n::message("setup-credentials-io", [("operation", (operation).to_string().into()), ("error", (source).to_string().into())]))]
     Io {
         /// What was being done.
         operation: &'static str,
@@ -145,7 +139,11 @@ impl Locked {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 return Ok(Stored::default());
             }
-            Err(error) => return Err(io("inspect folder")(error)),
+            Err(error) => {
+                return Err(io(analyte_i18n::text(
+                    "setup-credentials-op-inspect-folder",
+                ))(error));
+            }
             Ok(metadata) if !metadata.is_dir() => {
                 return Err(CredentialError::NotRegularFile(self.folder.clone()));
             }
@@ -156,7 +154,7 @@ impl Locked {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 return Ok(Stored::default());
             }
-            other => other.map_err(io("inspect file"))?,
+            other => other.map_err(io(analyte_i18n::text("setup-credentials-op-inspect-file")))?,
         };
         if !metadata.is_file() {
             return Err(CredentialError::NotRegularFile(path));
@@ -165,7 +163,7 @@ impl Locked {
         let mut bytes = Vec::new();
         std::fs::File::open(&path)
             .and_then(|file| file.take(FILE_LIMIT + 1).read_to_end(&mut bytes))
-            .map_err(io("read file"))?;
+            .map_err(io(analyte_i18n::text("setup-credentials-op-read-file")))?;
         if bytes.len() as u64 > FILE_LIMIT {
             return Err(CredentialError::TooLarge);
         }
@@ -193,7 +191,11 @@ impl Locked {
     pub fn check_writer(&self) -> Result<(), CredentialError> {
         match std::fs::symlink_metadata(&self.folder) {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(io("inspect folder")(error)),
+            Err(error) => {
+                return Err(io(analyte_i18n::text(
+                    "setup-credentials-op-inspect-folder",
+                ))(error));
+            }
             Ok(_) => return self.read().map(|_| ()),
         }
         #[cfg(windows)]
@@ -220,10 +222,14 @@ impl Locked {
                 parent = up;
             }
             let owner = std::fs::metadata(parent)
-                .map_err(io("inspect data directory"))?
+                .map_err(io(analyte_i18n::text(
+                    "setup-credentials-op-inspect-data-directory",
+                )))?
                 .uid();
             let me = std::fs::metadata("/proc/self")
-                .map_err(io("identify the service account"))?
+                .map_err(io(analyte_i18n::text(
+                    "setup-credentials-op-identify-the-service-account",
+                )))?
                 .uid();
             if owner != me {
                 return Err(CredentialError::NotServiceAccount);
@@ -260,13 +266,18 @@ impl Locked {
         // interrupted write of the same kind, never evidence.
         match std::fs::remove_file(&staging) {
             Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-                return Err(io("remove stale staging file")(error));
+                return Err(io(analyte_i18n::text(
+                    "setup-credentials-op-remove-stale-staging-file",
+                ))(error));
             }
             Ok(()) | Err(_) => {}
         }
         let written = stage(&staging, text.as_bytes())
             .and_then(|()| guard(&staging, false))
-            .and_then(|()| std::fs::rename(&staging, self.file()).map_err(io("install file")));
+            .and_then(|()| {
+                std::fs::rename(&staging, self.file())
+                    .map_err(io(analyte_i18n::text("setup-credentials-op-install-file")))
+            });
         if written.is_err() {
             let _ = std::fs::remove_file(&staging);
         }
@@ -274,7 +285,7 @@ impl Locked {
         #[cfg(unix)]
         std::fs::File::open(&self.folder)
             .and_then(|folder| folder.sync_all())
-            .map_err(io("flush folder"))?;
+            .map_err(io(analyte_i18n::text("setup-credentials-op-flush-folder")))?;
         Ok(())
     }
 }
@@ -289,9 +300,15 @@ fn stage(path: &Path, bytes: &[u8]) -> Result<(), CredentialError> {
         options.mode(0o600);
     }
     // On Windows the file inherits the folder's SYSTEM-and-service-only list.
-    let mut file = options.open(path).map_err(io("create staging file"))?;
-    file.write_all(bytes).map_err(io("write staging file"))?;
-    file.sync_all().map_err(io("flush staging file"))
+    let mut file = options.open(path).map_err(io(analyte_i18n::text(
+        "setup-credentials-op-create-staging-file",
+    )))?;
+    file.write_all(bytes).map_err(io(analyte_i18n::text(
+        "setup-credentials-op-write-staging-file",
+    )))?;
+    file.sync_all().map_err(io(analyte_i18n::text(
+        "setup-credentials-op-flush-staging-file",
+    )))
 }
 
 /// Creates the locked folder when missing; an existing one is only checked.
@@ -301,7 +318,7 @@ fn create_folder(folder: &Path) -> Result<(), CredentialError> {
         use std::os::unix::fs::DirBuilderExt as _;
         match std::fs::DirBuilder::new().mode(0o700).create(folder) {
             Err(error) if error.kind() != std::io::ErrorKind::AlreadyExists => {
-                return Err(io("create folder")(error));
+                return Err(io(analyte_i18n::text("setup-credentials-op-create-folder"))(error));
             }
             Ok(()) | Err(_) => {}
         }
@@ -323,10 +340,14 @@ fn guard(path: &Path, folder: bool) -> Result<(), CredentialError> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-        let metadata = std::fs::symlink_metadata(path).map_err(io("inspect protection"))?;
+        let metadata = std::fs::symlink_metadata(path).map_err(io(analyte_i18n::text(
+            "setup-credentials-op-inspect-protection",
+        )))?;
         // `/proc/self` belongs to the effective user of this process.
         let me = std::fs::metadata("/proc/self")
-            .map_err(io("identify the service account"))?
+            .map_err(io(analyte_i18n::text(
+                "setup-credentials-op-identify-the-service-account",
+            )))?
             .uid();
         let mode = metadata.permissions().mode() & 0o777;
         if metadata.uid() != me || mode != if folder { 0o700 } else { 0o600 } {

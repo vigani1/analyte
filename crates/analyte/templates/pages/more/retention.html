@@ -6,7 +6,7 @@
 {%- import "components/icon.html" as draw %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("", "Data keeping", crate::admin::more::page::keeping_lede()) %}{% endcall %}
+{% call layout::intro_head("", analyte_i18n::text("admin-data-keeping"), crate::admin::more::page::keeping_lede()) %}{% endcall %}
 <div class="stack stack--lg narrow">
 {% call layout::label_card("dk-times", analyte_i18n::text("admin-keeping-times")) %}
 {%- if policies.is_empty() %}

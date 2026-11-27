@@ -26,7 +26,10 @@ pub(super) async fn run(program: &Program, tail: usize) -> Result<(), Error> {
     };
     match read {
         Ok(lines) => {
-            super::say(&format!("Log: {}", path.display()))?;
+            super::say(&tr_args(
+                "cli-log-path",
+                [("path", path.display().to_string().into())],
+            ))?;
             for line in lines {
                 super::say(&line)?;
             }

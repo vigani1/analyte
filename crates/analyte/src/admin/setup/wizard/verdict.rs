@@ -331,27 +331,29 @@ fn nothing_received(route: &Route, connected: bool, ended: bool) -> (Tone, Strin
                     tr("setup-the-machine-has-not-connected-yet"),
                     tr("setup-the-machine-did-not-connect"),
                 ),
-                format!(
-                    "Analyte listens {listens}. Set the machine’s host (LIS) address to {target} \
-                     and its host port to {port}, then ask it to send a result again. If it \
-                     still does not connect, a firewall may block it: {}",
-                    firewall(port)
+                tr_args(
+                    "setup-verdict-listens-set-host",
+                    [
+                        ("listens", listens.into()),
+                        ("target", target.into()),
+                        ("port", port.to_string().into()),
+                        ("firewall", firewall(port).into()),
+                    ],
                 ),
             )
         }
         Route::Connects(address) => (
             Tone::Attention,
             tense(
-                "Not connected to the machine yet",
-                "Could not connect to the machine",
+                tr("setup-verdict-not-connected-yet"),
+                tr("setup-verdict-could-not-connect"),
             ),
-            format!(
-                "Analyte is trying to reach the machine at {}, port {}. Check that the machine \
-                 is switched on and on the network, that this address and port match its own \
-                 network settings, and that no firewall between this PC and the machine \
-                 blocks it.",
-                address.ip(),
-                address.port()
+            tr_args(
+                "setup-verdict-trying-to-reach",
+                [
+                    ("address", address.ip().to_string().into()),
+                    ("port", address.port().to_string().into()),
+                ],
             ),
         ),
     }
@@ -360,15 +362,14 @@ fn nothing_received(route: &Route, connected: bool, ended: bool) -> (Tone, Strin
 /// Which firewall may block a machine connecting to `port`, and who opens it.
 fn firewall(port: u16) -> String {
     if cfg!(windows) {
-        format!(
-            "the installer lets machines on this PC’s own network through Windows Firewall \
-             with the rule “{FIREWALL_RULE}”. A machine on another network or VLAN, or a \
-             firewall between the two, needs your IT department."
+        tr_args(
+            "setup-verdict-firewall-windows",
+            [("rule", FIREWALL_RULE.into())],
         )
     } else {
-        format!(
-            "this PC’s firewall (firewalld or ufw) must allow TCP port {port}; Analyte does \
-             not change it. A machine on another network or VLAN needs your IT department."
+        tr_args(
+            "setup-verdict-firewall-linux",
+            [("port", port.to_string().into())],
         )
     }
 }
