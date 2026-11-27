@@ -413,10 +413,11 @@ Follow [Adding a machine](../develop/adding-a-machine.md) and the
 send-ahead orders need separate evidence. Do not enable orders just because
 results work. Never infer identity from position or invent units or run keys.
 
-All six first machines are blocked. No activatable `machine.toml` is shipped
-for them. Obtain every fact in the corresponding README, not just the summary:
+Five first-lab models ship with documented definitions. Swelab Lumi remains
+record-only. Read the corresponding README for the settings and evidence
+needed before clinical use.
 
-| Machine | Blocking worksheet |
+| Machine | Settings and evidence |
 | --- | --- |
 | Roche cobas e 411 | [Dialect, packed frames, serial settings and host codes](../../machines/roche/cobas-e411/README.md) |
 | YHLO iFlash 1200 | [1200 protocol applicability, status/QC mapping and deadlines](../../machines/yhlo/iflash-1200/README.md) |
@@ -434,10 +435,10 @@ the lab must check values, units, flags, corrections and sample identity through
 the report. Only exercised real-machine capabilities can become **proven**.
 
 Current VIDAS and Autolyser result mapping leaves result identity unresolved,
-so those results stay parked rather than reaching the app. A successful serial
-exchange does not remove this blocker. iFlash also needs evidence-backed code
-support for its status semantics and OBR-only QC arrays; config cannot supply
-that behavior today.
+so those results stay parked. The iFlash definition reads patient and OBR-only
+QC layouts. Patient uploads lacking run identity or final status and QC
+uploads lacking measurement identity stay in Needs review after Analyte
+acknowledges durable receipt.
 
 Machine definitions use `schema_version = 2`: set `protocol` and
 `transport.kind`, and the loader derives framing, dialog and syntax, so those
