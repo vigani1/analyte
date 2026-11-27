@@ -488,8 +488,11 @@ pub fn load(model: (&str, &str), site: (&str, &str)) -> Result<Validated, Error>
     if let Some(serial) = &link.serial {
         crate::validation::check_serial(serial, model.0, "transport.serial")?;
     }
-    let (resolved, _, chosen) =
-        crate::retention::load_site(site.0, site.1, &crate::LabApps::none(crate::LAB_APPS_FILE))?;
+    let (resolved, _, chosen) = crate::site::retention::load_site(
+        site.0,
+        site.1,
+        &crate::LabApps::none(crate::LAB_APPS_FILE),
+    )?;
     let settings = resolved.recording.clone().ok_or_else(|| {
         invalid(
             site.0,
