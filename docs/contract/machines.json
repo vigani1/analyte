@@ -5,20 +5,20 @@
       "evidence_level": "documented",
       "model": "biocare/biolyte-2000",
       "name": "BioCARE Biolyte 2000",
-      "protocol": null,
-      "ready": false,
+      "protocol": "astm",
+      "ready": true,
       "specimen_system": null,
-      "test_system": null,
+      "test_system": "biocare/biolyte-2000",
       "vendor": "biocare"
     },
     {
       "evidence_level": "documented",
       "model": "biomerieux/vidas",
       "name": "bioMérieux VIDAS",
-      "protocol": null,
-      "ready": false,
+      "protocol": "vidas",
+      "ready": true,
       "specimen_system": null,
-      "test_system": null,
+      "test_system": "biomerieux-vidas",
       "vendor": "biomerieux"
     },
     {
@@ -35,10 +35,10 @@
       "evidence_level": "documented",
       "model": "dialab/autolyser",
       "name": "Dialab Autolyser",
-      "protocol": null,
-      "ready": false,
+      "protocol": "autolyser",
+      "ready": true,
       "specimen_system": null,
-      "test_system": null,
+      "test_system": "dialab-autolyser",
       "vendor": "dialab"
     },
     {
@@ -55,8 +55,8 @@
       "evidence_level": "documented",
       "model": "roche/cobas-e411",
       "name": "Roche cobas e 411",
-      "protocol": null,
-      "ready": false,
+      "protocol": "astm",
+      "ready": true,
       "specimen_system": null,
       "test_system": null,
       "vendor": "roche"

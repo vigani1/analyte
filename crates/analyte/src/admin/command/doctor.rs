@@ -460,6 +460,7 @@ async fn software_checks(program: &Program, store: &analyte_store::Handle) -> Ve
                 .effective()
                 .machine()
                 .software_version()?
+                .expected()?
                 .clone();
             Some((machine.id().clone(), check))
         })

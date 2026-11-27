@@ -272,7 +272,7 @@ mod tests {
     }
 
     // machines/README.md: a model folder without machine.toml is blocked; the
-    // shipped tree lists the synthetic example as ready.
+    // shipped tree lists the synthetic example and documented Roche model as ready.
     #[test]
     fn shipped_tree_lists_ready_and_blocked_definitions() -> Result<(), crate::Error> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../machines");
@@ -283,16 +283,40 @@ mod tests {
             Some(State::Ready { name, level, .. })
                 if name.as_str() == "generic-synthetic" && *level == super::EvidenceLevel::Documented
         ));
-        // Each first-lab model names its protocol and link, so it can record only.
+        // ADR 0034 amendment: a definition written from the manuals ships ready.
+        assert!(matches!(
+            state("biocare/biolyte-2000"),
+            Some(State::Ready { level, .. }) if *level == super::EvidenceLevel::Documented
+        ));
+        assert!(matches!(
+            state("roche/cobas-e411"),
+            Some(State::Ready { name, level, .. })
+                if name.as_str() == "cobas-e411" && *level == super::EvidenceLevel::Documented
+        ));
+        // ADR 0034 amendment: written from its manual, so ready at documented.
+        assert!(matches!(
+            state("dialab/autolyser"),
+            Some(State::Ready { name, level, .. })
+                if name.as_str() == "dialab-autolyser" && *level == super::EvidenceLevel::Documented
+        ));
+        assert!(matches!(
+            state("biomerieux/vidas"),
+            Some(State::Ready { name, level, .. })
+                if name.as_str() == "biomerieux-vidas" && *level == super::EvidenceLevel::Documented
+        ));
+        // First-lab models still awaiting definitions can record.
         for key in [
-            "biocare/biolyte-2000",
             "biomerieux/vidas",
             "boule/swelab-lumi",
             "dialab/autolyser",
             "roche/cobas-e411",
+            "yhlo/iflash-1200",
         ] {
             assert!(
-                matches!(state(key), Some(State::Blocked { record: Some(_) })),
+                matches!(
+                    state(key),
+                    Some(State::Ready { .. } | State::Blocked { record: Some(_) })
+                ),
                 "{key}"
             );
         }

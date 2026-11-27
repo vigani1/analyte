@@ -392,6 +392,19 @@ fn catalog_lists_every_model_folder() -> TestResult {
             "model": "roche/cobas-e411",
             "vendor": "roche",
             "name": "Roche cobas e 411",
+            "ready": true,
+            "evidence_level": "documented",
+            "protocol": "astm",
+            "test_system": null,
+            "specimen_system": null,
+        }))
+    );
+    assert_eq!(
+        entry("boule/swelab-lumi"),
+        Some(json!({
+            "model": "boule/swelab-lumi",
+            "vendor": "boule",
+            "name": "Boule Swelab Lumi",
             "ready": false,
             "evidence_level": "documented",
             "protocol": null,

@@ -33,3 +33,19 @@ The public status endpoint carries only the closed reason word
 `machine_software_version_changed`. Authenticated views show the bounded
 software token, or unknown. The opt-in webhook condition names the machine.
 Messages and clinical values stay out of operational logs and events.
+
+## Amendment (2026-11-26)
+
+When the software version choice offers `checked = false` under ADR 0032,
+`[software_version.bands]` lists expected tokens for every checked value and
+omits the unchecked value. The loader refuses tokens for the unchecked
+value. When that value is active, the software version is unchecked. The
+engine makes no wire comparison, including when an incoming token appears in a
+checked band's evidence.
+
+Overview shows "Software version not checked against a manual" for each
+affected machine, even before it sends any data or when it has no wire
+selector. Public `GET /status` reports the reason
+`machine_software_version_unchecked` without identifying the machine. The
+warning remains while the unchecked value is active, and normal result
+processing continues.

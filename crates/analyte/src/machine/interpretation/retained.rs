@@ -11,6 +11,8 @@ pub(crate) struct Context<'a> {
     pub results: Option<&'a law::Results<'a>>,
     pub wire: Option<WireCompatibility>,
     payload: Option<&'a [u8]>,
+    // MSH-9 names a transaction the HL7 result grammar does not read.
+    unsupported: bool,
 }
 
 impl Context<'_> {
@@ -36,7 +38,7 @@ impl Context<'_> {
 pub(crate) type Outcome = (
     InterpretationOutcome,
     InterpretationCommit,
-    Option<crate::machine::hl7::location::Location>,
+    crate::machine::hl7::location::Diagnosis,
 );
 
 enum Profile<'a> {
@@ -72,6 +74,7 @@ pub(crate) async fn process(
                 results: None,
                 wire: None,
                 payload: None,
+                unsupported: false,
             },
             mapping,
             supplied,
@@ -90,6 +93,7 @@ pub(crate) async fn process(
                     results: None,
                     wire: None,
                     payload: None,
+                    unsupported: false,
                 },
                 Err(error.into()),
                 supplied,
@@ -112,6 +116,7 @@ pub(crate) async fn process(
         results: None,
         wire: None,
         payload: Some(&payload),
+        unsupported: false,
     };
     let message = match parsed {
         Ok(message) => message,
@@ -152,6 +157,11 @@ async fn map_parsed(
     };
     match profile {
         Profile::Hl7(syntax, mappings) => {
+            let context = Context {
+                unsupported: analyte_hl7::Msh::new(message)
+                    .is_ok_and(|msh| !analyte_hl7::ResultMessage::supports(msh)),
+                ..context
+            };
             let mapped = analyte_mapping::hl7::map(
                 &analyte_mapping::hl7::Settings {
                     syntax,
@@ -200,11 +210,19 @@ async fn finish(
     supplied: Option<Mapping>,
     action: Option<Reprocess>,
 ) -> Result<Outcome, Error> {
-    let location = context.payload.and_then(|payload| {
-        let options =
-            crate::machine::hl7::settings::effective_options(machine.snapshot.effective())?;
-        crate::machine::hl7::location::mapping_location(&mapped, payload, options.terminator)
-    });
+    let diagnosis = context
+        .payload
+        .and_then(|payload| {
+            let options =
+                crate::machine::hl7::settings::effective_options(machine.snapshot.effective())?;
+            Some(crate::machine::hl7::location::diagnose(
+                &mapped,
+                payload,
+                options.terminator,
+                context.unsupported,
+            ))
+        })
+        .unwrap_or_default();
     let mapping = supplied.unwrap_or_else(|| match mapped {
         Ok(output) => Mapping::Mapped(output),
         Err(error) => {
@@ -217,5 +235,5 @@ async fn finish(
     });
     let (outcome, commit) =
         crate::intake::persist_prepared(store, machine, &context, mapping, action).await?;
-    Ok((outcome, commit, location))
+    Ok((outcome, commit, diagnosis))
 }

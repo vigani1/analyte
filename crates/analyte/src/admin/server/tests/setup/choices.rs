@@ -65,6 +65,45 @@ async fn step_two_asks_the_models_own_choices() -> Result<(), Error> {
     Ok(())
 }
 
+// ADR 0032 (2026-11-26): the unchecked option can be selected and saved with
+// the warning visible alongside it.
+#[tokio::test(flavor = "multi_thread")]
+async fn setup_saves_and_displays_the_unchecked_version() -> Result<(), Error> {
+    let fixture = start().await?;
+    let folder = fixture.root().join("machines/example/hl7-unchecked");
+    std::fs::create_dir_all(&folder)?;
+    let base = include_str!("../../../../../../core/config/examples/hl7.toml");
+    let choice = include_str!("../../../../../../testing/fixtures/software-version-choices.toml");
+    std::fs::write(folder.join("machine.toml"), format!("{base}\n{choice}"))?;
+    let path = "/setup/synthetic/connection?definition=example/hl7-unchecked";
+    let label = "Other version (not checked) (Software version not checked against a manual)";
+    let page = fixture.get(path).await?;
+    assert!(
+        page.contains(&format!("<option value=\"other\">{label}</option>")),
+        "{page}"
+    );
+    let form = fixture
+        .form(&[
+            ("definition", "example/hl7-unchecked"),
+            ("host", "127.0.0.1"),
+            ("tcp_port", "5601"),
+            ("allowed_peers", ""),
+            ("choice.software_version", "other"),
+        ])
+        .await?;
+    let saved = fixture.post("/setup/synthetic", &form).await?;
+    assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
+    assert!(saved.contains(label), "{saved}");
+    let page = fixture.get(path).await?;
+    assert!(
+        page.contains(&format!(
+            "<option value=\"other\" selected>{label}</option>"
+        )),
+        "{page}"
+    );
+    Ok(())
+}
+
 // ADR 0032 decisions 3 and 4, AGENTS.md "never invents data": a choice with
 // neither a selection nor a suggestion is refused by name and changes no file;
 // once chosen, Save writes every choice into the site file, the summary and

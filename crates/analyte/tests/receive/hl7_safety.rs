@@ -2,8 +2,9 @@
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
-// HL7 2.5.1 sections 2.10.2.2, 7.4.2.11 and 7.4.1.25; ADR 0003.
-// HL7 2.5.1 §2.10.2.2, §7.4.2.11, §7.4.1.25
+// HL7 2.5.1 §2.9.2, §2.10.2.2, §7.4.2.11, §7.4.1.25; ADR 0003; ADR 0010
+// (2026-11-26): an unsafe report is stored and held for an operator, so the
+// machine gets AA while nothing is delivered.
 #[tokio::test]
 async fn unsafe_reports_are_parked() -> Result<(), Error> {
     let original = String::from_utf8(ORU.to_vec())?;
@@ -32,7 +33,8 @@ async fn unsafe_reports_are_parked() -> Result<(), Error> {
         )?;
         peer.write_all(&wire).await?;
         let ack = String::from_utf8(read_ack(&mut peer).await?)?;
-        assert!(ack.contains("MSA|AE|message1"), "{ack}");
+        assert!(ack.contains("MSA|AA|message1"), "{ack}");
+        assert!(!ack.contains("ERR|"), "{ack}");
         let store = stored(&program)?;
         let receipts = store.receipts("")?;
         let receipt = receipts.first().ok_or("missing retained receipt")?;
@@ -47,10 +49,12 @@ async fn unsafe_reports_are_parked() -> Result<(), Error> {
 
 // ADR 0003 store before acknowledging; AGENTS.md safety rules 2 and 3. A message
 // near the store record bound gets a final ACK, so the machine never retransmits.
+// HL7 2.5.1 §2.9.2; ADR 0010 (2026-11-26): the larger one is stored and parked
+// with its specific reason, so it is accepted too.
 #[tokio::test]
 async fn near_limit_message_is_answered() -> Result<(), Error> {
     let original = String::from_utf8(ORU.to_vec())?;
-    for (size, code) in [(6_000, "AA"), (15_000, "AE")] {
+    for (size, held) in [(6_000, false), (15_000, true)] {
         let temp = tempfile::tempdir()?;
         let path = config(temp.path(), false)?;
         let machine = analyte_fixtures::definition_path(temp.path(), "synthetic");
@@ -75,16 +79,15 @@ async fn near_limit_message_is_answered() -> Result<(), Error> {
             analyte_framing::hl7::encode(raw.as_bytes(), analyte_framing::hl7::Limit::new(16384)?)?;
         peer.write_all(&wire).await?;
         let ack = String::from_utf8(read_ack(&mut peer).await?)?;
-        assert!(ack.contains(&format!("MSA|{code}|message1")), "{ack}");
+        assert!(ack.contains("MSA|AA|message1"), "{ack}");
         let store = stored(&program)?;
         assert_eq!(store.receipts("")?.len(), 1);
-        if code == "AE" {
-            let parked = store.parked(0)?;
-            assert!(
-                parked.iter().any(|p| p.evidence.contains("record_bytes")),
-                "a specific reason is parked"
-            );
-        }
+        let parked = store.parked(0)?;
+        assert_eq!(
+            parked.iter().any(|p| p.evidence.contains("record_bytes")),
+            held,
+            "only the oversized interpretation is parked, with a specific reason"
+        );
         shutdown.send(()).map_err(|()| "shutdown")?;
         tokio::time::timeout(HANG_GUARD, service).await???;
     }

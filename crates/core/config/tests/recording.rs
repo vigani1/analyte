@@ -304,9 +304,9 @@ fn a_ready_definition_records_from_its_protocol_and_link_only() -> TestResult {
     Ok(())
 }
 
-/// The shipped cobas e 411 record file and where it sits, so its departure
+/// The cobas e 411 record-only test fixture and where it sits, so its departure
 /// names the model by its folder key (ADR 0033).
-const COBAS: &str = include_str!("../../../../machines/roche/cobas-e411/record.toml");
+const COBAS: &str = analyte_fixtures::ASTM_PACKED_RECORD_ONLY;
 const COBAS_PATH: &str = "machines/roche/cobas-e411/record.toml";
 
 fn cobas_site(answers: &str) -> String {

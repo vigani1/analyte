@@ -36,7 +36,7 @@ limit = 1048576
 receive_timeout_ms = 30000
 send_timeout_ms = 15000
 # LIS V1.1 §2.2.1.2 and §2.3.2: every ORU^R01 gets an ACK^R01; Analyte sends
-# AA only after the bytes are durably stored (ADR 0003).
+# AA only after the bytes and parsed outcome are durably stored (ADR 0010).
 acknowledgment = "store_and_forward"
 
 [syntax]
@@ -82,8 +82,10 @@ repetition = 1
 
 # ADR 0035 recipe: the barcode (sample above), the sample serial number in
 # OBR-3 and the observation end time in OBR-8, with the channel number. A
-# result missing any of them stays held for an operator. The manual
-# documents only F in OBX-11, so no correction or rerun code is declared:
+# result missing any of them stays held for an operator. LIS V1.1 §2.3.4.1
+# gives no per-run uniqueness or resend guarantee for OBR-3. Section 2.4.1.1
+# shows an upload with OBR-8 empty. The manual documents only F in OBX-11,
+# so no correction or rerun code is declared:
 # changed content under the same key is held, never merged.
 [mappings.identity]
 order_id = {group="order",record="OBR",field=3,component=1,repetition=1}
@@ -135,6 +137,19 @@ value = "two-way"
 label = "Two-way (send results and query sample information by barcode)"
 orders = "on"
 departures = ["hl7_msh16_message_category", "hl7_categorized_oru_results", "hl7_record_display_query"]
+
+# Service §6.3.2.1, Figures 6-39 and 6-40: the installer shows this PC build.
+[[choices]]
+name = "software_version"
+kind = "software_version"
+label = "Software version on the iFlash PC installer completion screen"
+[[choices.values]]
+value = "v1-01-10-01-10"
+label = "V1.01.10.01.10"
+[[choices.values]]
+value = "other"
+label = "Other version (not checked)"
+checked = false
 
 # LIS V1.1 §2.3.1: MSH-16 carries the upload category (0 patient,
 # 1 calibration, 2 QC) in ORU^R01.

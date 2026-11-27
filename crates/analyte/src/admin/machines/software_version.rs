@@ -6,6 +6,7 @@ use crate::admin::view::{
     Tone, format,
     report::{Problem, Section},
 };
+use analyte_config::software_version::{Check, ExpectedVersions};
 use analyte_model::{Digest, Identifier, Reason};
 use analyte_store::{Audit, Handle};
 use axum::{
@@ -37,7 +38,7 @@ pub(super) async fn detail(
     let Some(machine) = state.machines.iter().find(|entry| entry.id.as_str() == id) else {
         return Ok(None);
     };
-    let Some(check) = &machine.software else {
+    let Some(check) = machine.software.as_ref().and_then(Check::expected) else {
         return Ok(None);
     };
     let machine_id = machine.id.clone();
@@ -80,7 +81,10 @@ pub(in crate::admin) async fn submit(
     };
     let refusal =
         |text| Problem::Refused(text).page(&state, Some(&session), Section::Machines(Some(&id)));
-    let (Some(check), Some(actor)) = (&machine.software, session.actor()) else {
+    let (Some(check), Some(actor)) = (
+        machine.software.as_ref().and_then(Check::expected),
+        session.actor(),
+    ) else {
         return refusal("This machine has no software warning you can confirm.".into());
     };
     match confirm(
@@ -126,7 +130,7 @@ pub(in crate::admin) async fn confirm(
 pub(in crate::admin) async fn warnings(
     store: &Handle,
     until: std::time::Instant,
-    checks: Vec<(Identifier, analyte_config::software_version::Check)>,
+    checks: Vec<(Identifier, ExpectedVersions)>,
 ) -> Result<Vec<(Identifier, String)>, Error> {
     if checks.is_empty() {
         return Ok(Vec::new());

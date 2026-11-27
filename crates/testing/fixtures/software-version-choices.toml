@@ -1,0 +1,12 @@
+# Synthetic software-version choice to append to a machine definition (ADR 0032).
+[[choices]]
+name = "software_version"
+kind = "software_version"
+label = "Software version on the About screen"
+[[choices.values]]
+value = "v1"
+label = "Version 1"
+[[choices.values]]
+value = "other"
+label = "Other version (not checked)"
+checked = false

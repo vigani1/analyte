@@ -85,7 +85,8 @@ async fn cli_commands_require_actor_and_reason() -> Result<(), Error> {
         analyte_framing::hl7::Limit::new(1048576)?,
     )?)
     .await?;
-    assert!(String::from_utf8(read_ack(&mut peer).await?)?.contains("MSA|AE"));
+    // ADR 0010 (2026-11-26): the held result is in custody, so it gets AA.
+    assert!(String::from_utf8(read_ack(&mut peer).await?)?.contains("MSA|AA|message1"));
     shutdown.send(()).map_err(|_| "shutdown lost")?;
     tokio::time::timeout(HANG_GUARD, owner).await???;
     let store = stored(&program)?;

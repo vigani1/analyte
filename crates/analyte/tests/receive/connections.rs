@@ -47,9 +47,12 @@ fn law_roles_validate_without_startup_io() -> Result<(), Error> {
     Ok(())
 }
 
-// HL7 2.5.1 §2.15.5.2; ADR 0003
+/// The parked finding for the second OBX without OBX-3 (ADR 0029).
+const HELD_MISSING_CODE: &str = "Position { record: 5, field: 3 }: MissingTest";
+
+// HL7 2.5.1 §2.9.2; ADR 0003; ADR 0010 (2026-11-26)
 #[tokio::test]
-async fn hl7_ae_reports_actual_mapping_location() -> Result<(), Error> {
+async fn hl7_held_uploads_get_aa_and_stay_parked() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     let program = Program::load(&path)?;
@@ -87,10 +90,21 @@ async fn hl7_ae_reports_actual_mapping_location() -> Result<(), Error> {
         analyte_framing::hl7::Limit::new(1048576)?,
     )?)
     .await?;
+    // HL7 2.5.1 §2.9.2; ADR 0010 (2026-11-26): stored and held for an operator,
+    // so the machine gets AA and the reason stays in the review queue.
     let ack = String::from_utf8(read_ack(&mut peer).await?)?;
-    assert!(ack.contains("MSA|AE|message2"));
-    assert!(ack.contains("ERR||OBX^2^3|207|E|operator-review"), "{ack}");
-    assert!(!stored(&program)?.parked(0)?.is_empty());
+    assert!(ack.contains("MSA|AA|message2"), "{ack}");
+    assert!(!ack.contains("ERR|"), "{ack}");
+    let parked: Vec<String> = stored(&program)?
+        .parked(0)?
+        .into_iter()
+        .map(|p| p.evidence)
+        .collect();
+    assert_eq!(parked.len(), 1, "{parked:?}");
+    assert!(
+        parked.iter().any(|p| p.contains(HELD_MISSING_CODE)),
+        "{parked:?}"
+    );
     assert_eq!(
         stored(&program)?
             .health(
@@ -109,9 +123,69 @@ async fn hl7_ae_reports_actual_mapping_location() -> Result<(), Error> {
         analyte_framing::hl7::Limit::new(1048576)?,
     )?)
     .await?;
+    // A conflicting result is held too (rule 4): AA, parked, never delivered.
     let ack = String::from_utf8(read_ack(&mut peer).await?)?;
-    assert!(ack.contains("MSA|AE|message3"));
-    assert!(ack.contains("ERR|||207|E|operator-review"), "{ack}");
+    assert!(ack.contains("MSA|AA|message3"), "{ack}");
+    assert!(!ack.contains("ERR|"), "{ack}");
+    assert_eq!(stored(&program)?.parked(0)?.len(), 2);
+    shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
+    tokio::time::timeout(HANG_GUARD, service).await???;
+    Ok(())
+}
+
+// HL7 2.5.1 §2.7.4, §2.9.2; ADR 0010 (2026-11-26): the held-upload rule leaves
+// these refusals as they were.
+#[tokio::test]
+async fn hl7_unparseable_and_unsupported_refusals_are_unchanged() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), false)?;
+    let program = Program::load(&path)?;
+    let (shutdown, service) = start_service(&path)?;
+    let mut peer = connect(&program).await?;
+    // Bytes the HL7 parser rejects are not a message. They are kept and parked
+    // with no reply at all, so the next answer belongs to the following message.
+    let broken = String::from_utf8(ORU.to_vec())?
+        .rewrite("message1", "message4")
+        .rewrite("|12.30|", "|12\\Q\\30|");
+    let next = String::from_utf8(ORU.to_vec())?
+        .rewrite("message1", "message5")
+        .rewrite("||00012|", "||00013|");
+    for message in [&broken, &next] {
+        peer.write_all(&analyte_framing::hl7::encode(
+            message.as_bytes(),
+            analyte_framing::hl7::Limit::new(1048576)?,
+        )?)
+        .await?;
+    }
+    let ack = String::from_utf8(read_ack(&mut peer).await?)?;
+    assert!(ack.contains("MSA|AA|message5"), "{ack}");
+    let store = stored(&program)?;
+    assert_eq!(store.parked(0)?.len(), 1);
+    assert!(
+        store
+            .receipts("")?
+            .iter()
+            .any(|r| store.receipt(r.id).ok().flatten().is_some_and(|raw| raw
+                .raw
+                .windows(b"12\\Q\\30".len())
+                .any(|w| w == b"12\\Q\\30"))),
+        "the unparseable bytes are kept"
+    );
+    drop(store);
+    // HL7 2.5.1 §2.9.2: a transaction this result connection does not read
+    // keeps its AE refusal, located at MSH-9.
+    let unsupported = String::from_utf8(ORU.to_vec())?
+        .rewrite("message1", "message6")
+        .rewrite("ORU^R01^ORU_R01", "ADT^A01^ADT_A01");
+    peer.write_all(&analyte_framing::hl7::encode(
+        unsupported.as_bytes(),
+        analyte_framing::hl7::Limit::new(1048576)?,
+    )?)
+    .await?;
+    let ack = String::from_utf8(read_ack(&mut peer).await?)?;
+    assert!(ack.contains("MSA|AE|message6"), "{ack}");
+    assert!(ack.contains("ERR||MSH^1^9|207|E|operator-review"), "{ack}");
+    assert_eq!(stored(&program)?.parked(0)?.len(), 2);
     shutdown.send(()).map_err(|()| "shutdown receiver gone")?;
     tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())
@@ -590,4 +664,125 @@ async fn failed_software_warning_write_preserves_ack_and_changes_status() -> Res
     let _ = shutdown.send(());
     tokio::time::timeout(HANG_GUARD, service).await???;
     outcome
+}
+
+// ADR 0036 (2026-11-26): a version outside manual coverage needs attention
+// before any receipt and after receiving a token known from a checked band.
+#[tokio::test]
+async fn unchecked_software_warns_and_keeps_results_flowing() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), false)?;
+    let admin_port = std::net::TcpListener::bind("127.0.0.1:0")?
+        .local_addr()?
+        .port();
+    let settings = std::fs::read_to_string(&path)?;
+    std::fs::write(&path, format!("{settings}\n[admin]\nport = {admin_port}\n"))?;
+    let base = include_str!("../../../core/config/examples/hl7.toml")
+        .rewrite("firmware = \"unknown\"", "firmware = \"1.0\"");
+    let choice = include_str!("../../../testing/fixtures/software-version-choices.toml");
+    let selector = "[software_version]\nselector = 'hl7_sending_application'\nsource = 'Synthetic selector fixture'\n[software_version.bands]\nv1 = ['1.0']\n";
+    analyte_fixtures::write_definition(
+        temp.path(),
+        "synthetic",
+        format!("{base}\n{choice}\n{selector}"),
+    )?;
+    let site = temp.path().join("site.toml");
+    let settings = std::fs::read_to_string(&site)?;
+    std::fs::write(
+        site,
+        format!("{settings}\n[choices]\nsoftware_version = 'other'\n"),
+    )?;
+
+    let program = Program::load(&path)?;
+    let bearer = analyte::admin::rotate_token(program.data_directory())?;
+    let listed = tokio::time::timeout(
+        HANG_GUARD,
+        tokio::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+            .arg("--config")
+            .arg(&path)
+            .args(["machines", "list"])
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await??;
+    assert!(listed.status.success(), "{listed:?}");
+    assert!(
+        String::from_utf8(listed.stdout)?.contains("Software version not checked against a manual")
+    );
+    let (shutdown, service) = start_service(&path)?;
+    let outcome = async {
+        let mut peer = connect(&program).await?;
+        let client = reqwest::Client::builder().timeout(HANG_GUARD).build()?;
+        let admin = format!("http://127.0.0.1:{admin_port}");
+        let status = || unchecked_status(&client, &admin);
+        status().await?;
+        let page = client
+            .get(&admin)
+            .bearer_auth(bearer)
+            .send()
+            .await?
+            .error_for_status()?
+            .text()
+            .await?;
+        assert!(
+            page.contains("Software version not checked against a manual for synthetic"),
+            "{page}"
+        );
+
+        let message = std::str::from_utf8(ORU)?.rewrite("|SYN|LAB|", "|1.0|LAB|");
+        let wire = analyte_framing::hl7::encode(
+            message.as_bytes(),
+            analyte_framing::hl7::Limit::new(1048576)?,
+        )?;
+        peer.write_all(&wire).await?;
+        let ack = String::from_utf8(read_ack(&mut peer).await?)?;
+        assert!(ack.contains("MSA|AA|message1"), "{ack}");
+        let store = stored(&program)?;
+        assert_eq!(
+            store
+                .health(
+                    &analyte_model::Identifier::new("demo")?,
+                    jiff::Timestamp::now().as_second(),
+                    30
+                )?
+                .pending_count,
+            1
+        );
+        drop(store);
+        status().await
+    }
+    .await;
+    let _ = shutdown.send(());
+    tokio::time::timeout(HANG_GUARD, service).await???;
+    outcome
+}
+
+async fn unchecked_status(client: &reqwest::Client, admin: &str) -> Result<(), Error> {
+    #[derive(serde::Deserialize)]
+    struct Status {
+        reasons: Vec<String>,
+    }
+    let text = client
+        .get(format!("{admin}/status"))
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+    let status: Status = serde_json::from_str(&text)?;
+    assert!(
+        status
+            .reasons
+            .iter()
+            .any(|reason| reason == "machine_software_version_unchecked"),
+        "{text}"
+    );
+    assert!(
+        !status
+            .reasons
+            .iter()
+            .any(|reason| reason == "machine_software_version_changed"),
+        "{text}"
+    );
+    Ok(())
 }

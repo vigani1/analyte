@@ -258,6 +258,10 @@ missing; nothing is guessed in the meantime.
 | bioMérieux VIDAS (PC)  | Vendor "Literal" over serial      | Results, work list download       | documented     | blocked        | VIDAS PC version (sample ID length 12 or 17)     |
 | Dialab Autolyser       | Vendor format, host polls         | Results when asked, work list     | documented     | blocked        | TCP settings; barcode reader retrofit            |
 
+The [YHLO iFlash 1200 definition](../machines/yhlo/iflash-1200/README.md)
+now ships at the documented level. Installed recordings are still needed to
+confirm result identity, report completion and the barcode query exchange.
+
 ## 10. Testing
 
 - **Recordings:** retain and replay synthetic or de-identified conversations in

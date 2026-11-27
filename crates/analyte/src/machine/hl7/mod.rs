@@ -328,20 +328,35 @@ impl Host<'_, '_> {
             .pending
             .remove(&token)
             .ok_or_else(|| Error::ReceiptCorrelationMissing)?;
-        let (outcome, location) =
+        // Returning here means the interpretation outcome, held or not, is durable.
+        let (outcome, diagnosis) =
             intake::interpret_with_location(store, machine.machine(), id).await?;
-        let event = if matches!(outcome, intake::InterpretationOutcome::Accepted) {
-            Event::Interpreted(token)
-        } else {
-            Event::NotInterpretable(
+        let event = match (outcome, diagnosis.cause) {
+            (intake::InterpretationOutcome::Accepted, _) => Event::Interpreted(token),
+            // Bytes that break HL7 syntax, or a transaction this connection does
+            // not read, keep AE with the located error.
+            (
+                intake::InterpretationOutcome::Failed
+                | intake::InterpretationOutcome::Conflict
+                | intake::InterpretationOutcome::WorkConflict(_),
+                location::Cause::Syntax | location::Cause::Unsupported,
+            ) => Event::NotInterpretable(
                 token,
                 analyte_hl7::location_error(
-                    location.as_ref(),
+                    diagnosis.location.as_ref(),
                     analyte_hl7::APPLICATION_INTERNAL_ERROR,
                     b"operator-review",
                 ),
                 analyte_dialog::hl7::AckChoice::ContentError,
-            )
+            ),
+            // Stored and parked with its reason for Needs review: accept custody
+            // (ADR 0010, 2026-11-26).
+            (
+                intake::InterpretationOutcome::Failed
+                | intake::InterpretationOutcome::Conflict
+                | intake::InterpretationOutcome::WorkConflict(_),
+                location::Cause::Held,
+            ) => Event::Held(token),
         };
         actions.extend(self.dialog.step(self.start.elapsed(), event)?);
 

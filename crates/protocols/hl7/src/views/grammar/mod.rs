@@ -157,26 +157,34 @@ pub struct ResultGrammarError {
     /// Stable explanation for retaining the receipt.
     pub reason: &'static str,
 }
+fn family(msh: Msh<'_>) -> Option<Family> {
+    let parts: Vec<_> = msh.message_type().collect();
+    match parts.as_slice() {
+        [b"ORU", b"R01"] | [b"ORU", b"R01", b"ORU_R01"] => Some(Family::Oru),
+        [b"OUL", b"R22"] | [b"OUL", b"R22", b"OUL_R22"] if msh.version().oul_reception() => {
+            Some(Family::Oul)
+        }
+        _ => None,
+    }
+}
 impl<'a> ResultMessage<'a> {
+    /// Whether MSH-9 names a result transaction this grammar reads: ORU^R01, or
+    /// OUL^R22 in an edition that receives it.
+    #[must_use]
+    pub fn supports(msh: Msh<'_>) -> bool {
+        family(msh).is_some()
+    }
+
     /// Checks HL7 2.3.1 §7.2.1 and 2.5.1 §7.3.1/§7.3.7 segment order.
     /// The caller supplies the already validated header.
     /// # Errors
     /// Rejects misplaced segments or an unfinished order group.
     pub fn new(message: &'a Message, msh: Msh<'a>) -> Result<Self, ResultGrammarError> {
-        let parts: Vec<_> = msh.message_type().collect();
-        let family = match parts.as_slice() {
-            [b"ORU", b"R01"] | [b"ORU", b"R01", b"ORU_R01"] => Family::Oru,
-            [b"OUL", b"R22"] | [b"OUL", b"R22", b"OUL_R22"] if msh.version().oul_reception() => {
-                Family::Oul
-            }
-            _ => {
-                return Err(ResultGrammarError {
-                    record: 1,
-                    field: 9,
-                    reason: "only ORU R01 and edition 2.5.1 OUL R22 are supported",
-                });
-            }
-        };
+        let family = family(msh).ok_or(ResultGrammarError {
+            record: 1,
+            field: 9,
+            reason: "only ORU R01 and edition 2.5.1 OUL R22 are supported",
+        })?;
         let oul = matches!(family, Family::Oul);
         let mut state = State::BeforeOrder(Patient::Absent);
         let mut previous = b"MSH".as_slice();

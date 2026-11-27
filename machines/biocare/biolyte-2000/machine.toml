@@ -1,0 +1,224 @@
+# BioCARE Biolyte 2000 electrolyte analyzer, written from its Service Manual
+# V4.2A (ADR 0034 amendment, 2026-11-26). DOCUMENTED ONLY: no real analyzer
+# has confirmed it. Appendix VI is the only source of the wire layout.
+schema_version = 2
+protocol = "astm"
+name = "biocare-biolyte-2000"
+
+# Appendix VI §2 and p. 14: the rear DB25 RS-232 port; the analyzer is always
+# the sender and the host only acknowledges.
+[transport]
+kind = "serial"
+operation_timeout_ms = 10000
+
+# The suggestion Setup shows (ADR 0031): p. 14 states 9600 baud, 8 data bits,
+# no parity and one stop bit. The manual lists the handshake pins but not
+# which handshake the analyzer uses, so flow control has no suggestion and
+# the lab chooses it.
+[transport.serial]
+baud = 9600
+data_bits = 8
+parity = "none"
+stop_bits = 1
+
+# Appendix VI §3: one frame per record, uppercase-or-digit checksum characters
+# (0-9, A-F). The p. 86 example prints lowercase checksums; the prose rules,
+# so no lowercase departure is declared.
+[framing]
+limit = 64000
+checksum_hex = "strict"
+
+# Appendix VI §§2.1-2.2: 15 s for the host's reply, 30 s for the next frame.
+# Both equal the LIS01-A2 defaults. The analyzer only sends.
+[dialog]
+receive_timeout_ms = 30000
+send_timeout_ms = 15000
+contention_priority = "instrument"
+
+[syntax]
+encoding = "ascii"
+bytes = 1048576
+records = 4096
+record_bytes = 65536
+fields = 128
+repetitions = 128
+components = 128
+
+[mappings]
+# The machine's own code system (ADR 0029): R.3.4 carries BioCARE's codes
+# (Na+, K+, Cl-, Li+) exactly as sent. The lab app owns the names and the
+# test list, so none ships here.
+test_system = "biocare/biolyte-2000"
+test_component = "manufacturer"
+# No unit translation: R.5 keeps the spelling sent (mmol/L or mEq/L, set on
+# the analyzer under Setup → Units). Values keep their padding (R.4).
+units = []
+# The layout gives no patient/control marker (Appendix VI pp. 82-85), so no
+# QC rule exists; every result carries an unknown material class.
+qc = []
+
+# Appendix VI pp. 82-84: R.3.5 marks measured or calculated, O.16 is the
+# specimen descriptor, O.26 "P" means preliminary results that need remote
+# review, and L.3 says normal end or sender abort.
+[mappings.astm_results]
+layout = "measurement_marker"
+evidence = { manual = "BioCARE Biolyte 2000 Service Manual V4.2A", section = "Appendix VI, Patient, Order, Result and Terminator records (pp. 82-86)" }
+
+# Appendix VI p. 82: P.4, the laboratory-assigned patient ID, is the only
+# identifier the analyzer transmits ("ID" on the keypad); it is blank when
+# staff entered none. Accession and name have no wire position. Staff may type
+# or scan it, so the source is unknown.
+[mappings.sample]
+source = "unknown"
+
+[mappings.sample.field]
+group = "patient"
+record = "P"
+field = 4
+component = 1
+repetition = 1
+
+# No automatic result identity (ADR 0035). Appendix VI pp. 83-85 documents no
+# stable run ID and no correction marker: O.4 is a wrapping sample sequence,
+# R.12 (analysis start) appears only in the first result, R.13 and R.9 are
+# unused. Without `evidence` no recipe is active, so every result is held for
+# staff as unresolved, never merged or guessed. The order selector names the
+# only identifier on the wire and is not used as a key.
+[mappings.identity]
+order_id = { group = "patient", record = "P", field = 4, component = 1, repetition = 1 }
+order_namespace = { fixed = "biocare-biolyte-2000" }
+sub_id = "none"
+run = []
+correction_status_codes = []
+
+# ADR 0036: Appendix VI p. 82 puts the software version in the third
+# component of H.5 (BioCare^Biolyte^version^serial). A mismatch only warns.
+[software_version]
+selector = "astm_sender_third_component"
+source = "BioCARE Biolyte 2000 Service Manual V4.2A, Appendix VI, Header record H.5 (p. 82)"
+
+# The manual names its revision 4.2A, but its Appendix VI example shows two
+# different H.5.3 tokens (2.1.1.1 in the data list, 1.2.1.1 on the wire).
+# All three count as checked for this band, so a 4.2A analyzer that sends
+# either example token does not raise a false warning; anything else warns.
+[software_version.bands]
+"v4-2a" = ["4.2A", "2.1.1.1", "1.2.1.1"]
+
+# ADR 0032 and the ADR 0034 amendment: staff read the installed version under
+# Menu → 4 (Appendix I p. 73). Only the lab knows it, so there is no
+# suggestion. The manual documents one version; any other runs unchecked
+# with a visible warning. No version selects different settings.
+[[choices]]
+name = "software_version"
+kind = "software_version"
+label = "Software version shown under Menu → 4 (Software version)"
+
+[[choices.values]]
+value = "v4-2a"
+label = "4.2A"
+
+[[choices.values]]
+value = "other"
+label = "Other version (not checked)"
+checked = false
+
+# Both departures apply to the one documented upload (Menu → Data → Transfer).
+[departure_scope]
+model = "biocare/biolyte-2000"
+firmware = "4.2A"
+mode = "data_transfer"
+edition = { protocol = "astm" }
+direction = "machine_to_host"
+message = "astm_results"
+
+# Appendix VI p. 82 (Header record, ASTM ref 7.1.12): the analyzer leaves
+# H.12, the processing ID, unused in its upload. An empty H.12 is read as
+# production; any other text keeps its standard meaning.
+[[deviations]]
+rule = "astm_absent_h12_means_production"
+
+[deviations.declaration]
+level = "documented"
+
+[deviations.declaration.scope]
+model = "biocare/biolyte-2000"
+firmware = "4.2A"
+mode = "data_transfer"
+edition = { protocol = "astm" }
+direction = "machine_to_host"
+message = "astm_results"
+
+[[deviations.declaration.evidence]]
+kind = "manual"
+reference = "biocare-biolyte-2000-service-v4.2a"
+title = "BioCARE Biolyte 2000 Service Manual"
+revision = "V4.2A"
+section = "Appendix VI, Header record, ASTM ref 7.1.12 (p. 82)"
+guarantee = "absent_processing_id_production"
+covers_unknown_firmware = false
+contradicts = false
+
+# Appendix VI §2.1 (p. 80): with no reply within 15 s the analyzer sends ENQ
+# once more before giving up. A second ENQ before any frame is acknowledged
+# and keeps the original receive deadline.
+[[deviations]]
+rule = "astm_repeat_enq_after_lost_ack"
+
+[deviations.declaration]
+level = "documented"
+
+[deviations.declaration.scope]
+model = "biocare/biolyte-2000"
+firmware = "4.2A"
+mode = "data_transfer"
+edition = { protocol = "astm" }
+direction = "machine_to_host"
+message = "astm_results"
+
+[[deviations.declaration.evidence]]
+kind = "manual"
+reference = "biocare-biolyte-2000-service-v4.2a"
+title = "BioCARE Biolyte 2000 Service Manual"
+revision = "V4.2A"
+section = "Appendix VI, 2.1 Establishment phase (p. 80)"
+guarantee = "repeat_enq"
+covers_unknown_firmware = false
+contradicts = false
+
+# Documented only. Firmware 4.2A is the revision of the manual this definition
+# was written from; no analyzer has confirmed what Menu → 4 or H.5 reports.
+[evidence]
+level = "documented"
+
+[[evidence.capabilities]]
+model = "biocare/biolyte-2000"
+firmware = "4.2A"
+driver = "0.1.0"
+config_digest = "untested"
+transport = "serial"
+dialogs = []
+failure_cases = []
+platform = "untested"
+evidence_files = []
+
+[[evidence.capabilities]]
+model = "biocare/biolyte-2000"
+firmware = "2.1.1.1"
+driver = "0.1.0"
+config_digest = "untested"
+transport = "serial"
+dialogs = []
+failure_cases = []
+platform = "untested"
+evidence_files = []
+
+[[evidence.capabilities]]
+model = "biocare/biolyte-2000"
+firmware = "1.2.1.1"
+driver = "0.1.0"
+config_digest = "untested"
+transport = "serial"
+dialogs = []
+failure_cases = []
+platform = "untested"
+evidence_files = []

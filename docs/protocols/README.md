@@ -45,7 +45,7 @@ decide these boundaries; this table names the test that guards each one.
 | Protocol | Before positive acknowledgment or destructive command | Test evidence |
 | --- | --- | --- |
 | ASTM | Reserve capacity before ENQ ACK; commit each frame before data ACK | [astm.rs](../../crates/steps/dialog/tests/astm.rs): `failed_or_unanswered_commit_never_acks` |
-| HL7/MLLP | Commit complete raw block; interpret before AA (enhanced CA gates raw custody) | [hl7/mod.rs](../../crates/steps/dialog/tests/hl7/mod.rs): `aa_only_after_store_and_interpret`; [dialog](../../crates/steps/dialog/tests/hl7/mod.rs) |
+| HL7/MLLP | Commit complete raw block; store its interpretation outcome, accepted or held, before AA (enhanced CA gates raw custody) | [hl7/mod.rs](../../crates/steps/dialog/tests/hl7/mod.rs): `aa_only_after_store_and_interpret`, `held_interpretation_is_accepted_after_store`, `failed_store_is_refused_even_when_held_follows`; [receive/connections.rs](../../crates/analyte/tests/receive/connections.rs): `hl7_held_uploads_get_aa_and_stay_parked`, `hl7_unparseable_and_unsupported_refusals_are_unchanged` |
 | LAW LAB-29 | Retain raw result and interpretation before AA | [results/custody.rs](../../crates/analyte/tests/law/results/custody.rs): `raw_commit_precedes_interpretation_and_ack` |
 | POCT | Complete raw receipt and semantic outcome before ACK | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `poct_stores_before_ack_and_parks_unresolved` |
 | VIDAS Literal | Retain complete transfer before data ACK | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `vidas_stores_before_ack_and_parks_unresolved` |
