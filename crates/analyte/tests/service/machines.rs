@@ -6,6 +6,9 @@ use serde::Deserialize;
 use std::{collections::BTreeMap, path::PathBuf};
 use tokio::io::AsyncWriteExt as _;
 
+#[path = "automatic.rs"]
+mod automatic;
+
 const SECTIONS: [&str; 8] = [
     "Machine",
     "Connection",
@@ -116,6 +119,7 @@ fn readme(path: &Path, level: EvidenceLevel) -> Result<(), Error> {
 struct ReplaySettings {
     choices: Option<toml::Table>,
     autolyser_poll_seconds: Option<u32>,
+    vidas_patient_namespace: Option<String>,
     order_profile: Option<analyte_config::AstmOrderProfile>,
     vendor_worklist: Option<VendorWorklist>,
     recording: Option<toml::Table>,
@@ -186,6 +190,8 @@ async fn replay_model(folder: &Path, model: &Path, definition: &Path) -> Result<
         return Ok(());
     }
     let text = std::fs::read_to_string(definition)?;
+    let recipe = !record_only && automatic::has_recipe(&text)?;
+    let mut exercised = false;
     let mut paths = std::fs::read_dir(directory)?
         .map(|entry| entry.map(|entry| entry.path()))
         .collect::<Result<Vec<_>, _>>()?;
@@ -204,7 +210,7 @@ async fn replay_model(folder: &Path, model: &Path, definition: &Path) -> Result<
             let (header, events) =
                 recording::read(std::fs::File::open(&path)?, recording::Limits::default())?;
             validate_gap(&events, answers.expected_gap.as_ref())?;
-if let Some(vendor) = answers.vendor_worklist {
+            if let Some(vendor) = answers.vendor_worklist {
                 // The fixture exercises an order-enabled test peer; the
                 // shipped definition only has to speak the same stack.
                 let layers = if record_only {
@@ -238,7 +244,8 @@ if let Some(vendor) = answers.vendor_worklist {
                 }
                 replay_record_only(model, &text, &header, &events, &answers).await
             } else {
-                replay_ready(folder, model, &text, &header, &events, &answers).await
+                exercised |= replay_ready(folder, model, &text, &header, &events, &answers, recipe && !exercised).await?;
+                Ok(())
             }
         }
         .await;
@@ -249,6 +256,11 @@ if let Some(vendor) = answers.vendor_worklist {
         settings.is_empty(),
         "replay.toml names unknown recordings: {:?}",
         settings.keys()
+    );
+    assert!(
+        !recipe || exercised,
+        "{}: an active identity recipe needs a synthetic upload that resolves one result",
+        definition.display()
     );
     Ok(())
 }
@@ -577,7 +589,8 @@ async fn replay_ready(
     header: &Header,
     events: &[Event],
     answers: &ReplaySettings,
-) -> Result<(), Error> {
+    check_identity: bool,
+) -> Result<bool, Error> {
     let checked = ready_definition(text, answers)?;
     readme(
         &folder.join("README.md"),
@@ -585,7 +598,7 @@ async fn replay_ready(
     )?;
     let stack = checked.effective().stack();
     assert_eq!(header.stack, stack.layer_names(), "recording stack");
-    replay_machine(model, text, events, header, stack, answers).await
+    replay_machine(model, text, events, header, stack, answers, check_identity).await
 }
 
 /// Loads a shipped `machine.toml` with the replay's site choices, as a lab PC would.
@@ -807,7 +820,8 @@ async fn replay_machine(
     header: &Header,
     stack: &analyte_config::Stack,
     answers: &ReplaySettings,
-) -> Result<(), Error> {
+    check_identity: bool,
+) -> Result<bool, Error> {
     let temp = tempfile::tempdir()?;
     let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
     let endpoint = listener.local_addr()?;
@@ -880,6 +894,7 @@ async fn replay_machine(
     }
     program.set_loopback_destination_for_test("demo", reference.url.clone())?;
     let running = Running::start_program(program, "synthetic-api").await?;
+    let check_identity = check_identity && orders.is_none() && answers.expected_gap.is_none();
     let replayed = async {
         if orders.is_some() {
             wait_feed(&path).await?;
@@ -891,14 +906,27 @@ async fn replay_machine(
             header,
             answers,
             deadline,
+            check_identity,
         )
-        .await
+        .await?;
+        if check_identity {
+            return automatic::assert_repeat_uploads(
+                &path,
+                events,
+                header,
+                stack,
+                folder.then_some(incoming.as_path()),
+                deadline,
+            )
+            .await;
+        }
+        Ok(false)
     }
     .await;
     let stopped = running.stop().await;
     reference.close().await?;
-    replayed?;
-    stopped
+    stopped?;
+    replayed
 }
 
 async fn replay_ready_events(
@@ -908,6 +936,7 @@ async fn replay_ready_events(
     header: &Header,
     answers: &ReplaySettings,
     deadline: Duration,
+    check_identity: bool,
 ) -> Result<(), Error> {
     if let Some(incoming) = incoming {
         replay_file(path, incoming, events).await?;
@@ -915,7 +944,7 @@ async fn replay_ready_events(
         let mut peer = connect(path, "fixture").await?;
         let replayed = analyte_sim::replay(&mut peer, events, &header.exceptions, deadline).await;
         check_replies(replayed, answers.expected_gap.as_ref())?;
-        if answers.interpretation.is_some() {
+        if answers.interpretation.is_some() || check_identity {
             peer.shutdown().await?;
             let mut extra = [0];
             let read = tokio::time::timeout(HANG_GUARD, peer.read(&mut extra)).await??;
@@ -974,6 +1003,9 @@ fn site(endpoint: &str, answers: &ReplaySettings, serial: bool) -> Result<String
     }
     if let Some(seconds) = answers.autolyser_poll_seconds {
         site.insert("autolyser_poll_seconds".into(), i64::from(seconds).into());
+    }
+    if let Some(namespace) = &answers.vidas_patient_namespace {
+        site.insert("vidas_patient_namespace".into(), namespace.clone().into());
     }
     if serial {
         site.insert(
