@@ -26,6 +26,14 @@ const ALBANIAN: &[&str] = &[
     include_str!("../../../../locales/sq/doctor-overview.ftl"),
     include_str!("../../../../locales/sq/dates.ftl"),
 ];
+const SPANISH: &[&str] = &[
+    include_str!("../../../../locales/es/admin.ftl"),
+    include_str!("../../../../locales/es/setup.ftl"),
+    include_str!("../../../../locales/es/cli.ftl"),
+    include_str!("../../../../locales/es/desktop.ftl"),
+    include_str!("../../../../locales/es/doctor-overview.ftl"),
+    include_str!("../../../../locales/es/dates.ftl"),
+];
 
 struct Catalog {
     tag: &'static str,
@@ -100,7 +108,8 @@ impl Catalog {
 
 static SOURCE: LazyLock<Catalog> = LazyLock::new(|| Catalog::new("en", "English", ENGLISH));
 static TRANSLATIONS: LazyLock<Vec<Catalog>> = LazyLock::new(|| {
-    let embedded: &[(&str, &str, &[&str])] = &[("sq", "Shqip", ALBANIAN)];
+    let embedded: &[(&str, &str, &[&str])] =
+        &[("sq", "Shqip", ALBANIAN), ("es", "Español", SPANISH)];
     embedded
         .iter()
         .map(|(tag, name, sources)| Catalog::new(tag, name, sources))
@@ -278,6 +287,26 @@ mod tests {
                 assert_eq!(text("admin-language"), "Gjuha");
                 assert_eq!(count("admin-count-results", 1_u64), "1 rezultat");
                 assert_eq!(count("admin-count-results", 2_u64), "2 rezultate");
+            });
+        }
+    }
+
+    // ADR 0039 and CLDR plural rules for Spanish: one, many and other.
+    #[test]
+    fn spanish_matches_regional_tags_and_formats_its_plurals() {
+        for tag in ["es", "es-ES", "es-MX", "es-419"] {
+            let language = Language::select([tag, "en"]);
+            assert_eq!(language.tag(), "es");
+            language.sync_scope(|| {
+                assert_eq!(text("admin-language"), "Idioma");
+                assert_eq!(count("admin-count-results", 1_u64), "1 resultado");
+                assert_eq!(count("admin-count-results", 2_u64), "2 resultados");
+                assert_eq!(
+                    count("admin-count-results", 1_000_000_u64),
+                    "1000000 resultados"
+                );
+                assert_eq!(weekday(1), "lunes");
+                assert_eq!(month(11), "noviembre");
             });
         }
     }
