@@ -395,11 +395,15 @@ out `codes.vidas_identity` if VIDAS lacks qualifying evidence. Analyte holds
 results when required identity evidence is missing. LAW and POCT use their
 own protocol rules. [ADR 0035](../adr/0035-machine-result-identity-recipes.md)
 
-Worked references include the mapping modes in
-[cobas e 411](../../machines/roche/cobas-e411/machine.toml), the completion
-fields in [VIDAS](../../machines/biomerieux/vidas/machine.toml), and the
-unresolved uploads in [Biolyte 2000](../../machines/biocare/biolyte-2000/machine.toml)
-and [Autolyser](../../machines/dialab/autolyser/machine.toml).
+Worked examples: [cobas e 411](../../machines/roche/cobas-e411/machine.toml)
+puts a completion-time recipe in its Elecsys mode and a status-only rerun
+code in its two cobas modes, which stay unresolved.
+[VIDAS](../../machines/biomerieux/vidas/machine.toml) uses the fixed recipe;
+it reconciles stored measurements, but its uploads lack the processing mode
+needed for production delivery.
+[Biolyte 2000](../../machines/biocare/biolyte-2000/machine.toml) and
+[Autolyser](../../machines/dialab/autolyser/machine.toml) document that no
+stable run field exists and keep their results for operator review.
 
 ### Declare the lab's choices
 
@@ -501,9 +505,10 @@ choice with no suggestion. For example, give staff a separate choice for the
 on their installation. Use the covered versions and the location staff can
 read them from the manual. Leave `suggested` out when only the lab knows the
 installed version. If the manual gives no checked version to offer, omit
-the version choice and record the gap. Selecting the unchecked value raises
-a persistent warning, visible before the first upload. Results continue
-through the usual checks.
+the version choice and record the gap. Selecting the unchecked value shows
+"Software version not checked against a manual" in Setup, Overview and
+`analyte machines list`, before the first upload. Results continue through
+the usual checks. A checked value raises no such warning.
 
 Use a wire selector only if the manual documents a software token in a
 supported position. `astm_sender_second_component` and
@@ -524,13 +529,21 @@ With a version choice, give every checked value a band of exact wire tokens.
 Omit the unchecked value from `bands`. Name each token separately in an
 `[[evidence.capabilities]]` entry's `firmware` field. With a selector and no
 version choice, omit `bands` and the comparison uses the valid firmware
-tokens in evidence. Matching is exact. An unexpected, blank or malformed
-report raises a warning while result processing continues. Leave out the
+tokens in evidence. A token is at most 64 ASCII bytes, contains a digit and
+uses only letters, digits, `.`, `-`, `_` or `+`. Matching is exact. An
+unexpected, blank or malformed report raises a warning while result
+processing continues. Leave out the
 selector if the manual is silent about the wire position or exact tokens.
 Analyte then makes no wire comparison. Picking the unchecked value also
 disables the comparison and keeps the unchecked warning active.
-[ADR 0036](../adr/0036-machine-software-version-warning.md),
-[Biolyte 2000 definition](../../machines/biocare/biolyte-2000/machine.toml)
+[ADR 0036](../adr/0036-machine-software-version-warning.md)
+
+Worked examples: [Biolyte 2000](../../machines/biocare/biolyte-2000/machine.toml)
+has a checked band with exact wire tokens and the unchecked value.
+[VIDAS](../../machines/biomerieux/vidas/machine.toml) has versions staff read
+on the About screen, because its wire carries no version field.
+[cobas e 411](../../machines/roche/cobas-e411/machine.toml) has a selector
+with no version choice, so it compares against its evidence tokens.
 
 ### Declare departures, do not program around them
 
@@ -615,22 +628,25 @@ code change belongs in the owning layer; do not weaken a shared standard or
 invent a config key. A new subsystem, protocol family, format, dependency or
 unplanned ADR requires agreement before building it.
 
-### Check the automatic handling before submitting
+### Checklist for a new machine
 
 - [ ] Cite each stable identity field and exact status code. Leave uncertain
-  identity unresolved. For a definition that activates a recipe, include a
-  synthetic upload with one identifiable result and a sample value that
-  occurs only once in the upload so the test can change it.
-- [ ] Declare supported choices and checked versions. Add the manual's
-  suggestion where it gives one. Cross-check every band token against
-  capability firmware.
-- [ ] Declare only evidenced departures and replay the scoped behavior.
-  Check that the README's `Level:` agrees with `evidence.level`.
-- [ ] Run
-  `cargo test -p analyte --features test-hooks --test service machine_definitions`.
-  It checks shipped choices, software warnings, wire-band evidence and
-  README levels. It replays uploads through the shared stack and checks that
-  a resend adds no delivery and changed content with the same key is held.
+  identity unresolved (`run = []`, or no `codes.vidas_identity`).
+- [ ] Declare only the choices the analyzer really offers. Add `suggested`
+  only where the manual recommends a value.
+- [ ] List the checked software versions and add "Other version (not
+  checked)". Keep behavior settings out of the version values.
+- [ ] Add `[software_version]` only for a documented wire position, and list
+  every band token as a capability `firmware`.
+- [ ] Declare only evidenced departures, scoped to the mode that needs them.
+- [ ] Set the same evidence level in `machine.toml` and the README `Level:`.
+- [ ] Run `cargo test -p analyte --all-features --test service shipped_`.
+  These tests read every `machines/*/*/machine.toml` without naming any.
+  They load every choice combination and check the README level. They check
+  the unchecked-version warning and the wire tokens against evidence. For
+  each combination with an active identity recipe, they build synthetic
+  uploads from your selectors: an exact resend keeps one delivery, and
+  changed content under the same key is held for review.
 
 ## Validate before connecting
 
