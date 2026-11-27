@@ -215,7 +215,7 @@ impl Section<'_> {
         match self {
             Self::NeedsReview(id) => id.map(|id| {
                 (
-                    crate::admin::view::format::OPEN_ITEM,
+                    format::OPEN_ITEM,
                     Crumb {
                         label: "Item".into(),
                         number: Some(id),
@@ -225,7 +225,7 @@ impl Section<'_> {
             }),
             Self::Machines(id) => id.map(|id| {
                 (
-                    crate::admin::view::format::OPEN_MACHINE,
+                    format::OPEN_MACHINE,
                     Crumb::link(id, format::machine_href(id)),
                 )
             }),
@@ -471,7 +471,7 @@ impl Problem {
     fn words(&self, section: Section<'_>) -> (&'static str, &'static str, String) {
         const FAILED: &str = "This page could not be shown";
         const OVERVIEW: (&str, &str) = (
-            crate::admin::view::Tab::Overview.label(),
+            Tab::Overview.label(),
             "The overview could not be shown just now",
         );
         match self {
@@ -495,17 +495,15 @@ impl Problem {
                 "Sign in with the admin key, then open the page again.".into(),
             ),
             Self::FormExpired => (
-                crate::admin::view::format::NOTHING_CHANGED,
+                format::NOTHING_CHANGED,
                 "This form is from an older or another session",
                 "Open the item again and repeat the action; if the page asks, sign in first."
                     .into(),
             ),
             Self::Refused(why) => (
-                crate::admin::view::format::NOTHING_CHANGED,
+                format::NOTHING_CHANGED,
                 match section {
-                    Section::Machines(_) | Section::LabApps(_) | Section::Setup(_) => {
-                        crate::admin::view::report::SETUP_STOPPED
-                    }
+                    Section::Machines(_) | Section::LabApps(_) | Section::Setup(_) => SETUP_STOPPED,
                     Section::Overview | Section::NeedsReview(_) | Section::More(_) => {
                         "That could not be done"
                     }
@@ -514,7 +512,7 @@ impl Problem {
             ),
             Self::Failed(_) => (
                 "That could not be done",
-                crate::admin::view::format::NOTHING_CHANGED,
+                format::NOTHING_CHANGED,
                 concat!(
                     "Check the item and try again; if this keeps happening, give the ",
                     "details below to support.",

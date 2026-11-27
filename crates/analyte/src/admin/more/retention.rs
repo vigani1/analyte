@@ -350,7 +350,7 @@ fn release_dialog(session: &Session, held: &Held, now: Timestamp) -> ReleaseDial
         ),
         placeholder: "For example: the audit is finished",
         hint: "Required, up to 256 characters. Recorded with the time.",
-        button: crate::admin::more::retention::RELEASE,
+        button: RELEASE,
         csrf: session.csrf.form_value().to_owned(),
         cancel: Tab::DataKeeping.href().into(),
         reason: String::new(),
@@ -396,9 +396,9 @@ pub(in crate::admin) async fn hold(
             Tab::DataKeeping,
             StatusCode::FORBIDDEN,
             Outcome {
-                title: crate::admin::more::retention::HOLD_NOT_SAVED,
+                title: HOLD_NOT_SAVED,
                 tone: Tone::Problem,
-                alert: crate::admin::view::format::NOTHING_CHANGED.into(),
+                alert: format::NOTHING_CHANGED.into(),
                 text: "Tick the confirmation box and make sure you are signed in, then try again."
                     .into(),
             },
@@ -434,9 +434,9 @@ pub(in crate::admin) async fn hold(
             Tab::DataKeeping,
             StatusCode::CONFLICT,
             Outcome {
-                title: crate::admin::more::retention::HOLD_NOT_SAVED,
+                title: HOLD_NOT_SAVED,
                 tone: Tone::Problem,
-                alert: crate::admin::view::format::NOTHING_CHANGED.into(),
+                alert: format::NOTHING_CHANGED.into(),
                 text: format::sentence(&error.to_string()),
             },
             Vec::new(),

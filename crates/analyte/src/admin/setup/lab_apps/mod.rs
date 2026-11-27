@@ -175,11 +175,7 @@ fn list_page(
     read: ListRead,
     now: Timestamp,
 ) -> (StatusCode, List) {
-    let frame = Section::LabApps(None).frame(
-        state,
-        crate::admin::view::Tab::LabApps.label(),
-        Some(session),
-    );
+    let frame = Section::LabApps(None).frame(state, view::Tab::LabApps.label(), Some(session));
     let ListRead {
         settings,
         delivered,
@@ -231,7 +227,7 @@ fn list_page(
         Err(error) => {
             problems.push(Notice {
                 tone: Tone::Problem,
-                title: crate::admin::removed::COUNT_FAILED.into(),
+                title: removed::COUNT_FAILED.into(),
                 text: String::new(),
             });
             support.push(error);
@@ -301,7 +297,7 @@ fn card(
         Some(Todo {
             text: format::FAILING_ADVICE,
             href: view::Tab::Deliveries.href().to_owned(),
-            label: crate::admin::view::Tab::Deliveries.label(),
+            label: view::Tab::Deliveries.label(),
         })
     } else {
         None

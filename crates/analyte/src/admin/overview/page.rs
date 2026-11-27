@@ -15,7 +15,7 @@ use crate::admin::view::{
 /// The alerts table's columns.
 pub(super) const ALERT_COLUMNS: [Column; 5] = [
     Column::text("Alert"),
-    Column::text(crate::admin::view::format::MACHINE),
+    Column::text(format::MACHINE),
     Column::text("Responder"),
     Column::text("Raised"),
     Column::number("Last value"),
@@ -84,10 +84,10 @@ pub(super) struct Todo {
     pub(super) label: &'static str,
 }
 
-/// The verdict's title for `count` things: crate::admin::view::status_words::ALL_GOOD, or "3 things need you".
+/// The verdict's title for `count` things: "All good", or "3 things need you".
 pub(super) fn title(count: usize) -> String {
     if count == 0 {
-        return crate::admin::view::status_words::ALL_GOOD.into();
+        return "All good".into();
     }
     format!(
         "{} you",
@@ -109,7 +109,7 @@ pub(super) const fn sub(count: usize) -> &'static str {
 }
 
 impl Verdict {
-    /// crate::admin::view::status_words::ALL_GOOD when nothing needs anyone; otherwise how many things do,
+    /// "All good" when nothing needs anyone; otherwise how many things do,
     /// red when any of them stops data now.
     pub(super) fn of(things: &[Thing]) -> Self {
         if things.is_empty() {

@@ -126,7 +126,7 @@ fn problem_words(problem: &Problem, at: Position) -> (&'static str, String) {
             format!("The message has no sample ID in {at}."),
         ),
         Problem::MissingIdentity { .. } => (
-            crate::admin::view::format::IDENTITY_MISSING,
+            IDENTITY_MISSING,
             format!(
                 "The value this machine’s settings use to tell results apart is missing in {at}."
             ),
@@ -249,7 +249,7 @@ fn mapping_finding(stored: &str) -> Explained {
 
 /// Why a result has no identity, in words.
 fn unidentified(reason: Unidentified) -> Explained {
-    const MISSING: &str = crate::admin::view::format::IDENTITY_MISSING;
+    const MISSING: &str = IDENTITY_MISSING;
     match reason {
         Unidentified::Missing { setting, position } => {
             let (title, sentence) = problem_words(&Problem::MissingIdentity { setting }, position);
@@ -338,7 +338,7 @@ const READING_REASONS: [Fixed; 15] = [
     ),
     (
         poct::CANCELLED_REASON,
-        crate::admin::view::format::MESSAGE_CUT_OFF,
+        MESSAGE_CUT_OFF,
         "The connection was stopped while the message was arriving; the part that arrived is kept.",
     ),
     (
@@ -348,7 +348,7 @@ const READING_REASONS: [Fixed; 15] = [
     ),
     (
         poct::INCOMPLETE_REASON,
-        crate::admin::view::format::MESSAGE_CUT_OFF,
+        MESSAGE_CUT_OFF,
         concat!(
             "The connection timed out or closed before the message was complete; the part that ",
             "arrived is kept.",
@@ -456,7 +456,7 @@ fn reconciliation(stored: &str) -> Explained {
              and nothing marks it as a correction.",
         ),
         Some(RevisionOutcome::Unresolved) => Explained::said(
-            crate::admin::view::format::IDENTITY_MISSING,
+            IDENTITY_MISSING,
             "The message does not give this result an identity, so Analyte cannot tell whether \
              it is new, repeated or a correction.",
         ),

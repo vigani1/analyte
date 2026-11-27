@@ -863,7 +863,7 @@ async fn list_says_which_devices_each_machine_accepts() -> Result<(), Error> {
     assert_eq!(
         line("open-3").as_deref(),
         Some(
-            "  Devices: warning - Any device. Accept only the analyzer with: analyte machines set open-3 --allowed-peer <IP>"
+            "  Devices: warning - accepts connections from any device. Accept only the analyzer with: analyte machines set open-3 --allowed-peer <IP>"
         )
     );
     assert_eq!(line("cobas-1"), None);

@@ -107,7 +107,7 @@ fn facts(off: &Off, zone: &TimeZone, now: Timestamp) -> Vec<(&'static str, Strin
         (
             "Last known state",
             off.last_answer.map_or_else(
-                || crate::status_words::NOTHING_YET.to_owned(),
+                || "Nothing yet".to_owned(),
                 |(_, health)| health.words().to_owned(),
             ),
         ),

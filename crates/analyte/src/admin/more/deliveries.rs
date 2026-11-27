@@ -171,10 +171,7 @@ fn empty(show: Show, shown: u64) -> Empty {
             good: false,
             title: "No more deliveries",
             text: "This page is past the last delivery.",
-            link: Some((
-                Show::All.href(),
-                crate::admin::view::format::FIRST_PAGE.into(),
-            )),
+            link: Some((Show::All.href(), format::FIRST_PAGE.into())),
         };
     }
     match show {
@@ -328,7 +325,7 @@ async fn open(
         ),
         placeholder: "For example: the lab app team asked for it again",
         hint: "Required, up to 256 characters. Recorded with the action and the time.",
-        button: crate::admin::view::format::SEND_AGAIN,
+        button: format::SEND_AGAIN,
         csrf: session.csrf.form_value().to_owned(),
         cancel: Tab::Deliveries.href().into(),
         reason: typed.to_owned(),

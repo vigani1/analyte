@@ -34,7 +34,7 @@ pub(in crate::admin) fn recorded(actor: &str, reason: &str) -> String {
 }
 
 /// What an audited action did to a Needs review item, from the action and
-/// targets Analyte recorded with it: crate::admin::view::format::MARKED_RESOLVED, "Processed again:
+/// targets Analyte recorded with it: "Marked resolved", "Processed again:
 /// reading 2 recorded" (and, when the new reading still needed review, "it
 /// still needs review"), or "Resolved" for an action recorded elsewhere.
 pub(in crate::admin) fn settled(action: &str, targets: &[&str]) -> String {
@@ -59,7 +59,7 @@ pub(in crate::admin) fn settled(action: &str, targets: &[&str]) -> String {
 }
 
 /// [`settled`] in short, without what the new reading decided: "Marked
-/// resolved", crate::admin::view::format::PROCESSED_AGAIN, or "Resolved" for an action recorded elsewhere.
+/// resolved", "Processed again", or "Resolved" for an action recorded elsewhere.
 pub(in crate::admin) fn settled_action(action: &str) -> &'static str {
     match action {
         recovery::RESOLVE_ACTION => crate::admin::view::format::MARKED_RESOLVED,

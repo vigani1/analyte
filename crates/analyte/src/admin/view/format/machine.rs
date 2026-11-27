@@ -171,7 +171,7 @@ pub(in crate::admin) const fn connection_note(connection: &Connection) -> Option
 }
 
 /// The line under a machine's name: its model and when data last came, such
-/// as "XC-200 · last data 10:41" or crate::admin::view::format::NOTHING_RECEIVED_YET.
+/// as "XC-200 · last data 10:41" or "Nothing received yet".
 pub(in crate::admin) fn machine_lede(model: Option<&str>, last: Option<Moment>) -> Line {
     let data = match last {
         Some(at) => Line::text(if model.is_some() {
@@ -183,7 +183,7 @@ pub(in crate::admin) fn machine_lede(model: Option<&str>, last: Option<Moment>) 
         None => Line::text(if model.is_some() {
             "nothing received yet"
         } else {
-            crate::admin::view::format::NOTHING_RECEIVED_YET
+            NOTHING_RECEIVED_YET
         }),
     };
     match model {
@@ -236,7 +236,7 @@ pub(in crate::admin) struct MachineCounts {
 pub(in crate::admin) fn machines_summary(counts: &MachineCounts) -> String {
     let mut parts = Vec::new();
     if counts.running == 0 {
-        parts.push(crate::admin::view::format::NO_MACHINE_RUNNING.to_owned());
+        parts.push(NO_MACHINE_RUNNING.to_owned());
     } else {
         parts.push(format!(
             "{} of {} open",

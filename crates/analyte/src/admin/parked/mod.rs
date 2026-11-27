@@ -312,7 +312,7 @@ fn list_page(
         frame: Frame::new(
             state,
             Tab::NeedsReview,
-            crate::admin::view::Tab::NeedsReview.label(),
+            Tab::NeedsReview.label(),
             Some(counts.open),
             session,
             now,
@@ -364,7 +364,7 @@ fn empty(show: Show, shown: u64, counts: ParkedCounts) -> Empty {
             good: false,
             title: "No more items",
             text: "This page is past the last item.",
-            link: Some((show.href(), crate::admin::view::format::FIRST_PAGE.into())),
+            link: Some((show.href(), format::FIRST_PAGE.into())),
         },
         Show::Open => Empty {
             good: true,
@@ -419,14 +419,14 @@ enum Kind {
 fn actions(id: i64, parked: &Parked, action: Action, size: Size) -> Vec<Button> {
     let resolve = |kind| Button {
         href: format!("/parked/{id}/resolve"),
-        label: crate::admin::view::format::MARK_RESOLVED,
+        label: format::MARK_RESOLVED,
         class: size.class(kind),
     };
     let mut buttons = Vec::new();
     match action {
         Action::ProcessAgain => buttons.push(Button {
             href: format!("/parked/{id}/reprocess"),
-            label: crate::admin::view::format::PROCESS_AGAIN,
+            label: format::PROCESS_AGAIN,
             class: size.class(Kind::Main),
         }),
         // A rejected delivery's target is its delivery ID; anything else gets no button.
@@ -437,7 +437,7 @@ fn actions(id: i64, parked: &Parked, action: Action, size: Size) -> Vec<Button> 
                 .and_then(|target| uuid::Uuid::parse_str(target.as_str()).ok())
                 .map(|delivery| Button {
                     href: format!("/deliveries/{delivery}/resend"),
-                    label: crate::admin::view::format::SEND_AGAIN,
+                    label: format::SEND_AGAIN,
                     class: size.class(Kind::Main),
                 }),
         ),
@@ -657,7 +657,7 @@ fn item_page(
                         0,
                         Button {
                             href: format!("/parked/{id}/measurement"),
-                            label: crate::admin::view::format::COMPARE_MEASUREMENTS,
+                            label: format::COMPARE_MEASUREMENTS,
                             class: "btn--outline",
                         },
                     );
@@ -685,7 +685,7 @@ fn item_page(
 fn linked_pairs(linked: &[(Identifier, Linked)], now: Timestamp) -> Vec<Pair> {
     if linked.is_empty() {
         return vec![Pair {
-            term: crate::admin::view::format::LINKED_RECORD,
+            term: format::LINKED_RECORD,
             value: format::Line::text("None recorded"),
         }];
     }
@@ -701,7 +701,7 @@ fn linked_pairs(linked: &[(Identifier, Linked)], now: Timestamp) -> Vec<Pair> {
                 value: format::Line::text("Removed by data keeping"),
             },
             Linked::Other => Pair {
-                term: crate::admin::view::format::LINKED_RECORD,
+                term: format::LINKED_RECORD,
                 value: format::Line::text(
                     "Not a stored message; its ID is under Details for support",
                 ),
@@ -733,18 +733,18 @@ fn original(id: i64, read: &ItemRead, session: Option<&Session>, now: Timestamp)
                     }),
                     vec![
                         ("receipt", "Show the message as stored"),
-                        ("frames", crate::admin::view::format::AS_ARRIVED),
+                        ("frames", format::AS_ARRIVED),
                     ],
                 ),
                 Linked::Removed => (
                     format::Line::text("Message removed by data keeping"),
                     None,
-                    vec![("frames", crate::admin::view::format::AS_ARRIVED)],
+                    vec![("frames", format::AS_ARRIVED)],
                 ),
                 Linked::Other => (
                     format::Line::text(format!("Linked record {number}")),
                     None,
-                    vec![("frames", crate::admin::view::format::AS_ARRIVED)],
+                    vec![("frames", format::AS_ARRIVED)],
                 ),
             };
             OriginalTarget {

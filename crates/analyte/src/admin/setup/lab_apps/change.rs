@@ -395,7 +395,7 @@ impl Saved {
         }
         lines.extend(self.replaced.iter().map(|key| format!("Key stored: {key}")));
         if !self.replaced.is_empty() {
-            lines.push(KEYS_APPLY.to_owned());
+            lines.push(format::KEYS_APPLY.to_owned());
         }
         lines
     }

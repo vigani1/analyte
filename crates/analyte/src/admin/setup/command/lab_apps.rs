@@ -10,8 +10,7 @@
 //! Where they go is settled before they are asked for.
 use super::ask::Ask;
 use super::{
-    Failure, Installation, Outcome, actor, backups, problem, record, restart_note,
-    saved_without_audit, say,
+    Failure, Installation, Outcome, actor, backups, record, restart_note, saved_without_audit, say,
 };
 use crate::admin::engine::{Engine, EngineError};
 use crate::admin::setup::{
@@ -28,7 +27,6 @@ use crate::admin::setup::{
     },
     off_thread,
 };
-use crate::admin::view::format;
 use crate::installation::credentials::Locked;
 use analyte_model::Identifier;
 use jiff::Timestamp;

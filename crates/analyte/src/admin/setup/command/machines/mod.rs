@@ -281,7 +281,7 @@ async fn add(
 fn accepts(link: Link, peers: Option<&analyte_config::AllowedPeers>) -> Option<String> {
     (link == Link::TcpServer).then(|| {
         peers.map_or_else(
-            || format!("{} - {}", format::ANY_DEVICE, format::OPEN_TO_ANY_ADVICE),
+            || format!("{} - {}", format::OPEN_TO_ANY, format::OPEN_TO_ANY_ADVICE),
             format::only_devices,
         )
     })

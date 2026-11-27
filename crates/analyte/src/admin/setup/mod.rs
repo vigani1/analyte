@@ -422,11 +422,8 @@ fn machine_rows(
             let running = state.setup.running(id);
             let (tone, word) = match (running, &entry.definition) {
                 (Some(_), _) => (Tone::Good, "Running"),
-                (None, None) => (Tone::Neutral, crate::admin::view::format::NOT_SET_UP),
-                (None, Some(_)) => (
-                    Tone::Attention,
-                    crate::admin::view::format::STARTS_AFTER_RESTART,
-                ),
+                (None, None) => (Tone::Neutral, format::NOT_SET_UP),
+                (None, Some(_)) => (Tone::Attention, format::STARTS_AFTER_RESTART),
             };
             page::Machine {
                 id: id.clone(),
@@ -447,10 +444,7 @@ fn machine_rows(
                 id: gone.id.as_str().to_owned(),
                 links: None,
                 model: None,
-                status: status(
-                    Tone::Attention,
-                    crate::admin::view::format::STOPS_AT_RESTART,
-                ),
+                status: status(Tone::Attention, format::STOPS_AT_RESTART),
                 version: settings_version(Some(gone)),
             }),
     );
@@ -598,7 +592,7 @@ pub(super) async fn index(
         frame: Frame::new(
             &state,
             Tab::Setup,
-            crate::admin::view::Tab::Setup.label(),
+            Tab::Setup.label(),
             None,
             session.as_deref(),
             Timestamp::now(),
@@ -836,7 +830,7 @@ pub(super) async fn restart(
         frame: Frame::new(
             &state,
             Tab::Setup,
-            crate::admin::setup::RESTARTING,
+            RESTARTING,
             None,
             Some(&session),
             Timestamp::now(),

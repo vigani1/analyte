@@ -24,6 +24,7 @@ pub(super) mod live;
 mod proof;
 pub(super) mod sessions;
 mod sign_in;
+pub(super) use sign_in::SIGN_IN;
 mod status;
 pub(super) mod token;
 // Off Windows nothing hands out codes, so the pipe's half of this module is

@@ -141,7 +141,7 @@ impl Reason {
             Self::OrdersUncertain => "Some orders have an unknown outcome",
             Self::OrdersCancelled => "A machine cancelled some orders",
             Self::OrdersPausedAfterRestore => "Orders are paused after a restore",
-            Self::OrderListStale => crate::status_words::ORDER_LIST_STALE,
+            Self::OrderListStale => "The order list from the lab app is out of date",
             Self::MachineOpenToAnyDevice => "A machine accepts connections from any device",
         }
     }
@@ -279,7 +279,7 @@ impl Health {
     #[must_use]
     pub const fn words(self) -> &'static str {
         match self {
-            Self::Good => crate::status_words::ALL_GOOD,
+            Self::Good => "All good",
             Self::Attention => "Something needs you",
             Self::Problem => "A problem needs you",
             Self::Unknown => "The engine could not read its state",

@@ -18,11 +18,11 @@ pub(in crate::admin) fn last_delivered(
 }
 
 /// What waits for a lab app, written to follow [`last_delivered`] after a
-/// " · ": "4 items waiting · oldest 10:31", or crate::admin::view::format::NOTHING_WAITING. Items are
+/// " · ": "4 items waiting · oldest 10:31", or "nothing waiting". Items are
 /// results and order messages alike.
 pub(in crate::admin) fn waiting(count: u64, oldest: Option<Timestamp>, now: Timestamp) -> Line {
     if count == 0 {
-        return Line::text(crate::admin::view::format::NOTHING_WAITING);
+        return Line::text(NOTHING_WAITING);
     }
     let items = amount(count, "item waiting", "items waiting");
     match oldest {

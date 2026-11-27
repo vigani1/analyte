@@ -329,7 +329,7 @@ pub(in super::super) fn devices_line(machine: &Listed) -> Option<String> {
         )),
         (None, true) => Some(format!(
             "  Devices: warning - {}. Accept only the analyzer with: analyte machines set {} --allowed-peer <IP>",
-            format::ANY_DEVICE,
+            format::OPEN_TO_ANY.to_lowercase(),
             machine.id
         )),
         (None, false) => None,

@@ -49,12 +49,8 @@ pub(in crate::admin) async fn add_form(
     };
     let section = Section::Setup(None);
     let page = page::Add {
-        frame: section.frame(
-            &state,
-            crate::admin::view::format::ADD_MACHINE,
-            Some(&session),
-        ),
-        head: section.head(crate::admin::view::format::ADD_MACHINE),
+        frame: section.frame(&state, format::ADD_MACHINE, Some(&session)),
+        head: section.head(format::ADD_MACHINE),
         csrf: session.csrf.form_value().to_owned(),
         name,
     };

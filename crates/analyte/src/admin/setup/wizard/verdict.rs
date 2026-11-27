@@ -174,7 +174,7 @@ pub(super) fn verdict(
     let nothing = if ended {
         "Nothing received"
     } else {
-        crate::admin::view::format::NOTHING_RECEIVED_YET
+        format::NOTHING_RECEIVED_YET
     };
     let receiving = |seen: &str| {
         if fits(guess, model) {
@@ -281,10 +281,7 @@ fn nothing_received(route: &Route, connected: bool, ended: bool) -> (Tone, Strin
     match route {
         Route::Serial => (
             Tone::Attention,
-            tense(
-                crate::admin::view::format::NOTHING_RECEIVED_YET,
-                "Nothing received",
-            ),
+            tense(format::NOTHING_RECEIVED_YET, "Nothing received"),
             concat!(
                 "Check the cable and the machine’s host settings, then ask the machine to send ",
                 "a result again."

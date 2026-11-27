@@ -608,7 +608,7 @@ pub(in crate::admin) fn from_alert(alert: &AlertState) -> Thing {
         ),
         AlertKey::OrderCacheStale => Thing::new(
             Subject::OrderList,
-            crate::admin::view::status_words::ORDER_LIST_STALE.into(),
+            "The order list from the lab app is out of date".into(),
             Fix::Section(Section::Sending),
         ),
     }

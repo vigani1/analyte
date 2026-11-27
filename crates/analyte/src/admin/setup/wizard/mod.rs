@@ -81,8 +81,8 @@ impl Step {
 
     const fn label(self) -> &'static str {
         match self {
-            Self::Machine => crate::admin::view::format::MACHINE,
-            Self::Connection => crate::admin::view::format::CONNECTION,
+            Self::Machine => format::MACHINE,
+            Self::Connection => format::CONNECTION,
             Self::Test => "Test",
             Self::Save => crate::admin::setup::SAVE,
         }
@@ -213,7 +213,7 @@ pub(super) fn refused_at(
         return refused(state, Some(session), Some(id), error);
     };
     let section = Section::Setup(Some(id));
-    let title = crate::admin::view::format::NOTHING_CHANGED;
+    let title = format::NOTHING_CHANGED;
     let page = Report {
         lines: vec![format!(
             "Fix this in step {}: {}.",
@@ -228,7 +228,7 @@ pub(super) fn refused_at(
             },
             Button {
                 href: Tab::Setup.href().to_owned(),
-                label: crate::admin::view::Tab::Setup.back(),
+                label: Tab::Setup.back(),
                 class: "btn--outline",
             },
         ],

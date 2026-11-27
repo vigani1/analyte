@@ -29,7 +29,8 @@ pub(in crate::admin) const SUPPORT: &str = "Details for support";
 /// A value Analyte never stored, such as a time an older version did not keep.
 pub(in crate::admin) const NOT_RECORDED: &str = "Not recorded";
 
-pub(in crate::admin) use crate::admin::view::status_words::NOTHING_YET;
+/// A value for something that has not happened yet.
+pub(in crate::admin) const NOTHING_YET: &str = "Nothing yet";
 
 /// A value that does not apply here.
 pub(in crate::admin) const NOT_APPLICABLE: &str = "—";

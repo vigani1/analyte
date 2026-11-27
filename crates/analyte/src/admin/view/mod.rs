@@ -12,7 +12,6 @@ pub(super) mod list;
 pub(super) mod parts;
 pub(super) mod refusal;
 pub(super) mod report;
-pub(super) mod status_words;
 
 /// How long a page may read before it answers with its own error page:
 /// below the limit on every admin request, so a slow store still gets a page

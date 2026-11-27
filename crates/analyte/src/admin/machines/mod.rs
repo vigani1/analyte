@@ -75,13 +75,10 @@ impl Entry<'_> {
     fn status(&self, now: Timestamp, detail: bool) -> Status {
         let Self::Running { machine, settings } = self else {
             let (tone, word) = match self {
-                Self::Waiting { set_up: false, .. } => {
-                    (Tone::Neutral, crate::admin::view::format::NOT_SET_UP)
+                Self::Waiting { set_up: false, .. } => (Tone::Neutral, format::NOT_SET_UP),
+                Self::Waiting { set_up: true, .. } | Self::Running { .. } => {
+                    (Tone::Attention, format::STARTS_AFTER_RESTART)
                 }
-                Self::Waiting { set_up: true, .. } | Self::Running { .. } => (
-                    Tone::Attention,
-                    crate::admin::view::format::STARTS_AFTER_RESTART,
-                ),
             };
             return Status {
                 tone,
@@ -107,11 +104,9 @@ impl Entry<'_> {
         };
         let exact = format!("{}: {}", link.link().as_str(), link.state());
         let (tone, word, note) = match (settings, running, light) {
-            (InSettings::Removed, ..) => (
-                Tone::Attention,
-                crate::admin::view::format::STOPS_AT_RESTART,
-                Some(observed),
-            ),
+            (InSettings::Removed, ..) => {
+                (Tone::Attention, format::STOPS_AT_RESTART, Some(observed))
+            }
             (_, false, _) => (Tone::Problem, format::STOPPED, Some(observed)),
             (_, true, Light::Live) => (Tone::Good, link.state(), detail.then_some(observed)),
             (_, true, Light::Waiting) => (Tone::Neutral, link.state(), Some(observed)),
@@ -245,7 +240,7 @@ fn list_page(
     if let Err(error) = &read.listed {
         problems.push(Notice {
             tone: Tone::Problem,
-            title: crate::admin::view::format::SETTINGS_UNREADABLE.into(),
+            title: format::SETTINGS_UNREADABLE.into(),
             text: "Machines set up or removed since Analyte started may be missing here.".into(),
         });
         support.push(error.clone());
@@ -289,7 +284,7 @@ fn list_page(
         frame: Frame::new(
             state,
             Tab::Machines,
-            crate::admin::view::Tab::Machines.label(),
+            Tab::Machines.label(),
             None,
             session,
             now,
@@ -306,7 +301,7 @@ fn list_page(
                 good: false,
                 title: "No machine is set up yet",
                 text: "Add one, then set it up step by step: its model, its connection, a listen-only test and the save.",
-                link: Some(("/setup/add", crate::admin::view::format::ADD_MACHINE.into())),
+                link: Some(("/setup/add", format::ADD_MACHINE.into())),
             })
         } else if rows.is_empty() {
             Some(Empty {
@@ -572,7 +567,7 @@ async fn page(
             .err()
             .map(|_| Notice {
                 tone: Tone::Problem,
-                title: crate::admin::view::format::SETTINGS_UNREADABLE.into(),
+                title: format::SETTINGS_UNREADABLE.into(),
                 text: "Whether this machine is still set up is not known just now.".into(),
             })
             .into_iter()
@@ -619,19 +614,19 @@ fn detail_page(
         Entry::Waiting { set_up, .. } => {
             let facts = vec![
                 Fact {
-                    term: crate::admin::view::format::MODEL,
+                    term: format::MODEL,
                     value: Value::Text(
                         if *set_up {
                             "Shown after Analyte restarts"
                         } else {
-                            crate::admin::view::format::NOT_CHOSEN
+                            format::NOT_CHOSEN
                         }
                         .into(),
                     ),
                 },
                 Fact {
-                    term: crate::admin::view::format::IN_ANALYTE,
-                    value: Value::Text(crate::admin::view::format::NOT_RUNNING.into()),
+                    term: format::IN_ANALYTE,
+                    value: Value::Text(format::NOT_RUNNING.into()),
                 },
             ];
             (facts, None, None, Vec::new())
@@ -704,7 +699,7 @@ fn running_facts(
     let running = machine.running.load(Ordering::Acquire);
     let mut facts = vec![
         Fact {
-            term: crate::admin::view::format::MODEL,
+            term: format::MODEL,
             value: Value::Text(
                 machine
                     .model
@@ -713,39 +708,39 @@ fn running_facts(
             ),
         },
         Fact {
-            term: crate::admin::view::format::CONNECTED_BY,
+            term: format::CONNECTED_BY,
             value: Value::Link(link(machine)),
         },
         Fact {
-            term: crate::admin::view::format::CONNECTION,
+            term: format::CONNECTION,
             value: Value::Status(entry.status(now, true)),
         },
     ];
     if let Some(accepts) = format::accepts(&machine.connection, machine.allowed_peers.as_ref()) {
         facts.push(Fact {
-            term: crate::admin::view::format::ACCEPTS_FROM,
+            term: format::ACCEPTS_FROM,
             value: Value::Text(accepts),
         });
     }
     if let Some(cable) = &machine.cable {
         facts.push(Fact {
-            term: crate::admin::view::format::CABLE_SETTINGS,
+            term: format::CABLE_SETTINGS,
             value: Value::Text(cable.clone()),
         });
     }
     if let Some(choices) = &machine.choices {
         facts.push(Fact {
-            term: crate::admin::view::format::ANALYZER_SETTINGS,
+            term: format::ANALYZER_SETTINGS,
             value: Value::Text(choices.clone()),
         });
     }
     facts.extend([
         Fact {
-            term: crate::admin::view::format::LAST_DATA,
+            term: format::LAST_DATA,
             value: Value::Time(last.map(|at| format::moment(at, now))),
         },
         Fact {
-            term: crate::admin::view::format::SENDS_RESULTS_TO,
+            term: format::SENDS_RESULTS_TO,
             value: match &machine.lab_app {
                 Some(lab_app) => Value::Page {
                     href: Tab::LabApps.href().to_owned(),
@@ -762,7 +757,7 @@ fn running_facts(
             )),
         },
         Fact {
-            term: crate::admin::view::format::IN_ANALYTE,
+            term: format::IN_ANALYTE,
             value: Value::Text(if running { "Running" } else { "Stopped" }.into()),
         },
         Fact {
@@ -916,14 +911,14 @@ pub(in crate::admin) fn removed(
     let mut links: Vec<Button> = page_left
         .then(|| Button {
             href: format::machine_href(id),
-            label: crate::admin::view::format::OPEN_MACHINE,
+            label: format::OPEN_MACHINE,
             class: "btn--outline",
         })
         .into_iter()
         .collect();
     links.push(Button {
         href: Tab::Machines.href().to_owned(),
-        label: crate::admin::view::Tab::Machines.back(),
+        label: Tab::Machines.back(),
         class: "btn--outline",
     });
     let page = Report {
