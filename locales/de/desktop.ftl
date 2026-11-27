@@ -80,12 +80,6 @@ desktop-windows-says-the-engine-is-already-running = Laut Windows läuft der Die
 
 desktop-sc-exe-named-no-state = sc.exe hat keinen Zustand genannt
 
-desktop-systemroot = SystemRoot
-
-desktop-system32 = System32
-
-desktop-sc-exe = sc.exe
-
 desktop-the-disk-is-full-analyte-is-refusing-new-data = Der Datenträger ist voll: Analyte nimmt keine neuen Daten an
 
 desktop-the-disk-is-almost-full = Der Datenträger ist fast voll

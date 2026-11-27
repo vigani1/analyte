@@ -79,12 +79,6 @@ desktop-windows-says-the-engine-is-already-running = Windows indica que el motor
 
 desktop-sc-exe-named-no-state = sc.exe no indicó ningún estado
 
-desktop-systemroot = SystemRoot
-
-desktop-system32 = System32
-
-desktop-sc-exe = sc.exe
-
 desktop-the-disk-is-full-analyte-is-refusing-new-data = El disco está lleno: Analyte rechaza los datos nuevos
 
 desktop-the-disk-is-almost-full = El disco está casi lleno

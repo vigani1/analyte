@@ -167,15 +167,19 @@ fn summary(code: Option<i32>, text: &str) -> String {
     }
 }
 
+/// The path to `sc.exe` under the Windows folder `root`. These are fixed
+/// Windows names, never catalog text: a translated folder name would point
+/// at a program that does not exist.
+fn program(root: &std::ffi::OsStr) -> std::path::PathBuf {
+    std::path::Path::new(root).join("System32").join("sc.exe")
+}
+
 /// Runs `%SystemRoot%\System32\sc.exe` with `arguments`, hidden, within
 /// [`LIMIT`]; gives its exit code and output. A run past the limit is
 /// stopped, and the error says so.
 async fn sc(arguments: &[&str]) -> Result<(Option<i32>, String), String> {
-    let root = std::env::var_os(tr("desktop-systemroot")).unwrap_or_else(|| r"C:\Windows".into());
-    let program = std::path::Path::new(&root)
-        .join(tr("desktop-system32"))
-        .join(tr("desktop-sc-exe"));
-    let mut command = tokio::process::Command::new(program);
+    let root = std::env::var_os("SystemRoot").unwrap_or_else(|| r"C:\Windows".into());
+    let mut command = tokio::process::Command::new(program(&root));
     command
         .args(arguments)
         .stdin(std::process::Stdio::null())
@@ -211,6 +215,18 @@ async fn sc(arguments: &[&str]) -> Result<(Option<i32>, String), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A translated catalog once named the folder "Sistemi 32", so the
+    // Albanian desktop app could not start the engine.
+    #[test]
+    fn sc_exe_path_is_the_same_in_every_language() {
+        let root = std::ffi::OsStr::new(r"C:\Windows");
+        let expected = std::path::Path::new(root).join("System32").join("sc.exe");
+        for language in analyte_i18n::Language::installed() {
+            let found = language.sync_scope(|| program(root));
+            assert_eq!(found, expected, "{}", language.tag());
+        }
+    }
 
     const RUNNING: &str = "\r\nSERVICE_NAME: Analyte \r\n        TYPE               : 10  WIN32_OWN_PROCESS  \r\n        STATE              : 4  RUNNING \r\n                                (STOPPABLE, NOT_PAUSABLE, ACCEPTS_SHUTDOWN)\r\n        WIN32_EXIT_CODE    : 0  (0x0)\r\n";
 
