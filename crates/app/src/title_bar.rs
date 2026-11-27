@@ -12,6 +12,7 @@
 //! shell follows it with [`Pointer`] and gives the button its hover and
 //! pressed looks.
 use crate::watch::{Shown, Tray};
+use analyte_i18n::{message as tr_args, text as tr};
 use askama::Template as _;
 
 /// The bar's address on the app's own origin.
@@ -54,10 +55,10 @@ impl Sizing {
 
     /// The middle button's name, as Windows says it.
     #[must_use]
-    pub const fn button(self) -> &'static str {
+    pub fn button(self) -> &'static str {
         match self {
-            Self::Normal => "Maximize",
-            Self::Maximized => "Restore",
+            Self::Normal => tr("desktop-maximize"),
+            Self::Maximized => tr("desktop-restore"),
         }
     }
 
@@ -218,14 +219,17 @@ impl View {
 
     /// The state's word, shown on hover: the tray's own words.
     #[must_use]
-    pub const fn word(&self) -> &'static str {
+    pub fn word(&self) -> &'static str {
         self.shown.words()
     }
 
     /// The dot's accessible name.
     #[must_use]
     pub fn label(&self) -> String {
-        format!("Engine: {}", self.word())
+        tr_args(
+            "desktop-engine",
+            [("word", (self.word()).to_string().into())],
+        )
     }
 
     /// The script the shell runs in the bar to show this view. It passes

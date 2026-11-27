@@ -12,6 +12,7 @@ use crate::admin::view::report::{Button, Crumb, Head, Problem, Section, read_wit
 use crate::admin::view::report::{Fact, Value};
 use crate::admin::view::{Tab, Tone, format, frame::Frame};
 use crate::deadline;
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_model::{DepartureEvidence, DepartureMeaning, ReceiptId, ReceiptMetadata};
 use analyte_store::{Interpretation, OperatorError, Reading};
 use axum::{
@@ -118,7 +119,7 @@ fn page(
         metadata,
         next,
     } = read;
-    let title = format::HOW_READ;
+    let title = format::how_read();
     let mut crumbs = vec![Crumb::link(Tab::Machines.label(), Tab::Machines.href())];
     crumbs.extend(metadata.as_ref().map(|metadata| {
         Crumb::link(
@@ -141,26 +142,30 @@ fn page(
             title: title.into(),
             status: None,
             lede: metadata.as_ref().map(|metadata| {
-                format::arrived(metadata.machine.as_str(), metadata.received_at, now)
-                    .then(format::Line::text(format!("reading {version}")))
+                format::arrived(metadata.machine.as_str(), metadata.received_at, now).then(
+                    format::Line::text(tr_args(
+                        "admin-reading",
+                        [("version", (version).to_string().into())],
+                    )),
+                )
             }),
         },
         notices,
         facts: vec![
             Fact {
-                term: "Reading",
+                term: tr("admin-reading-3"),
                 value: Value::Text(version.to_string()),
             },
             Fact {
-                term: "Read by",
+                term: tr("admin-read-by-2"),
                 value: Value::Text(format::driver(&interpretation.driver)),
             },
             Fact {
-                term: "Settings label",
+                term: tr("admin-settings-label"),
                 value: Value::Text(interpretation.config_version.as_str().to_owned()),
             },
             Fact {
-                term: "Settings version",
+                term: tr("admin-settings-version-2"),
                 value: Value::Code {
                     shown: format::digest_short(&digest),
                     exact: format::digest_hex(&digest),
@@ -172,10 +177,19 @@ fn page(
         statuses,
         links,
         support: [
-            format!("Message: {id}"),
-            format!("Reading: {version}"),
-            format!("Read by: {}", interpretation.driver),
-            format!("Settings version: {}", format::digest_hex(&digest)),
+            tr_args("admin-message-2", [("id", (id).to_string().into())]),
+            tr_args(
+                "admin-reading-2",
+                [("version", (version).to_string().into())],
+            ),
+            tr_args(
+                "admin-read-by",
+                [("driver", (interpretation.driver).to_string().into())],
+            ),
+            tr_args(
+                "admin-settings-version",
+                [("digest", (format::digest_hex(&digest)).to_string().into())],
+            ),
         ]
         .into_iter()
         .chain(stored)
@@ -204,13 +218,13 @@ fn outcome(interpretation: &Interpretation) -> Outcome {
     {
         notices.push(Notice {
             tone: Tone::Problem,
-            title: "Not sent to the lab app: the record of differences used is incomplete".into(),
+            title: tr("admin-not-sent-to-the-lab-app-the-record-of").into(),
             text: format::reason_words(reason.as_str())
                 .unwrap_or_else(|| reason.as_str().to_owned()),
         });
-        stored.push(format!(
-            "Incomplete record, reason as stored: {}",
-            reason.as_str()
+        stored.push(tr_args(
+            "admin-incomplete-record-reason-as-stored",
+            [("reason", (reason.as_str()).to_string().into())],
         ));
     }
     let statuses = match &interpretation.outcome {
@@ -229,11 +243,14 @@ fn outcome(interpretation: &Interpretation) -> Outcome {
         Reading::Failed(reason) => {
             notices.push(Notice {
                 tone: Tone::Problem,
-                title: "This message could not be read".into(),
+                title: tr("admin-this-message-could-not-be-read").into(),
                 text: format::reason_words(reason.as_str())
                     .unwrap_or_else(|| reason.as_str().to_owned()),
             });
-            stored.push(format!("Reason as stored: {}", reason.as_str()));
+            stored.push(tr_args(
+                "admin-reason-as-stored",
+                [("reason", (reason.as_str()).to_string().into())],
+            ));
             None
         }
     };
@@ -252,14 +269,14 @@ fn readings(id: ReceiptId, version: i64, next: bool) -> Vec<Button> {
     if let Some(earlier) = version.checked_sub(1).filter(|&earlier| earlier >= 1) {
         links.push(Button {
             href: href(earlier),
-            label: "Earlier reading",
+            label: tr("admin-earlier-reading"),
             class: "btn--outline btn--sm",
         });
     }
     if next && let Some(later) = version.checked_add(1) {
         links.push(Button {
             href: href(later),
-            label: "Next reading",
+            label: tr("admin-next-reading"),
             class: "btn--outline btn--sm",
         });
     }
@@ -288,25 +305,36 @@ fn applied(evidence: &DepartureEvidence) -> Vec<Applied> {
             note: note(applied.meaning),
             facts: vec![
                 Fact {
-                    term: "As received",
+                    term: tr("admin-as-received"),
                     value: Value::Text(applied.source.as_str().to_owned()),
                 },
                 Fact {
-                    term: "Read as",
+                    term: tr("admin-read-as"),
                     value: Value::Text(applied.meaning.to_string()),
                 },
                 Fact {
-                    term: "Standard",
+                    term: tr("admin-standard"),
                     value: Value::Text(applied.standard.as_str().to_owned()),
                 },
                 Fact {
-                    term: "Where in the message",
+                    term: tr("admin-where-in-the-message"),
                     value: Value::Code {
-                        shown: format!("Record {}, field {}", applied.record, applied.field),
-                        exact: format!(
-                            "Coordinates: {}; spans: {}",
-                            applied.coordinates.as_str(),
-                            applied.spans
+                        shown: tr_args(
+                            "admin-record-field",
+                            [
+                                ("record", (applied.record).to_string().into()),
+                                ("field", (applied.field).to_string().into()),
+                            ],
+                        ),
+                        exact: tr_args(
+                            "admin-coordinates-spans",
+                            [
+                                (
+                                    "coordinates",
+                                    (applied.coordinates.as_str()).to_string().into(),
+                                ),
+                                ("spans", (applied.spans).to_string().into()),
+                            ],
                         ),
                     },
                 },
@@ -322,23 +350,19 @@ fn note(meaning: DepartureMeaning) -> Option<Notice> {
         DepartureMeaning::FinalReportFromDocumentation
         | DepartureMeaning::FinalObservationFromDocumentation => Some(Notice {
             tone: Tone::Attention,
-            title: concat!(
-                "Marked final because the manual says so, not because the machine sent a ",
-                "final status"
-            )
-            .into(),
-            text: "It waits on the Needs review page instead of going to the lab app.".into(),
+            title: tr("admin-marked-final-because-the-manual-says-so-not-because").into(),
+            text: tr("admin-it-waits-on-the-needs-review-page-instead-of").into(),
         }),
         DepartureMeaning::ProductionFromDocumentation => Some(Notice {
             tone: Tone::Attention,
-            title: "Production mode supplied by the machine definition".into(),
-            text: "The received ASTM header had an empty processing ID.".into(),
+            title: tr("admin-production-mode-supplied-by-the-machine-definition").into(),
+            text: tr("admin-the-received-astm-header-had-an-empty-processing-id").into(),
         }),
         DepartureMeaning::ControlCharacterKept
         | DepartureMeaning::CharsetFromDefinition
         | DepartureMeaning::ZoneFromSite => Some(Notice {
             tone: Tone::Good,
-            title: "Accepted on purpose: values are kept exactly as received".into(),
+            title: tr("admin-accepted-on-purpose-values-are-kept-exactly-as-received").into(),
             text: String::new(),
         }),
         DepartureMeaning::PackedRecords | DepartureMeaning::WireCompatibility => None,

@@ -6,6 +6,6 @@
 <meta http-equiv="refresh" content="15;url=/setup">
 {%- endblock %}
 {%- block main %}
-{% call layout::intro_head(crate::admin::view::Tab::Setup.label(), crate::admin::setup::RESTARTING, "") %}{% endcall %}
-{% call feedback::note("Analyte is stopping", "The service manager starts it again within about 15 seconds. If Analyte was started by hand in a terminal, start it again there. This page then opens Setup, which asks you to sign in.") %}{% endcall %}
+{% call layout::intro_head(crate::admin::view::Tab::Setup.label(), crate::admin::setup::restarting(), "") %}{% endcall %}
+{% call feedback::note(analyte_i18n::text("setup-analyte-is-stopping"), analyte_i18n::text("setup-the-service-manager-starts-it-again-within-about-15")) %}{% endcall %}
 {%- endblock %}

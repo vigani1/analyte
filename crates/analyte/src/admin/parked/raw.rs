@@ -15,6 +15,7 @@ use crate::{
     },
     deadline,
 };
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_model::{Identifier, Reason};
 use analyte_store::{Audit, OperatorError, ParkedCounts, Store};
 use askama::Template as _;
@@ -179,10 +180,10 @@ impl Source {
     }
 
     /// What the bytes are, as the page names them.
-    const fn what(&self) -> &'static str {
+    fn what(&self) -> &'static str {
         match self {
-            Self::Receipt => "The message as stored",
-            Self::Frames => "The pieces as they arrived from the machine",
+            Self::Receipt => tr("admin-the-message-as-stored"),
+            Self::Frames => tr("admin-the-pieces-as-they-arrived-from-the-machine"),
         }
     }
 }
@@ -308,12 +309,12 @@ fn shown_page(
         frame: Frame::new(
             state,
             Tab::NeedsReview,
-            crate::admin::view::format::ORIGINAL_MESSAGE,
+            crate::admin::view::format::original_message(),
             Some(counts.open),
             Some(session),
             Timestamp::now(),
         ),
-        head: Section::NeedsReview(Some(id)).head(crate::admin::view::format::ORIGINAL_MESSAGE),
+        head: Section::NeedsReview(Some(id)).head(crate::admin::view::format::original_message()),
         what: if continued {
             format!("{what}, continued")
         } else {
@@ -328,15 +329,25 @@ fn shown_page(
             offset: next.offset,
             field: "raw-reason".into(),
             reason: typed,
-            buttons: vec![(source, "Show the next part")],
+            buttons: vec![(source, tr("admin-show-the-next-part"))],
         }),
         support: vec![
-            format!("Linked record: {}", target.as_str()),
-            format!(
-                "Source: {source}, cursor {}, offset {}",
-                cursor.after, cursor.offset
+            tr_args(
+                "admin-linked-record-3",
+                [("target", (target.as_str()).to_string().into())],
             ),
-            format!("View recorded for: {}", actor.as_str()),
+            tr_args(
+                "admin-source-cursor-offset",
+                [
+                    ("source", (source).to_string().into()),
+                    ("after", (cursor.after).to_string().into()),
+                    ("offset", (cursor.offset).to_string().into()),
+                ],
+            ),
+            tr_args(
+                "admin-view-recorded-for",
+                [("actor", (actor.as_str()).to_string().into())],
+            ),
         ],
     }
 }

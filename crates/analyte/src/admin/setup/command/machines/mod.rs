@@ -15,6 +15,7 @@ use crate::admin::setup::{
 };
 use crate::admin::view::format;
 use crate::machine::link::status::Link;
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_model::Identifier;
 use analyte_transport::serial;
 use args::{Cable, Choice};
@@ -30,61 +31,81 @@ use test::test;
 pub enum Command {
     /// Lists the machines in the settings: model, connection, lab app, whether
     /// set up, settings version and, from the running engine, the live state.
+    #[command(about = tr("cli-help-machines-command-list"))]
     List {
         /// Prints JSON for scripts instead of lines.
+        #[arg(help = tr("cli-help-machines-command-list-json"))]
         #[arg(long)]
         json: bool,
     },
     /// Lists the machine models in the machines folder: ready or not, and how
     /// each was checked.
+    #[command(about = tr("cli-help-machines-command-models"))]
     Models,
     /// Lists this PC's serial ports with their adapter and USB serial number.
+    #[command(about = tr("cli-help-machines-command-ports"))]
     Ports,
     /// Adds a machine to the settings; it is not set up yet. Serial cable
     /// settings given here are kept for its setup.
+    #[command(about = tr("cli-help-machines-command-add"))]
     Add {
         /// Letters A to Z, digits, - and _; it also names its settings file.
+        #[arg(help = tr("cli-help-machines-command-add-name"))]
         name: String,
         /// The name has stored history and this is the same analyzer.
+        #[arg(help = tr("cli-help-machines-command-add-same-analyzer"))]
         #[arg(long)]
         same_analyzer: bool,
         /// The serial cable settings; see the options below.
+
         #[command(flatten)]
         cable: Cable,
     },
     /// Sets a machine up: its model, connection and lab app, checked as the
     /// Save step checks them. Choices not given keep their saved values.
+    #[command(about = tr("cli-help-machines-command-set"))]
     Set {
         /// The machine's name.
+        #[arg(help = tr("cli-help-captures-command-export-machine"))]
         name: String,
         /// The choices; see the options below.
+
         #[command(flatten)]
         choice: Choice,
         /// Prints what would be written and writes nothing.
+        #[arg(help = tr("cli-help-machines-command-set-dry-run"))]
         #[arg(long)]
         dry_run: bool,
     },
     /// Runs the listen-only connection test of step 3 with the saved settings
     /// or the choices given: nothing is sent and nothing is stored.
+    #[command(about = tr("cli-help-machines-command-test"))]
     Test {
         /// The machine's name.
+        #[arg(help = tr("cli-help-captures-command-export-machine"))]
         name: String,
         /// The choices; see the options below.
+
         #[command(flatten)]
         choice: Choice,
         /// How long to listen, 1 to 60 seconds.
+        #[arg(help = tr("cli-help-machines-command-test-seconds"))]
         #[arg(long, default_value_t = 60, value_parser = clap::value_parser!(u64).range(1..=60))]
         seconds: u64,
         /// Also prints the bytes received (at most 64 KiB). They may contain
         /// patient data: never save or share them.
+        #[arg(help = tr("cli-help-machines-command-test-show-bytes"))]
         #[arg(long)]
         show_bytes: bool,
     },
     /// Removes a machine from the settings; its stored results and history stay.
+    #[command(about = tr("cli-help-machines-command-remove"))]
     Remove {
         /// The machine's name.
+        #[arg(help = tr("cli-help-captures-command-export-machine"))]
         name: String,
         /// Removes it even though work is still unfinished.
+        #[arg(help = tr("cli-help-machines-command-remove-anyway"))]
         #[arg(long)]
         anyway: bool,
     },
@@ -162,23 +183,29 @@ fn models(seams: &Seams) -> Result<Outcome, Failure> {
         if let Shipped::Ready { source, .. } = &definition.state {
             if source.details.asks_autolyser_poll {
                 let range = analyte_config::AUTOLYSER_POLL_SECONDS;
-                say(&format!(
-                    "  --poll-seconds <{}..{}>: seconds between report polls (required)",
-                    range.start(),
-                    range.end(),
+                say(&tr_args(
+                    "setup-poll-seconds-seconds-between-report-polls-required",
+                    [
+                        ("start", (range.start()).to_string().into()),
+                        ("end", (range.end()).to_string().into()),
+                    ],
                 ))?;
             }
             for choice in &source.details.choices {
-                say(&format!(
-                    "  --choice {}=<{}>: {}{}",
-                    choice.name,
-                    choice.allowed().replace(", ", "|"),
-                    choice.label.as_str(),
-                    choice
-                        .suggested
-                        .as_ref()
-                        .map(|value| format!("; the manual suggests {value}"))
-                        .unwrap_or_default()
+                let suggestion = choice.suggested.as_ref().map_or_else(String::new, |value| {
+                    tr_args(
+                        "setup-the-manual-suggests-5",
+                        [("value", value.as_str().into())],
+                    )
+                });
+                say(&tr_args(
+                    "setup-choice",
+                    [
+                        ("name", choice.name.as_str().into()),
+                        ("replace", choice.allowed().replace(", ", "|").into()),
+                        ("label", choice.label.as_str().into()),
+                        ("unwrap-or-default", suggestion.into()),
+                    ],
                 ))?;
             }
         }
@@ -206,7 +233,7 @@ fn ports(config: &Path, seams: Seams) -> Result<Outcome, Failure> {
         .take(serial::LIST_LIMIT)
         .collect();
     if listed.is_empty() {
-        say("No serial port was found on this PC.")?;
+        say(tr("setup-no-serial-port-was-found-on-this-pc"))?;
         return Ok(Outcome::Done);
     }
     let installation = Installation::load(config, seams).ok();
@@ -245,7 +272,7 @@ async fn add(
                     say(&format::sentence(
                         &SetupError::HistoryNotConfirmed(id).to_string(),
                     ))?;
-                    if !ask.confirm("Is it the same analyzer?")? {
+                    if !ask.confirm(tr("setup-is-it-the-same-analyzer"))? {
                         return Err(Failure::NotConfirmed);
                     }
                     add_machine(setup, store, name, true, serial.clone()).await?
@@ -253,11 +280,17 @@ async fn add(
                 added => added?,
             };
             let id = added.id.as_str();
-            say(&format!("{id} is added. It is listed and not set up yet."))?;
+            say(&tr_args(
+                "setup-is-added-it-is-listed-and-not-set-up",
+                [("id", (id).to_string().into())],
+            ))?;
             if added.reused {
-                say(crate::admin::setup::REUSED_MACHINE_HISTORY)?;
+                say(crate::admin::setup::reused_machine_history())?;
             }
-            say(&format!("Its settings file: {}", added.path.display()))?;
+            say(&tr_args(
+                "setup-its-settings-file",
+                [("path", (added.path.display()).to_string().into())],
+            ))?;
             backups(&added.written.backups)?;
             let outcome = record(
                 store,
@@ -267,8 +300,9 @@ async fn add(
                 &added.reason(Via::CommandLine),
             )
             .await?;
-            say(&format!(
-                "Set it up next: analyte machines set {id} --model <key> ... --lab-app <name>"
+            say(&tr_args(
+                "setup-set-it-up-next-analyte-machines-set-model-key",
+                [("id", (id).to_string().into())],
             ))?;
             restart_note()?;
             Ok(outcome)
@@ -281,7 +315,13 @@ async fn add(
 fn accepts(link: Link, peers: Option<&analyte_config::AllowedPeers>) -> Option<String> {
     (link == Link::TcpServer).then(|| {
         peers.map_or_else(
-            || format!("{} - {}", format::OPEN_TO_ANY, format::OPEN_TO_ANY_ADVICE),
+            || {
+                format!(
+                    "{} - {}",
+                    format::open_to_any(),
+                    format::open_to_any_advice()
+                )
+            },
             format::only_devices,
         )
     })
@@ -290,7 +330,7 @@ fn accepts(link: Link, peers: Option<&analyte_config::AllowedPeers>) -> Option<S
 /// What a plan sets, in the Save step's words.
 fn summary(id: &str, plan: &Plan) -> std::io::Result<()> {
     let effective = plan.validated.effective();
-    say(&format!("Machine: {id}"))?;
+    say(&tr_args("setup-machine", [("id", (id).to_string().into())]))?;
     say(&format!("Model: {}", plan.model))?;
     settings_summary(
         Link::of(effective.stack()),
@@ -312,23 +352,49 @@ fn settings_summary(
     destination: Option<&analyte_config::Destination>,
 ) -> std::io::Result<()> {
     let words = connection_words(link, connection);
-    say(&format!("Connection: {} ({})", words.shown, words.exact))?;
+    say(&tr_args(
+        "setup-connection",
+        [
+            ("shown", (words.shown).to_string().into()),
+            ("exact", (words.exact).to_string().into()),
+        ],
+    ))?;
     if let Some(cable) = cable {
-        say(&format!("Cable: {cable}"))?;
+        say(&tr_args(
+            "setup-cable",
+            [("cable", (cable).to_string().into())],
+        ))?;
     }
     if let Some(choices) = choices {
-        say(&format!("Analyzer settings: {choices}"))?;
+        say(&tr_args(
+            "setup-analyzer-settings-2",
+            [("choices", (choices).to_string().into())],
+        ))?;
     }
     if let Some(accepts) = accepts(link, peers) {
-        say(&format!("Devices: {accepts}"))?;
+        say(&tr_args(
+            "setup-devices",
+            [("accepts", (accepts).to_string().into())],
+        ))?;
     }
     match destination {
-        Some(destination) => say(&format!(
-            "Lab app: {} ({})",
-            destination.name.as_str(),
-            destination.base_url.as_str()
+        Some(destination) => say(&tr_args(
+            "setup-lab-app-3",
+            [
+                ("name", (destination.name.as_str()).to_string().into()),
+                (
+                    "base-url",
+                    (destination.base_url.as_str()).to_string().into(),
+                ),
+            ],
         )),
-        None => say(&format!("Lab app: {}", format::RECORDING_ONLY)),
+        None => say(&tr_args(
+            "setup-lab-app-4",
+            [(
+                "recording-only",
+                (format::recording_only()).to_string().into(),
+            )],
+        )),
     }
 }
 
@@ -379,7 +445,13 @@ async fn save(
                 Ok((saved, missing))
             })
             .await?;
-            say(&format!("Saved {id}: {}.", saved.model))?;
+            say(&tr_args(
+                "setup-saved",
+                [
+                    ("id", (id).to_string().into()),
+                    ("model", (saved.model).to_string().into()),
+                ],
+            ))?;
             settings_summary(
                 saved.link,
                 &saved.connection,
@@ -389,18 +461,29 @@ async fn save(
                 saved.lab_app.as_ref(),
             )?;
             if let Some(choice) = saved.repeated_results {
-                say(&format!("  Repeated results: {}", choice.label()))?;
+                say(&tr_args(
+                    "setup-repeated-results",
+                    [("label", (choice.label()).to_string().into())],
+                ))?;
             }
             if let Some(missing) = missing {
                 say(&missing)?;
             }
             if saved.moved {
-                say(crate::admin::setup::LAB_APP_MOVED)?;
+                say(crate::admin::setup::lab_app_moved())?;
             }
-            say(&format!(
-                "Settings version: {} ({})",
-                format::digest_short(&saved.digest),
-                format::digest_hex(&saved.digest)
+            say(&tr_args(
+                "setup-settings-version-2",
+                [
+                    (
+                        "digest",
+                        (format::digest_short(&saved.digest)).to_string().into(),
+                    ),
+                    (
+                        "digest-2",
+                        (format::digest_hex(&saved.digest)).to_string().into(),
+                    ),
+                ],
             ))?;
             backups(&saved.backups)?;
             let outcome = record(
@@ -421,12 +504,20 @@ async fn save(
 fn preview(setup: &Arc<Setup>, id: &str, draft: &Draft) -> Result<Outcome, Failure> {
     let plan = plan::checked(setup, id, draft)?;
     summary(id, &plan)?;
-    say(&format!("Would write {}:", plan.installed.site.display()))?;
+    say(&tr_args(
+        "setup-would-write",
+        [("site", (plan.installed.site.display()).to_string().into())],
+    ))?;
     say(&plan.site_text)?;
     if let Some(text) = &plan.lab_apps {
-        say(&format!(
-            "Would write {}:",
-            crate::installation::config::lab_apps::path(setup.config()).display()
+        say(&tr_args(
+            "setup-would-write-2",
+            [(
+                "config",
+                (crate::installation::config::lab_apps::path(setup.config()).display())
+                    .to_string()
+                    .into(),
+            )],
         ))?;
         say(text)?;
     }
@@ -436,13 +527,15 @@ fn preview(setup: &Arc<Setup>, id: &str, draft: &Draft) -> Result<Outcome, Failu
         .as_deref()
         .is_none_or(|current| current != plan.definition);
     if changes_model {
-        say(&format!(
-            "Would set its model in {}: {}",
-            setup.config().display(),
-            plan.definition.display()
+        say(&tr_args(
+            "setup-would-set-its-model-in",
+            [
+                ("config", (setup.config().display()).to_string().into()),
+                ("definition", (plan.definition.display()).to_string().into()),
+            ],
         ))?;
     }
-    say("Dry run: nothing was written.")?;
+    say(tr("setup-dry-run-nothing-was-written"))?;
     Ok(Outcome::Done)
 }
 
@@ -457,13 +550,16 @@ async fn remove(
     installation
         .with_store(async |store| {
             let preview = preview_removal(setup, store, id).await?;
-            say(&format!("Remove {id}?"))?;
-            say(format::REMOVED_ADVICE)?;
+            say(&tr_args(
+                "setup-remove-2",
+                [("id", (id).to_string().into())],
+            ))?;
+            say(format::removed_advice())?;
             say(&preview.sending.shown)?;
             say(if preview.warned {
-                "Still unfinished:"
+                tr("setup-still-unfinished-2")
             } else {
-                "Before you remove it:"
+                tr("setup-before-you-remove-it")
             })?;
             for item in &preview.items {
                 say(&format!("  - {}", item.text))?;
@@ -471,9 +567,9 @@ async fn remove(
             let mut anyway = anyway;
             if ask == Ask::Terminal {
                 let question = if preview.warned && !anyway {
-                    "Remove anyway?"
+                    tr("setup-remove-anyway-2")
                 } else {
-                    "Remove it?"
+                    tr("setup-remove-it")
                 };
                 if !ask.confirm(question)? {
                     return Err(Failure::NotConfirmed);
@@ -481,8 +577,9 @@ async fn remove(
                 anyway = anyway || preview.warned;
             }
             let removed = remove_machine(setup, store, id, anyway).await?;
-            say(&format!(
-                "{id} is removed from the settings; its stored results and history stay."
+            say(&tr_args(
+                "setup-is-removed-from-the-settings-its-stored-results-and",
+                [("id", (id).to_string().into())],
             ))?;
             say(&format::sentence(&removed.kept_sentence()))?;
             say(&format::sentence(&removed.site_sentence()))?;

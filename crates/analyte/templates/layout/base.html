@@ -1,6 +1,6 @@
 {#- The page frame of every page someone signed in sees: the shared head, the one script file (live updates, which the page works without) and anything a page adds there (a reload), the sidebar and the main column, which a page may centre. The body names the live area the page shows; a page with one marks its main column as a region the script may refresh. -#}
 <!doctype html>
-<html lang="en">
+<html lang="{{ analyte_i18n::Language::current().tag() }}">
 <head>
 {% include "layout/head.html" %}
 <script src="{{ frame.assets }}live.js" defer></script>

@@ -39,7 +39,7 @@ struct Settings {
 #[derive(Debug, thiserror::Error)]
 pub enum SettingsError {
     /// The file exists but could not be read.
-    #[error("the app could not read {path}: {source}")]
+    #[error("{}", analyte_i18n::message("desktop-error-read", [("path", (path.display()).to_string().into()), ("source", (source).to_string().into())]))]
     Read {
         /// The settings file.
         path: PathBuf,
@@ -47,13 +47,13 @@ pub enum SettingsError {
         source: std::io::Error,
     },
     /// The file holds more than the one setting it may.
-    #[error("{path} is larger than {SETTINGS_LIMIT} bytes")]
+    #[error("{}", analyte_i18n::message("desktop-error-too-large", [("path", (path.display()).to_string().into()), ("SETTINGS-LIMIT", (SETTINGS_LIMIT).to_string().into())]))]
     TooLarge {
         /// The settings file.
         path: PathBuf,
     },
     /// The file is not the settings the installer writes.
-    #[error("{path} is not valid: {source}")]
+    #[error("{}", analyte_i18n::message("desktop-error-invalid", [("path", (path.display()).to_string().into()), ("source", (source).to_string().into())]))]
     Invalid {
         /// The settings file.
         path: PathBuf,
@@ -61,7 +61,7 @@ pub enum SettingsError {
         source: toml::de::Error,
     },
     /// The file names port 0.
-    #[error("{path} gives admin port 0, which is not a port")]
+    #[error("{}", analyte_i18n::message("desktop-error-port-zero", [("path", (path.display()).to_string().into())]))]
     PortZero {
         /// The settings file.
         path: PathBuf,

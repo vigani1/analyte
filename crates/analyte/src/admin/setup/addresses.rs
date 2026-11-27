@@ -5,6 +5,7 @@
 //! self-assigned (169.254.x.x), unspecified and multicast addresses are left
 //! out, since an analyzer on the lab network cannot reach them, and so are
 //! adapters the system reports as down.
+use analyte_i18n::text as tr;
 use std::{io, net::Ipv4Addr};
 
 /// Most addresses listed; a PC beside the analyzers has a handful.
@@ -66,7 +67,7 @@ fn pick(found: impl IntoIterator<Item = (String, Ipv4Addr)>) -> Vec<Address> {
 /// The name, or "Unnamed adapter", cut to [`NAME_LIMIT`] characters.
 fn shorten(name: &str) -> String {
     if name.is_empty() {
-        return "Unnamed adapter".into();
+        return tr("setup-unnamed-adapter").into();
     }
     match name.char_indices().nth(NAME_LIMIT) {
         Some((at, _)) => format!("{}…", name.get(..at).unwrap_or(name)),

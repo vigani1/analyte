@@ -17,6 +17,7 @@ use crate::installation::credentials::Locked;
 use crate::installation::secrets::{self, SecretError};
 use crate::machine::link::status::Link;
 use analyte_config::Endpoint;
+use analyte_i18n::{count as tr_count, message as tr_args, text as tr};
 use std::{future::Future, path::Path, process::ExitCode, time::Duration};
 
 /// How long doctor waits on an asynchronous check before reporting a timeout.
@@ -86,11 +87,11 @@ pub(in crate::admin) enum Level {
 }
 
 impl Level {
-    const fn word(self) -> &'static str {
+    fn word(self) -> &'static str {
         match self {
-            Self::Ok => "OK",
-            Self::Warn => "WARN",
-            Self::Fail => "FAIL",
+            Self::Ok => tr("doctor-overview-ok"),
+            Self::Warn => tr("doctor-overview-warn"),
+            Self::Fail => tr("doctor-overview-fail"),
         }
     }
 
@@ -162,11 +163,11 @@ async fn bounded(what: &str, check: impl Future<Output = Vec<Check>>) -> Vec<Che
         .unwrap_or_else(|_| {
             vec![fail(
                 what,
-                format!(
-                    "the check did not finish within {} seconds",
-                    CHECK_TIME.as_secs()
+                tr_args(
+                    "doctor-overview-the-check-did-not-finish-within-seconds",
+                    [("as-secs", (CHECK_TIME.as_secs()).to_string().into())],
                 ),
-                "run analyte doctor again; if it stays slow, run analyte logs",
+                tr("doctor-overview-run-analyte-doctor-again-if-it-stays-slow-run"),
             )]
         })
 }
@@ -193,15 +194,24 @@ pub(in crate::admin) async fn checks(config: &Path) -> Vec<Check> {
     match Program::load(config) {
         Ok(program) => {
             checks.push(ok(
-                "Program file",
-                format!("{} is valid", config.display()),
+                tr("admin-program-file"),
+                tr_args(
+                    "doctor-overview-is-valid",
+                    [("config", (config.display()).to_string().into())],
+                ),
             ));
             checks.extend(installation(&program).await);
         }
         Err(error) => checks.push(fail(
-            "Program file",
-            format!("{} cannot be used: {}", config.display(), chain(&error)),
-            "fix what it names (or choose the right file with --config), then run analyte doctor again; the other checks need a valid program file",
+            tr("admin-program-file"),
+            tr_args(
+                "doctor-overview-cannot-be-used",
+                [
+                    ("config", (config.display()).to_string().into()),
+                    ("error", (chain(&error)).to_string().into()),
+                ],
+            ),
+            tr("doctor-overview-fix-what-it-names-or-choose-the-right-file"),
         )),
     }
     checks
@@ -233,27 +243,40 @@ fn print(checks: &[Check]) -> Result<(), Error> {
             check.found
         ))?;
         if let Some(fix) = &check.fix {
-            super::say(&format!("      What to do: {fix}"))?;
+            super::say(&tr_args(
+                "doctor-overview-what-to-do-2",
+                [("fix", (fix).to_string().into())],
+            ))?;
         }
     }
     let count = |level| checks.iter().filter(|check| check.level == level).count();
     let (failed, warned) = (count(Level::Fail), count(Level::Warn));
     super::say("")?;
     super::say(&if failed == 0 && warned == 0 {
-        "Doctor: everything checked is OK.".to_owned()
+        tr("doctor-overview-doctor-everything-checked-is-ok").to_owned()
     } else {
-        format!(
-            "Doctor: {} and {}.",
-            format::amount(
-                u64::try_from(failed).unwrap_or(u64::MAX),
-                "failure",
-                "failures"
-            ),
-            format::amount(
-                u64::try_from(warned).unwrap_or(u64::MAX),
-                "warning",
-                "warnings"
-            )
+        tr_args(
+            "doctor-overview-doctor-and",
+            [
+                (
+                    "failures",
+                    (tr_count(
+                        "admin-count-failures",
+                        u64::try_from(failed).unwrap_or(u64::MAX),
+                    ))
+                    .to_string()
+                    .into(),
+                ),
+                (
+                    "warnings",
+                    (tr_count(
+                        "admin-count-warnings",
+                        u64::try_from(warned).unwrap_or(u64::MAX),
+                    ))
+                    .to_string()
+                    .into(),
+                ),
+            ],
         )
     })
 }
@@ -266,15 +289,15 @@ async fn installation(program: &Program) -> Vec<Check> {
     let (store_checks, lists) = tokio::time::timeout(CHECK_TIME, store(program, answer.is_none()))
         .await
         .unwrap_or_else(|_| {
-            let late = format!(
-                "the store did not open within {} seconds",
-                CHECK_TIME.as_secs()
+            let late = tr_args(
+                "doctor-overview-the-store-did-not-open-within-seconds",
+                [("as-secs", (CHECK_TIME.as_secs()).to_string().into())],
             );
             (
                 vec![fail(
-                    "Store",
+                    tr("doctor-overview-store"),
                     late,
-                    "run analyte doctor again; if it stays slow, run analyte logs",
+                    tr("doctor-overview-run-analyte-doctor-again-if-it-stays-slow-run"),
                 )],
                 Vec::new(),
             )
@@ -289,11 +312,17 @@ async fn installation(program: &Program) -> Vec<Check> {
     for id in program.awaiting_setup() {
         checks.push(warn(
             format!("Machine {}", id.as_str()),
-            "listed but not set up yet, so it does not run",
-            "choose its model on the Setup page, save, then restart the engine",
+            tr("doctor-overview-listed-but-not-set-up-yet-so-it-does"),
+            tr("doctor-overview-choose-its-model-on-the-setup-page-save-then"),
         ));
     }
-    checks.extend(bounded("Lab apps", lab_apps(program, answer.as_ref(), &lists)).await);
+    checks.extend(
+        bounded(
+            tr("admin-lab-apps-2"),
+            lab_apps(program, answer.as_ref(), &lists),
+        )
+        .await,
+    );
     #[cfg(windows)]
     {
         checks.push(users_group());
@@ -307,7 +336,7 @@ async fn engine(program: &Program) -> (Vec<Check>, Engine, Option<Answer>) {
     let stop = |level: Level, state: Engine, error: &EngineError| {
         let check = Check {
             level,
-            what: "Engine".into(),
+            what: tr("admin-engine").into(),
             found: chain(error),
             fix: Some(super::overview::advice(error).into()),
         };
@@ -335,15 +364,27 @@ async fn engine(program: &Program) -> (Vec<Check>, Engine, Option<Answer>) {
         Err(_) => return stop(Level::Fail, Engine::Running, &EngineError::TimedOut),
     };
     let mut checks = vec![if version == env!("CARGO_PKG_VERSION") {
-        ok("Engine", format!("running version {version} and answering"))
+        ok(
+            tr("admin-engine"),
+            tr_args(
+                "doctor-overview-running-version-and-answering",
+                [("version", (version).to_string().into())],
+            ),
+        )
     } else {
         warn(
-            "Engine",
-            format!(
-                "running version {version}, but this command is version {}",
-                env!("CARGO_PKG_VERSION")
+            tr("admin-engine"),
+            tr_args(
+                "doctor-overview-running-version-but-this-command-is-version",
+                [
+                    ("version", (version).to_string().into()),
+                    (
+                        "CARGO-PKG-VERSION",
+                        (env!("CARGO_PKG_VERSION")).to_string().into(),
+                    ),
+                ],
             ),
-            "run the analyte.exe the service runs, or update both to the same version",
+            tr("doctor-overview-run-the-analyte-exe-the-service-runs-or-update"),
         )
     }];
     let answer = match tokio::time::timeout(CHECK_TIME, proven.verdict()).await {
@@ -377,17 +418,17 @@ async fn engine(program: &Program) -> (Vec<Check>, Engine, Option<Answer>) {
         Verdict::Attention => warn(
             "Overview",
             format!("{}: {things}", answer.title()),
-            "run analyte overview for where and how to fix each",
+            tr("doctor-overview-run-analyte-overview-for-where-and-how-to-fix"),
         ),
         Verdict::Problem => fail(
             "Overview",
             format!("{}: {things}", answer.title()),
-            "run analyte overview for where and how to fix each",
+            tr("doctor-overview-run-analyte-overview-for-where-and-how-to-fix"),
         ),
         Verdict::Unknown => warn(
             "Overview",
             answer.sub(),
-            "run analyte doctor again; if it stays unknown, run analyte logs",
+            tr("doctor-overview-run-analyte-doctor-again-if-it-stays-unknown-run"),
         ),
     });
     (checks, Engine::Running, Some(answer))
@@ -404,9 +445,12 @@ async fn store(program: &Program, check_software: bool) -> (Vec<Check>, OrderLis
     if !file.is_file() {
         return (
             vec![warn(
-                "Store",
-                format!("there is no store at {} yet", file.display()),
-                "start the engine once (Start-Service Analyte); it creates the store",
+                tr("doctor-overview-store"),
+                tr_args(
+                    "doctor-overview-there-is-no-store-at-yet",
+                    [("file", (file.display()).to_string().into())],
+                ),
+                tr("doctor-overview-start-the-engine-once-start-service-analyte-it-creates"),
             )],
             Vec::new(),
         );
@@ -424,11 +468,17 @@ async fn store(program: &Program, check_software: bool) -> (Vec<Check>, OrderLis
                 Err(error) => Err(chain(&error)),
             };
             let check = match closed {
-                Ok(()) => ok("Store", format!("{} opens", file.display())),
+                Ok(()) => ok(
+                    tr("doctor-overview-store"),
+                    format!("{} opens", file.display()),
+                ),
                 Err(error) => warn(
-                    "Store",
-                    format!("opened but did not close cleanly: {error}"),
-                    "run analyte doctor again; if it repeats, run analyte logs",
+                    tr("doctor-overview-store"),
+                    tr_args(
+                        "doctor-overview-opened-but-did-not-close-cleanly",
+                        [("error", (error).to_string().into())],
+                    ),
+                    tr("doctor-overview-run-analyte-doctor-again-if-it-repeats-run-analyte"),
                 ),
             };
             software.insert(0, check);
@@ -436,13 +486,18 @@ async fn store(program: &Program, check_software: bool) -> (Vec<Check>, OrderLis
         }
         Err(error) => (
             vec![fail(
-                "Store",
-                format!(
-                    "{} cannot be opened: {}",
-                    program.data_directory().display(),
-                    chain(&error)
+                tr("doctor-overview-store"),
+                tr_args(
+                    "doctor-overview-cannot-be-opened",
+                    [
+                        (
+                            "data-directory",
+                            (program.data_directory().display()).to_string().into(),
+                        ),
+                        ("error", (chain(&error)).to_string().into()),
+                    ],
                 ),
-                "run this from an administrator PowerShell; if it names an access list, see docs/operations/install.md",
+                tr("doctor-overview-run-this-from-an-administrator-powershell-if-it-names"),
             )],
             Vec::new(),
         ),
@@ -477,14 +532,14 @@ async fn software_checks(program: &Program, store: &analyte_store::Handle) -> Ve
                 warn(
                     format!("Machine {} software", machine.as_str()),
                     text,
-                    "check the machine's settings",
+                    tr("doctor-overview-check-the-machine-s-settings"),
                 )
             })
             .collect(),
         Err(error) => vec![warn(
-            "Machine software",
+            tr("doctor-overview-machine-software"),
             chain(&error),
-            "check the store and run analyte doctor again",
+            tr("doctor-overview-check-the-store-and-run-analyte-doctor-again"),
         )],
     }
 }
@@ -494,26 +549,33 @@ fn disk(program: &Program) -> Check {
     let reserve = program.store_limits.reserve_bytes;
     match fs4::available_space(program.data_directory()) {
         Ok(free) if free > reserve => ok(
-            "Disk",
-            format!(
-                "{} free; {} is always kept free",
-                format::bytes(free),
-                format::bytes(reserve)
+            tr("doctor-overview-disk"),
+            tr_args(
+                "doctor-overview-free-is-always-kept-free",
+                [
+                    ("free", (format::bytes(free)).to_string().into()),
+                    ("reserve", (format::bytes(reserve)).to_string().into()),
+                ],
             ),
         ),
         Ok(free) => fail(
-            "Disk",
-            format!(
-                "{} free, at or below the {} kept free: Analyte refuses new data from machines",
-                format::bytes(free),
-                format::bytes(reserve)
+            tr("doctor-overview-disk"),
+            tr_args(
+                "doctor-overview-free-at-or-below-the-kept-free-analyte-refuses",
+                [
+                    ("free", (format::bytes(free)).to_string().into()),
+                    ("reserve", (format::bytes(reserve)).to_string().into()),
+                ],
             ),
-            "free disk space on this drive; Analyte deletes nothing to make room",
+            tr("doctor-overview-free-disk-space-on-this-drive-analyte-deletes-nothing"),
         ),
         Err(error) => warn(
-            "Disk",
-            format!("the free space could not be read: {error}"),
-            "check the data directory's drive in File Explorer",
+            tr("doctor-overview-disk"),
+            tr_args(
+                "doctor-overview-the-free-space-could-not-be-read",
+                [("error", (error).to_string().into())],
+            ),
+            tr("doctor-overview-check-the-data-directory-s-drive-in-file-explorer"),
         ),
     }
 }
@@ -539,11 +601,11 @@ async fn connection(
         // The program refuses a network or folder link given by USB serial number.
         (Link::TcpServer | Link::TcpClient | Link::Folder, Endpoint::UsbSerial(number)) => warn(
             what,
-            format!(
-                "a USB serial number ({}) names a network or folder link",
-                number.as_str()
+            tr_args(
+                "doctor-overview-a-usb-serial-number-names-a-network-or-folder",
+                [("number", (number.as_str()).to_string().into())],
             ),
-            "choose the machine's address or folder on the Setup page",
+            tr("doctor-overview-choose-the-machine-s-address-or-folder-on-the"),
         ),
     };
     let mut checks = vec![reached];
@@ -555,18 +617,30 @@ async fn connection(
         // The lab chose these to match the analyzer's screen; a difference
         // from the manual is shown, not judged.
         checks.push(ok(
-            format!("{what} cable"),
+            tr_args(
+                "doctor-overview-cable",
+                [("what", (what).to_string().into())],
+            ),
             crate::admin::setup::cable::summary(serial, effective.serial_suggestion()),
         ));
     }
     if let Some(choices) = crate::admin::setup::choices::summary(effective.choices()) {
         // The lab chose these to match the analyzer (ADR 0032); like the
         // cable, a difference from the manual is shown, not judged.
-        checks.push(ok(format!("{what} analyzer settings"), choices));
+        checks.push(ok(
+            tr_args(
+                "doctor-overview-analyzer-settings",
+                [("what", (what).to_string().into())],
+            ),
+            choices,
+        ));
     }
     if let analyte_config::Stack::Autolyser(stack) = effective.stack() {
         checks.push(ok(
-            format!("{what} report poll interval"),
+            tr_args(
+                "doctor-overview-report-poll-interval",
+                [("what", (what).to_string().into())],
+            ),
             format!("{} ms", stack.poll_ms()),
         ));
     }
@@ -574,11 +648,19 @@ async fn connection(
         // Record only is the lab's choice for a first visit (ADR 0034); it
         // is reported, not judged: nothing goes to a lab app by design.
         checks.push(ok(
-            format!("{what} mode"),
-            format!(
-                "{}; every byte is kept and recorded under captures/{}",
-                format::RECORDING_ONLY,
-                machine.id().as_str()
+            tr_args(
+                "doctor-overview-mode",
+                [("what", (what).to_string().into())],
+            ),
+            tr_args(
+                "doctor-overview-every-byte-is-kept-and-recorded-under-captures",
+                [
+                    (
+                        "recording-only",
+                        (format::recording_only()).to_string().into(),
+                    ),
+                    ("id", (machine.id().as_str()).to_string().into()),
+                ],
             ),
         ));
     }
@@ -588,15 +670,24 @@ async fn connection(
 /// Which devices a machine that connects to Analyte may connect from (ADR
 /// 0026): a warning when any device on the network is accepted.
 fn devices(what: &str, machine: &crate::installation::config::Machine) -> Check {
-    let what = format!("{what} devices");
+    let what = tr_args(
+        "doctor-overview-devices",
+        [("what", (what).to_string().into())],
+    );
     match &machine.snapshot().effective().site().allowed_peers {
-        Some(allowed) => ok(what, format!("accepts connections only from {allowed}")),
+        Some(allowed) => ok(
+            what,
+            tr_args(
+                "doctor-overview-accepts-connections-only-from",
+                [("allowed", (allowed).to_string().into())],
+            ),
+        ),
         None => warn(
             what,
-            "accepts connections from any device on the network, which could send results as this machine",
-            format!(
-                "run analyte machines set {} --allowed-peer <the analyzer's IP address>, or tick Only accept this device in step 4 of its setup",
-                machine.id().as_str()
+            tr("doctor-overview-accepts-connections-from-any-device-on-the-network-which"),
+            tr_args(
+                "doctor-overview-run-analyte-machines-set-allowed-peer-the-analyzer-s",
+                [("id", (machine.id().as_str()).to_string().into())],
             ),
         ),
     }
@@ -616,22 +707,43 @@ async fn folder(
         Err(error) => {
             return fail(
                 what,
-                format!("the check for folder {path} failed: {error}"),
-                "run analyte doctor again; if it repeats, run analyte logs",
+                tr_args(
+                    "doctor-overview-the-check-for-folder-failed",
+                    [
+                        ("path", (path).to_string().into()),
+                        ("error", (error).to_string().into()),
+                    ],
+                ),
+                tr("doctor-overview-run-analyte-doctor-again-if-it-repeats-run-analyte"),
             );
         }
     };
     match found {
-        Ok(true) => ok(what, format!("folder {path} is there")),
+        Ok(true) => ok(
+            what,
+            tr_args(
+                "doctor-overview-folder-is-there",
+                [("path", (path).to_string().into())],
+            ),
+        ),
         Ok(false) => fail(
             what,
-            format!("{path} is not a folder"),
-            "choose the machine's export folder on the Setup page",
+            tr_args(
+                "doctor-overview-is-not-a-folder",
+                [("path", (path).to_string().into())],
+            ),
+            tr("doctor-overview-choose-the-machine-s-export-folder-on-the-setup"),
         ),
         Err(error) => fail(
             what,
-            format!("folder {path} cannot be read: {error}"),
-            "create the folder or share it again, or choose another on the Setup page",
+            tr_args(
+                "doctor-overview-folder-cannot-be-read",
+                [
+                    ("path", (path).to_string().into()),
+                    ("error", (error).to_string().into()),
+                ],
+            ),
+            tr("doctor-overview-create-the-folder-or-share-it-again-or-choose"),
         ),
     }
 }
@@ -644,27 +756,46 @@ async fn serial(what: &str, endpoint: &Endpoint) -> Check {
         Ok(Err(error)) => {
             return warn(
                 what,
-                format!("the serial ports could not be listed: {error}"),
-                "check the USB serial adapter's driver in Device Manager",
+                tr_args(
+                    "doctor-overview-the-serial-ports-could-not-be-listed",
+                    [("error", (error).to_string().into())],
+                ),
+                tr("doctor-overview-check-the-usb-serial-adapter-s-driver-in-device"),
             );
         }
         Err(error) => {
             return warn(
                 what,
-                format!("the serial ports could not be listed: {error}"),
-                "run analyte doctor again",
+                tr_args(
+                    "doctor-overview-the-serial-ports-could-not-be-listed",
+                    [("error", (error).to_string().into())],
+                ),
+                tr("doctor-overview-run-analyte-doctor-again"),
             );
         }
     };
-    let plug = "plug in the USB serial adapter, or choose the right port on the Setup page";
+    let plug = tr("doctor-overview-plug-in-the-usb-serial-adapter-or-choose-the");
     match endpoint {
         Endpoint::Fixed(name) => {
             if listed.iter().any(|port| {
                 crate::installation::config::connections::same_port_name(&port.name, name)
             }) {
-                ok(what, format!("serial port {name} is present"))
+                ok(
+                    what,
+                    tr_args(
+                        "doctor-overview-serial-port-is-present",
+                        [("name", (name).to_string().into())],
+                    ),
+                )
             } else {
-                fail(what, format!("serial port {name} is not present"), plug)
+                fail(
+                    what,
+                    tr_args(
+                        "doctor-overview-serial-port-is-not-present",
+                        [("name", (name).to_string().into())],
+                    ),
+                    plug,
+                )
             }
         }
         Endpoint::UsbSerial(number) => {
@@ -680,28 +811,33 @@ async fn serial(what: &str, endpoint: &Endpoint) -> Check {
             match ports.as_slice() {
                 [port] => ok(
                     what,
-                    format!(
-                        "the adapter with serial number {} is at {port}",
-                        number.as_str()
+                    tr_args(
+                        "doctor-overview-the-adapter-with-serial-number-is-at",
+                        [
+                            ("number", (number.as_str()).to_string().into()),
+                            ("port", (port).to_string().into()),
+                        ],
                     ),
                 ),
                 [] => fail(
                     what,
-                    format!(
-                        "no adapter with serial number {} is plugged in",
-                        number.as_str()
+                    tr_args(
+                        "doctor-overview-no-adapter-with-serial-number-is-plugged-in",
+                        [("number", (number.as_str()).to_string().into())],
                     ),
                     plug,
                 ),
                 several => fail(
                     what,
-                    format!(
-                        "{} adapters report serial number {}: {}",
-                        several.len(),
-                        number.as_str(),
-                        several.join(", ")
+                    tr_args(
+                        "doctor-overview-adapters-report-serial-number",
+                        [
+                            ("several", (several.len()).to_string().into()),
+                            ("number", (number.as_str()).to_string().into()),
+                            ("join", (several.join(", ")).to_string().into()),
+                        ],
                     ),
-                    "unplug the adapter that does not belong to this machine",
+                    tr("doctor-overview-unplug-the-adapter-that-does-not-belong-to-this"),
                 ),
             }
         }
@@ -717,31 +853,56 @@ async fn listen(what: &str, address: &str, running: Engine) -> Check {
             match running {
                 Engine::Running => warn(
                     what,
-                    format!("nothing listens on {address} although the engine runs"),
-                    "run analyte overview: the machine's service in Analyte may have stopped; restart the engine with Restart-Service Analyte",
+                    tr_args(
+                        "doctor-overview-nothing-listens-on-although-the-engine-runs",
+                        [("address", (address).to_string().into())],
+                    ),
+                    tr("doctor-overview-run-analyte-overview-the-machine-s-service-in-analyte"),
                 ),
-                Engine::Stopped | Engine::Unknown => {
-                    ok(what, format!("{address} is free for Analyte to listen on"))
-                }
+                Engine::Stopped | Engine::Unknown => ok(
+                    what,
+                    tr_args(
+                        "doctor-overview-is-free-for-analyte-to-listen-on",
+                        [("address", (address).to_string().into())],
+                    ),
+                ),
             }
         }
         Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => match running {
-            Engine::Running => ok(what, format!("{address} is held by the running engine")),
+            Engine::Running => ok(
+                what,
+                tr_args(
+                    "doctor-overview-is-held-by-the-running-engine",
+                    [("address", (address).to_string().into())],
+                ),
+            ),
             Engine::Stopped => fail(
                 what,
-                format!("another program holds {address}"),
-                "stop the other program, or choose another port on the Setup page and on the machine",
+                tr_args(
+                    "doctor-overview-another-program-holds",
+                    [("address", (address).to_string().into())],
+                ),
+                tr("doctor-overview-stop-the-other-program-or-choose-another-port-on"),
             ),
             Engine::Unknown => warn(
                 what,
-                format!("{address} is held, by the engine or by another program"),
-                "turn the admin page on so doctor can tell, or look with Get-NetTCPConnection -LocalPort <port>",
+                tr_args(
+                    "doctor-overview-is-held-by-the-engine-or-by-another-program",
+                    [("address", (address).to_string().into())],
+                ),
+                tr("doctor-overview-turn-the-admin-page-on-so-doctor-can-tell"),
             ),
         },
         Err(error) => fail(
             what,
-            format!("{address} cannot be used on this computer: {error}"),
-            "choose an address this computer has on the Setup page",
+            tr_args(
+                "doctor-overview-cannot-be-used-on-this-computer",
+                [
+                    ("address", (address).to_string().into()),
+                    ("error", (error).to_string().into()),
+                ],
+            ),
+            tr("doctor-overview-choose-an-address-this-computer-has-on-the-setup"),
         ),
     }
 }
@@ -753,18 +914,20 @@ async fn connect(what: &str, address: &str, running: Engine) -> Check {
         Engine::Running => {
             return ok(
                 what,
-                format!(
-                    "the engine connects to {address}; analyte overview says if the link is off"
+                tr_args(
+                    "doctor-overview-the-engine-connects-to-analyte-overview-says-if-the",
+                    [("address", (address).to_string().into())],
                 ),
             );
         }
         Engine::Unknown => {
             return warn(
                 what,
-                format!(
-                    "not tried: the engine may be connected to {address}, and a machine may take one connection at a time"
+                tr_args(
+                    "doctor-overview-not-tried-the-engine-may-be-connected-to-and",
+                    [("address", (address).to_string().into())],
                 ),
-                "turn the admin page on so doctor can tell whether the engine runs",
+                tr("doctor-overview-turn-the-admin-page-on-so-doctor-can-tell-2"),
             );
         }
         Engine::Stopped => {}
@@ -773,25 +936,42 @@ async fn connect(what: &str, address: &str, running: Engine) -> Check {
         // Closed at once: nothing is sent.
         Ok(Ok(stream)) => {
             drop(stream);
-            ok(what, format!("{address} accepts a connection"))
+            ok(
+                what,
+                tr_args(
+                    "doctor-overview-accepts-a-connection",
+                    [("address", (address).to_string().into())],
+                ),
+            )
         }
         Ok(Err(error)) => warn(
             what,
-            format!("{address} does not accept a connection: {error}"),
-            "check that the machine is on, its network settings and the cable",
+            tr_args(
+                "doctor-overview-does-not-accept-a-connection",
+                [
+                    ("address", (address).to_string().into()),
+                    ("error", (error).to_string().into()),
+                ],
+            ),
+            tr("doctor-overview-check-that-the-machine-is-on-its-network-settings"),
         ),
         Err(_) => warn(
             what,
-            format!(
-                "{address} did not answer within {} seconds",
-                CONNECT_TIME.as_secs()
+            tr_args(
+                "doctor-overview-did-not-answer-within-seconds",
+                [
+                    ("address", (address).to_string().into()),
+                    ("as-secs", (CONNECT_TIME.as_secs()).to_string().into()),
+                ],
             ),
-            "check that the machine is on, its network settings and the cable",
+            tr("doctor-overview-check-that-the-machine-is-on-its-network-settings"),
         ),
     }
 }
 
-const SET_LAB_APP_KEYS: &str = "enter its keys on the Lab apps page, then restart the engine";
+fn lab_app_key_advice() -> &'static str {
+    tr("doctor-overview-lab-app-key-advice")
+}
 
 /// Each lab app: its name resolves, it answers over HTTPS with a valid
 /// certificate, its keys are there, and when the last complete order list came.
@@ -805,15 +985,18 @@ async fn lab_apps(program: &Program, answer: Option<&Answer>, health: &OrderList
     });
     for settings in every_lab_app(program) {
         let name = settings.name.as_str();
-        let what = format!("Lab app {name}");
+        let what = tr_args(
+            "doctor-overview-lab-app",
+            [("name", (name).to_string().into())],
+        );
         let url = settings.base_url.url();
         checks.push(reach(&what, url).await);
         checks.push(match (answer, &stored) {
             (Some(answer), _) => match answer.needs.iter().find(|need| {
                 need.reason == "lab_app_blocked" && need.about.as_deref() == Some(name)
             }) {
-                Some(need) => fail(&what, need.text.clone(), SET_LAB_APP_KEYS),
-                None => ok(&what, "the running engine has its keys"),
+                Some(need) => fail(&what, need.text.clone(), lab_app_key_advice()),
+                None => ok(&what, tr("doctor-overview-the-running-engine-has-its-keys")),
             },
             (None, Some(Ok(stored))) => {
                 match secrets::read_destination(
@@ -822,15 +1005,18 @@ async fn lab_apps(program: &Program, answer: Option<&Answer>, health: &OrderList
                     |key| std::env::var(key).ok(),
                     stored,
                 ) {
-                    Ok(_) => ok(&what, "its API key and signing key are there"),
+                    Ok(_) => ok(
+                        &what,
+                        tr("doctor-overview-its-api-key-and-signing-key-are-there"),
+                    ),
                     Err(error) => lab_app_key_failure(&what, &error),
                 }
             }
             (None, Some(Err(error))) => lab_app_key_failure(&what, error),
             (None, None) => warn(
                 &what,
-                "its keys were not checked",
-                "run analyte doctor again",
+                tr("doctor-overview-its-keys-were-not-checked"),
+                tr("doctor-overview-run-analyte-doctor-again"),
             ),
         });
         // Only a set-up machine's lab app is asked for orders; without an open
@@ -844,10 +1030,17 @@ async fn lab_apps(program: &Program, answer: Option<&Answer>, health: &OrderList
                 Some((_, Ok(health))) => order_list(&what, health),
                 Some((_, Err(error))) => warn(
                     &what,
-                    format!("when its order list last came could not be read: {error}"),
-                    "run analyte doctor again",
+                    tr_args(
+                        "doctor-overview-when-its-order-list-last-came-could-not-be",
+                        [("error", (error).to_string().into())],
+                    ),
+                    tr("doctor-overview-run-analyte-doctor-again"),
                 ),
-                None => warn(&what, "no order list is kept for it", "restart the engine"),
+                None => warn(
+                    &what,
+                    tr("doctor-overview-no-order-list-is-kept-for-it"),
+                    tr("doctor-overview-restart-the-engine"),
+                ),
             });
         }
     }
@@ -859,17 +1052,20 @@ fn lab_app_key_failure(what: &str, error: &SecretError) -> Check {
     match error {
         SecretError::Missing(name) => fail(
             what,
-            format!("credential {name} is missing"),
-            SET_LAB_APP_KEYS,
+            tr_args(
+                "doctor-overview-credential-is-missing",
+                [("name", (name).to_string().into())],
+            ),
+            lab_app_key_advice(),
         ),
-        SecretError::Invalid(_) => fail(what, error.to_string(), SET_LAB_APP_KEYS),
+        SecretError::Invalid(_) => fail(what, error.to_string(), lab_app_key_advice()),
         SecretError::File(error) => warn(
             what,
-            format!(
-                "its keys could not be read from this account: {}",
-                chain(error)
+            tr_args(
+                "doctor-overview-its-keys-could-not-be-read-from-this-account",
+                [("error", (chain(error)).to_string().into())],
             ),
-            "start the engine and run analyte doctor again; the engine checks the keys itself",
+            tr("doctor-overview-start-the-engine-and-run-analyte-doctor-again-the"),
         ),
     }
 }
@@ -898,8 +1094,8 @@ async fn reach(what: &str, url: &reqwest::Url) -> Check {
     let Some(host) = url.host_str() else {
         return fail(
             what,
-            "its address has no host name",
-            "fix its address on the Lab apps page",
+            tr("doctor-overview-its-address-has-no-host-name"),
+            tr("doctor-overview-fix-its-address-on-the-lab-apps-page"),
         );
     };
     let port = url.port_or_known_default().unwrap_or(443);
@@ -911,37 +1107,61 @@ async fn reach(what: &str, url: &reqwest::Url) -> Check {
         Ok(Ok(false)) => {
             return fail(
                 what,
-                format!("{host} resolves to no address"),
-                "check the lab app's address on the Lab apps page and this computer's DNS",
+                tr_args(
+                    "doctor-overview-resolves-to-no-address",
+                    [("host", (host).to_string().into())],
+                ),
+                tr("doctor-overview-check-the-lab-app-s-address-on-the-lab"),
             );
         }
         Ok(Err(error)) => {
             return fail(
                 what,
-                format!("{host} does not resolve: {error}"),
-                "check the lab app's address on the Lab apps page and this computer's DNS",
+                tr_args(
+                    "doctor-overview-does-not-resolve",
+                    [
+                        ("host", (host).to_string().into()),
+                        ("error", (error).to_string().into()),
+                    ],
+                ),
+                tr("doctor-overview-check-the-lab-app-s-address-on-the-lab"),
             );
         }
         Err(_) => {
             return fail(
                 what,
-                format!(
-                    "{host} did not resolve within {} seconds",
-                    CONNECT_TIME.as_secs()
+                tr_args(
+                    "doctor-overview-did-not-resolve-within-seconds",
+                    [
+                        ("host", (host).to_string().into()),
+                        ("as-secs", (CONNECT_TIME.as_secs()).to_string().into()),
+                    ],
                 ),
-                "check this computer's DNS and network",
+                tr("doctor-overview-check-this-computer-s-dns-and-network"),
             );
         }
     }
     match analyte_sink::answers(url, CONNECT_TIME).await {
         Ok(status) => ok(
             what,
-            format!("{url} answers over HTTPS with a valid certificate (HTTP {status})"),
+            tr_args(
+                "doctor-overview-answers-over-https-with-a-valid-certificate-http",
+                [
+                    ("url", (url).to_string().into()),
+                    ("status", (status).to_string().into()),
+                ],
+            ),
         ),
         Err(error) => fail(
             what,
-            format!("{url} gives no HTTPS answer: {}", chain(&error)),
-            "check the address, the lab app's server and its certificate; a certificate this computer does not trust must be fixed on the server",
+            tr_args(
+                "doctor-overview-gives-no-https-answer",
+                [
+                    ("url", (url).to_string().into()),
+                    ("error", (chain(&error)).to_string().into()),
+                ],
+            ),
+            tr("doctor-overview-check-the-address-the-lab-app-s-server-and"),
         ),
     }
 }
@@ -988,12 +1208,21 @@ fn order_list(what: &str, health: &analyte_store::Health) -> Check {
         },
     );
     if health.cache_trusted {
-        ok(what, format!("last complete order list {when}"))
+        ok(
+            what,
+            tr_args(
+                "doctor-overview-last-complete-order-list",
+                [("when", (when).to_string().into())],
+            ),
+        )
     } else {
         warn(
             what,
-            format!("its order list is not up to date (last complete list: {when})"),
-            "check that the engine runs and the lab app answers; machines asking for orders get no answer meanwhile",
+            tr_args(
+                "doctor-overview-its-order-list-is-not-up-to-date-last",
+                [("when", (when).to_string().into())],
+            ),
+            tr("doctor-overview-check-that-the-engine-runs-and-the-lab-app"),
         )
     }
 }
@@ -1002,36 +1231,50 @@ fn order_list(what: &str, health: &analyte_store::Health) -> Check {
 #[cfg(windows)]
 fn users_group() -> Check {
     use crate::admin::server::windows::{Found, GROUP};
-    let what = "Windows sign-in";
-    let create = format!(
-        "create it with New-LocalGroup -Name \"{GROUP}\", then add people with Add-LocalGroupMember -Group \"{GROUP}\" -Member <user>"
+    let what = tr("admin-windows-sign-in");
+    let create = tr_args(
+        "doctor-overview-create-it-with-new-localgroup-name-then-add-people",
+        [("GROUP", (GROUP).to_string().into())],
     );
     match crate::admin::server::windows::users_group() {
-        Found::Group(_) => ok(what, format!("the {GROUP} group exists")),
+        Found::Group(_) => ok(
+            what,
+            tr_args(
+                "doctor-overview-the-group-exists",
+                [("GROUP", (GROUP).to_string().into())],
+            ),
+        ),
         Found::Missing => warn(
             what,
-            format!(
-                "the {GROUP} group is missing, so only administrators can sign in with Windows"
+            tr_args(
+                "doctor-overview-the-group-is-missing-so-only-administrators-can-sign",
+                [("GROUP", (GROUP).to_string().into())],
             ),
             create,
         ),
         Found::NotAGroup => warn(
             what,
-            format!("{GROUP} is an account but not a local group"),
+            tr_args(
+                "doctor-overview-is-an-account-but-not-a-local-group",
+                [("GROUP", (GROUP).to_string().into())],
+            ),
             create,
         ),
         Found::NoComputerName => warn(
             what,
-            "COMPUTERNAME is not set, so the group cannot be looked up",
-            "run doctor from a normal PowerShell window",
+            tr("doctor-overview-computername-is-not-set-so-the-group-cannot-be"),
+            tr("doctor-overview-run-doctor-from-a-normal-powershell-window"),
         ),
         Found::Failed(error) => warn(
             what,
-            format!(
-                "the {GROUP} group could not be looked up: {}",
-                chain(&error)
+            tr_args(
+                "doctor-overview-the-group-could-not-be-looked-up",
+                [
+                    ("GROUP", (GROUP).to_string().into()),
+                    ("error", (chain(&error)).to_string().into()),
+                ],
             ),
-            "run analyte doctor again",
+            tr("doctor-overview-run-analyte-doctor-again"),
         ),
     }
 }
@@ -1075,30 +1318,52 @@ async fn firewall(program: &Program) -> Vec<Check> {
     vec![match tokio::time::timeout(FIREWALL_TIME, shown).await {
         Ok(Ok(status)) if status.success() => ok(
             what,
-            format!("the rule \"{FIREWALL_RULE}\" ({FIREWALL_RULE_NAME}) is there"),
+            tr_args(
+                "doctor-overview-the-rule-is-there",
+                [
+                    ("FIREWALL-RULE", (FIREWALL_RULE).to_string().into()),
+                    (
+                        "FIREWALL-RULE-NAME",
+                        (FIREWALL_RULE_NAME).to_string().into(),
+                    ),
+                ],
+            ),
         ),
         Ok(Ok(status)) if status.code() == Some(1) => warn(
             what,
-            format!(
-                "no rule \"{FIREWALL_RULE}\" ({FIREWALL_RULE_NAME}) lets analyzers connect to {}",
-                ports.join(", ")
+            tr_args(
+                "doctor-overview-no-rule-lets-analyzers-connect-to",
+                [
+                    ("FIREWALL-RULE", (FIREWALL_RULE).to_string().into()),
+                    (
+                        "FIREWALL-RULE-NAME",
+                        (FIREWALL_RULE_NAME).to_string().into(),
+                    ),
+                    ("join", (ports.join(", ")).to_string().into()),
+                ],
             ),
-            "run the installer again, or allow inbound TCP to these ports from the lab network in Windows Defender Firewall",
+            tr("doctor-overview-run-the-installer-again-or-allow-inbound-tcp-to"),
         ),
         Ok(Ok(status)) => warn(
             what,
-            format!("the firewall rules could not be read (PowerShell ended with {status})"),
-            "check the rule in Windows Defender Firewall",
+            tr_args(
+                "doctor-overview-the-firewall-rules-could-not-be-read-powershell-ended",
+                [("status", (status).to_string().into())],
+            ),
+            tr("doctor-overview-check-the-rule-in-windows-defender-firewall"),
         ),
         Ok(Err(error)) => warn(
             what,
-            format!("the firewall rules could not be read: {error}"),
-            "check the rule in Windows Defender Firewall",
+            tr_args(
+                "doctor-overview-the-firewall-rules-could-not-be-read",
+                [("error", (error).to_string().into())],
+            ),
+            tr("doctor-overview-check-the-rule-in-windows-defender-firewall"),
         ),
         Err(_) => warn(
             what,
-            "reading the firewall rules took too long",
-            "check the rule in Windows Defender Firewall",
+            tr("doctor-overview-reading-the-firewall-rules-took-too-long"),
+            tr("doctor-overview-check-the-rule-in-windows-defender-firewall"),
         ),
     }]
 }

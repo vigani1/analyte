@@ -6,33 +6,33 @@
 {%- block step %}
 <form class="stack stack--lg" method="get" action="{{ action }}">
 <section class="stack stack--lg" aria-labelledby="s2">
-<div><h2 id="s2" class="wizard__title">How is it connected?</h2><p class="muted wizard__text">{{ how }}</p></div>
+<div><h2 id="s2" class="wizard__title">{{ analyte_i18n::text("setup-how-is-it-connected") }}</h2><p class="muted wizard__text">{{ how }}</p></div>
 {%- match inputs %}
 {%- when Inputs::Serial { ports, typed, placeholder, cable } %}
 <fieldset class="wizard__set stack">
-<legend class="field__label wizard__legend">Port</legend>
+<legend class="field__label wizard__legend">{{ analyte_i18n::text("setup-port") }}</legend>
 {%- match ports %}
 {%- when Ok(ports) %}
 <ul class="choices">
 {%- for port in ports %}
-<li><label class="choice"><input type="radio" name="port" value="{{ port.value }}"{% if port.checked %} checked{% endif %}{% if port.used_by.is_some() %} disabled{% endif %}><span><span class="choice__title mono">{{ port.name }}</span> <span class="choice__meta">– {{ port.meta }}</span></span>{% if port.used_by.is_some() %}<span class="status status--off">{% call draw::icon(crate::admin::view::icon::Icon::Off, "") %}{% endcall %}In use</span>{% else %}<span></span>{% endif %}</label></li>
+<li><label class="choice"><input type="radio" name="port" value="{{ port.value }}"{% if port.checked %} checked{% endif %}{% if port.used_by.is_some() %} disabled{% endif %}><span><span class="choice__title mono">{{ port.name }}</span> <span class="choice__meta">– {{ port.meta }}</span></span>{% if port.used_by.is_some() %}<span class="status status--off">{% call draw::icon(crate::admin::view::icon::Icon::Off, "") %}{% endcall %}{{ analyte_i18n::text("setup-in-use") }}</span>{% else %}<span></span>{% endif %}</label></li>
 {%- else %}
-<li>{% call feedback::note("No serial ports were found", "Plug in the cable or USB adapter and reload this page, or type the port name below.") %}{% endcall %}</li>
+<li>{% call feedback::note(analyte_i18n::text("setup-no-serial-ports-were-found"), analyte_i18n::text("setup-plug-in-the-cable-or-usb-adapter-and-reload")) %}{% endcall %}</li>
 {%- endfor %}
 </ul>
 {%- when Err(why) %}
-{% call feedback::alert(crate::admin::view::Tone::Problem, "The serial ports could not be listed", why) %}{% endcall %}
+{% call feedback::alert(crate::admin::view::Tone::Problem, analyte_i18n::text("setup-the-serial-ports-could-not-be-listed"), why) %}{% endcall %}
 {%- endmatch %}
-<span class="field__hint">If the USB adapter has its own serial number, Analyte saves that number, so it finds the machine again even if the port name changes; otherwise it saves the port name.</span>
+<span class="field__hint">{{ analyte_i18n::text("setup-if-the-usb-adapter-has-its-own-serial-number") }}</span>
 </fieldset>
-<div class="field"><label class="field__label" for="s2-port">Or type a port name</label><input id="s2-port" class="input mono" name="port_name" maxlength="1024" value="{{ typed }}" placeholder="{{ placeholder }}"><span class="field__hint">If yours isn’t listed. A typed name wins over a port picked above.</span></div>
+<div class="field"><label class="field__label" for="s2-port">{{ analyte_i18n::text("setup-or-type-a-port-name") }}</label><input id="s2-port" class="input mono" name="port_name" maxlength="1024" value="{{ typed }}" placeholder="{{ placeholder }}"><span class="field__hint">{{ analyte_i18n::text("setup-if-yours-isn-t-listed-a-typed-name-wins") }}</span></div>
 <fieldset class="wizard__set stack">
-<legend class="field__label wizard__legend">{{ crate::admin::view::format::CABLE_SETTINGS }}</legend>
-<span class="field__hint">Match the analyzer’s LIS/host settings screen. They start at the values the machine’s manual usually suggests.</span>
+<legend class="field__label wizard__legend">{{ crate::admin::view::format::cable_settings() }}</legend>
+<span class="field__hint">{{ analyte_i18n::text("setup-match-the-analyzer-s-lis-host-settings-screen-they") }}</span>
 <div class="form-grid">
 {%- for field in cable %}
-<div class="field"><label class="field__label" for="s2-{{ field.name }}">{{ field.label }}{% if field.differs %} <span class="tone-warn">· differs from the manual</span>{% endif %}</label><select id="s2-{{ field.name }}" class="select" name="{{ field.name }}" required>
-{%- if !field.chosen %}<option value="" selected>Choose</option>{% endif %}
+<div class="field"><label class="field__label" for="s2-{{ field.name }}">{{ field.label }}{% if field.differs %} <span class="tone-warn">{{ analyte_i18n::text("setup-differs-from-the-manual") }}</span>{% endif %}</label><select id="s2-{{ field.name }}" class="select" name="{{ field.name }}" required>
+{%- if !field.chosen %}<option value="" selected>{{ analyte_i18n::text("setup-choose") }}</option>{% endif %}
 {%- for option in field.options %}<option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>{% endfor -%}
 </select><span class="field__hint">{{ field.hint }}</span></div>
 {%- endfor %}
@@ -42,39 +42,39 @@
 {%- match hosts %}
 {%- when Ok(hosts) %}
 <fieldset class="wizard__set stack">
-<legend class="field__label wizard__legend">{{ crate::admin::setup::wizard::PC_ADDRESS }}</legend>
+<legend class="field__label wizard__legend">{{ crate::admin::setup::wizard::pc_address() }}</legend>
 <ul class="choices">
 {%- for host in hosts %}
 <li><label class="choice"><input type="radio" name="host" value="{{ host.value }}" required{% if host.checked %} checked{% endif %}><span><span class="choice__title mono">{{ host.address }}</span> <span class="choice__meta">– {{ host.meta }}</span></span><span></span></label></li>
 {%- endfor %}
 </ul>
-<span class="field__hint">Type the chosen address into the machine’s host (LIS) address setting. With every network card, type the address of the card on the machine’s network.</span>
+<span class="field__hint">{{ analyte_i18n::text("setup-type-the-chosen-address-into-the-machine-s-host") }}</span>
 </fieldset>
 <div class="form-grid">
 {%- when Err(why) %}
-{% call feedback::alert(crate::admin::view::Tone::Problem, "This PC’s addresses could not be listed", why) %}{% endcall %}
+{% call feedback::alert(crate::admin::view::Tone::Problem, analyte_i18n::text("setup-this-pc-s-addresses-could-not-be-listed"), why) %}{% endcall %}
 <div class="form-grid">
-<div class="field"><label class="field__label" for="s2-host">{{ crate::admin::setup::wizard::PC_ADDRESS }}</label><input id="s2-host" class="input mono" name="host" required maxlength="64" value="{{ typed }}"><span class="field__hint">An address of this PC on the machine’s network, or 0.0.0.0 for every network card. Type the same address into the machine’s host (LIS) settings.</span></div>
+<div class="field"><label class="field__label" for="s2-host">{{ crate::admin::setup::wizard::pc_address() }}</label><input id="s2-host" class="input mono" name="host" required maxlength="64" value="{{ typed }}"><span class="field__hint">{{ analyte_i18n::text("setup-an-address-of-this-pc-on-the-machine-s") }}</span></div>
 {%- endmatch %}
-<div class="field"><label class="field__label" for="s2-tcp">Port</label><input id="s2-tcp" class="input mono" name="tcp_port" required maxlength="5" inputmode="numeric" value="{{ port }}"><span class="field__hint">Type the same port number into the machine’s host (LIS) settings.</span></div>
+<div class="field"><label class="field__label" for="s2-tcp">{{ analyte_i18n::text("setup-port") }}</label><input id="s2-tcp" class="input mono" name="tcp_port" required maxlength="5" inputmode="numeric" value="{{ port }}"><span class="field__hint">{{ analyte_i18n::text("setup-type-the-same-port-number-into-the-machine-s") }}</span></div>
 </div>
-<div class="field"><label class="field__label" for="s2-peers">Only accept these devices <span class="subtle">(optional)</span></label><input id="s2-peers" class="input mono" name="allowed_peers" maxlength="1024" value="{{ peers }}" placeholder="192.168.1.50"><span class="field__hint">The machine’s own IP address, from its network settings; separate several with commas. Leave empty to find it with the connection test in step 3. Any other device that connects is refused.</span></div>
+<div class="field"><label class="field__label" for="s2-peers">{{ analyte_i18n::text("setup-only-accept-these-devices") }} <span class="subtle">{{ analyte_i18n::text("setup-optional") }}</span></label><input id="s2-peers" class="input mono" name="allowed_peers" maxlength="1024" value="{{ peers }}" placeholder="192.168.1.50"><span class="field__hint">{{ analyte_i18n::text("setup-the-machine-s-own-ip-address-from-its-network") }}</span></div>
 {%- when Inputs::Connects { host, port } %}
 <div class="form-grid">
-<div class="field"><label class="field__label" for="s2-host">Machine’s IP address</label><input id="s2-host" class="input mono" name="host" required maxlength="64" value="{{ host }}"><span class="field__hint">As shown in the machine’s network settings, such as 192.168.1.50.</span></div>
-<div class="field"><label class="field__label" for="s2-tcp">Machine’s port</label><input id="s2-tcp" class="input mono" name="tcp_port" required maxlength="5" inputmode="numeric" value="{{ port }}"><span class="field__hint">The port the machine waits on for the host (LIS) connection.</span></div>
+<div class="field"><label class="field__label" for="s2-host">{{ analyte_i18n::text("setup-machine-s-ip-address") }}</label><input id="s2-host" class="input mono" name="host" required maxlength="64" value="{{ host }}"><span class="field__hint">{{ analyte_i18n::text("setup-as-shown-in-the-machine-s-network-settings-such") }}</span></div>
+<div class="field"><label class="field__label" for="s2-tcp">{{ analyte_i18n::text("setup-machine-s-port") }}</label><input id="s2-tcp" class="input mono" name="tcp_port" required maxlength="5" inputmode="numeric" value="{{ port }}"><span class="field__hint">{{ analyte_i18n::text("setup-the-port-the-machine-waits-on-for-the-host") }}</span></div>
 </div>
 {%- when Inputs::Folder(folder) %}
-<div class="field"><label class="field__label" for="s2-folder">Folder</label><input id="s2-folder" class="input mono" name="folder" required maxlength="1024" value="{{ folder }}"><span class="field__hint">Where the machine writes its result files.</span></div>
+<div class="field"><label class="field__label" for="s2-folder">{{ analyte_i18n::text("setup-folder") }}</label><input id="s2-folder" class="input mono" name="folder" required maxlength="1024" value="{{ folder }}"><span class="field__hint">{{ analyte_i18n::text("setup-where-the-machine-writes-its-result-files") }}</span></div>
 {%- endmatch %}
 {%- if !choices.is_empty() %}
 <fieldset class="wizard__set stack">
-<legend class="field__label wizard__legend">{{ crate::admin::view::format::ANALYZER_SETTINGS }}</legend>
-<span class="field__hint">This model’s settings that the lab chooses. Match what the analyzer shows; they start at the values its manual suggests.</span>
+<legend class="field__label wizard__legend">{{ crate::admin::view::format::analyzer_settings() }}</legend>
+<span class="field__hint">{{ analyte_i18n::text("setup-this-model-s-settings-that-the-lab-chooses-match") }}</span>
 <div class="form-grid">
 {%- for field in choices %}
-<div class="field"><label class="field__label" for="{{ field.id }}">{{ field.label }}{% if field.differs %} <span class="tone-warn">· differs from the manual</span>{% endif %}</label><select id="{{ field.id }}" class="select" name="{{ field.name }}" required>
-{%- if !field.chosen %}<option value="" selected>Choose</option>{% endif %}
+<div class="field"><label class="field__label" for="{{ field.id }}">{{ field.label }}{% if field.differs %} <span class="tone-warn">{{ analyte_i18n::text("setup-differs-from-the-manual") }}</span>{% endif %}</label><select id="{{ field.id }}" class="select" name="{{ field.name }}" required>
+{%- if !field.chosen %}<option value="" selected>{{ analyte_i18n::text("setup-choose") }}</option>{% endif %}
 {%- for option in field.options %}<option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>{% endfor -%}
 </select><span class="field__hint">{{ field.hint }}</span></div>
 {%- endfor %}
@@ -82,14 +82,14 @@
 </fieldset>
 {%- endif %}
 {%- if let Some(namespace) = vidas_patient_namespace %}
-<div class="field"><label class="field__label" for="vidas_patient_namespace">VIDAS patient namespace</label><input id="vidas_patient_namespace" class="input mono" name="vidas_patient_namespace" type="text" value="{{ namespace }}"><span class="field__hint">Enter the lab app's patient namespace if work lists are enabled.</span></div>
+<div class="field"><label class="field__label" for="vidas_patient_namespace">{{ analyte_i18n::text("setup-vidas-patient-namespace") }}</label><input id="vidas_patient_namespace" class="input mono" name="vidas_patient_namespace" type="text" value="{{ namespace }}"><span class="field__hint">{{ analyte_i18n::text("setup-enter-the-lab-app-s-patient-namespace-if-work") }}</span></div>
 {%- endif %}
 {%- if let Some(seconds) = autolyser_poll_seconds %}
-<div class="field"><label class="field__label" for="s2-poll">Seconds between report polls</label><input id="s2-poll" class="input mono" name="poll_seconds" type="number" min="{{ normal_poll_range.start() }}" max="{{ normal_poll_range.end() }}" required value="{{ seconds }}"><span class="field__hint">Enter the lab&#39;s polling interval in whole seconds.</span></div>
+<div class="field"><label class="field__label" for="s2-poll">{{ analyte_i18n::text("setup-seconds-between-report-polls") }}</label><input id="s2-poll" class="input mono" name="poll_seconds" type="number" min="{{ normal_poll_range.start() }}" max="{{ normal_poll_range.end() }}" required value="{{ seconds }}"><span class="field__hint">{{ analyte_i18n::text("setup-enter-the-lab-polling-interval-in-whole") }}</span></div>
 {%- endif %}
 {%- if let Some(field) = repeated_results %}
 <div class="field"><label class="field__label" for="{{ field.id }}">{{ field.label }}</label><select id="{{ field.id }}" class="select" name="{{ field.name }}" required>
-{%- if !field.chosen %}<option value="" selected>Choose</option>{% endif %}
+{%- if !field.chosen %}<option value="" selected>{{ analyte_i18n::text("setup-choose") }}</option>{% endif %}
 {%- for option in field.options %}<option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>{% endfor -%}
 </select><span class="field__hint">{{ field.hint }}</span></div>
 {%- endif %}
@@ -97,23 +97,23 @@
 {%- match recording %}
 {%- when Recording::Vidas { acknowledgment } %}
 <fieldset class="wizard__set stack">
-<legend class="field__label wizard__legend">Recording</legend>
-<div class="field"><label class="field__label" for="s2-ack">VIDAS PC acknowledgment</label><select id="s2-ack" class="select" name="acknowledgment" required>
-{%- if acknowledgment.is_empty() %}<option value="" selected>Choose</option>{% endif %}
-<option value="literal"{% if acknowledgment == "literal" %} selected{% endif %}>Literal (after the checksum)</option>
-<option value="alternate"{% if acknowledgment == "alternate" %} selected{% endif %}>Alternate (after ETX)</option>
-</select><span class="field__hint">As set on the VIDAS PC; it cannot be guessed.</span></div>
+<legend class="field__label wizard__legend">{{ analyte_i18n::text("setup-recording") }}</legend>
+<div class="field"><label class="field__label" for="s2-ack">{{ analyte_i18n::text("setup-vidas-pc-acknowledgment") }}</label><select id="s2-ack" class="select" name="acknowledgment" required>
+{%- if acknowledgment.is_empty() %}<option value="" selected>{{ analyte_i18n::text("setup-choose") }}</option>{% endif %}
+<option value="literal"{% if acknowledgment == "literal" %} selected{% endif %}>{{ analyte_i18n::text("setup-literal-after-the-checksum") }}</option>
+<option value="alternate"{% if acknowledgment == "alternate" %} selected{% endif %}>{{ analyte_i18n::text("setup-alternate-after-etx") }}</option>
+</select><span class="field__hint">{{ analyte_i18n::text("setup-as-set-on-the-vidas-pc-it-cannot-be") }}</span></div>
 </fieldset>
 {%- when Recording::Autolyser { poll_seconds, controls } %}
 <fieldset class="wizard__set stack">
-<legend class="field__label wizard__legend">Recording</legend>
+<legend class="field__label wizard__legend">{{ analyte_i18n::text("setup-recording") }}</legend>
 <div class="form-grid">
-<div class="field"><label class="field__label" for="s2-poll">Seconds between asks</label><input id="s2-poll" class="input mono" name="poll_seconds" required maxlength="4" inputmode="numeric" value="{{ poll_seconds }}"><span class="field__hint">How often Analyte asks for the next report ({{ recording_poll_range.start() }} to {{ recording_poll_range.end() }}). It never asks for the archive.</span></div>
-<div class="field"><label class="field__label" for="s2-controls">Reports carry controls</label><select id="s2-controls" class="select" name="controls" required>
-{%- if controls.is_empty() %}<option value="" selected>Choose</option>{% endif %}
-<option value="yes"{% if controls == "yes" %} selected{% endif %}>Yes</option>
-<option value="no"{% if controls == "no" %} selected{% endif %}>No</option>
-</select><span class="field__hint">Whether controls are enabled in the analyzer report layout.</span></div>
+<div class="field"><label class="field__label" for="s2-poll">{{ analyte_i18n::text("setup-seconds-between-asks") }}</label><input id="s2-poll" class="input mono" name="poll_seconds" required maxlength="4" inputmode="numeric" value="{{ poll_seconds }}"><span class="field__hint">{{ analyte_i18n::text("setup-how-often-analyte-asks-for-the-next-report") }}{{ recording_poll_range.start() }} {{ analyte_i18n::text("setup-to") }} {{ recording_poll_range.end() }}{{ analyte_i18n::text("setup-it-never-asks-for-the-archive") }}</span></div>
+<div class="field"><label class="field__label" for="s2-controls">{{ analyte_i18n::text("setup-reports-carry-controls") }}</label><select id="s2-controls" class="select" name="controls" required>
+{%- if controls.is_empty() %}<option value="" selected>{{ analyte_i18n::text("setup-choose") }}</option>{% endif %}
+<option value="yes"{% if controls == "yes" %} selected{% endif %}>{{ analyte_i18n::text("setup-yes") }}</option>
+<option value="no"{% if controls == "no" %} selected{% endif %}>{{ analyte_i18n::text("setup-no") }}</option>
+</select><span class="field__hint">{{ analyte_i18n::text("setup-whether-controls-are-enabled-in-the-analyzer-report-layout") }}</span></div>
 </div>
 </fieldset>
 {%- when Recording::Nothing %}
@@ -121,28 +121,28 @@
 {%- endif %}
 {%- if let Some(field) = analyzer_mode %}
 <fieldset class="wizard__set stack">
-<legend class="field__label wizard__legend">Recording</legend>
+<legend class="field__label wizard__legend">{{ analyte_i18n::text("setup-recording") }}</legend>
 <div class="field"><label class="field__label" for="{{ field.id }}">{{ field.label }}</label><select id="{{ field.id }}" class="select" name="{{ field.name }}" required>
-{%- if !field.chosen %}<option value="" selected>Choose</option>{% endif %}
+{%- if !field.chosen %}<option value="" selected>{{ analyte_i18n::text("setup-choose") }}</option>{% endif %}
 {%- for option in field.options %}<option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>{% endfor -%}
 </select><span class="field__hint">{{ field.hint }}</span></div>
 </fieldset>
 {%- endif %}
 <div class="form-grid">
-<div class="field"><label class="field__label" for="s2-name">Name in Analyte</label><input id="s2-name" class="input" value="{{ wizard.id }}" readonly><span class="field__hint">Cannot change: stored results are kept under this name.</span></div>
+<div class="field"><label class="field__label" for="s2-name">{{ analyte_i18n::text("setup-name-in-analyte") }}</label><input id="s2-name" class="input" value="{{ wizard.id }}" readonly><span class="field__hint">{{ analyte_i18n::text("setup-cannot-change-stored-results-are-kept-under-this-name") }}</span></div>
 {%- if recording.is_some() %}
-<div class="field"><span class="field__label">{{ crate::admin::setup::wizard::SEND_RESULTS_TO }}</span>{% call feedback::alert(crate::admin::view::Tone::Attention, crate::admin::view::format::RECORDING_ONLY, "Every byte is kept and recorded. Nothing is read, no order is sent and no lab app is needed.") %}{% endcall %}</div>
+<div class="field"><span class="field__label">{{ crate::admin::setup::wizard::send_results_to() }}</span>{% call feedback::alert(crate::admin::view::Tone::Attention, crate::admin::view::format::recording_only(), analyte_i18n::text("setup-every-byte-is-kept-and-recorded-nothing-is-read")) %}{% endcall %}</div>
 {%- else %}
 {%- match lab_apps %}
 {%- when Picker::Choose { apps, chosen } %}
-<div class="field"><label class="field__label" for="s2-lab">{{ crate::admin::setup::wizard::SEND_RESULTS_TO }}</label><select id="s2-lab" class="select" name="lab_app" required>
-{%- if !chosen %}<option value="" selected>Choose a lab app</option>{% endif %}
+<div class="field"><label class="field__label" for="s2-lab">{{ crate::admin::setup::wizard::send_results_to() }}</label><select id="s2-lab" class="select" name="lab_app" required>
+{%- if !chosen %}<option value="" selected>{{ analyte_i18n::text("setup-choose-a-lab-app") }}</option>{% endif %}
 {%- for app in apps %}<option value="{{ app.name }}"{% if app.selected %} selected{% endif %}>{{ app.name }} ({{ app.address }})</option>{% endfor -%}
-</select><span class="field__hint">Addresses and keys are set once on <a class="link" href="{{ crate::admin::view::Tab::LabApps.href() }}">{{ crate::admin::view::Tab::LabApps.label() }}</a>.</span></div>
+</select><span class="field__hint">{{ analyte_i18n::text("setup-addresses-and-keys-are-set-once-on") }} <a class="link" href="{{ crate::admin::view::Tab::LabApps.href() }}">{{ crate::admin::view::Tab::LabApps.label() }}</a>.</span></div>
 {%- when Picker::None %}
-<div class="field"><span class="field__label">{{ crate::admin::setup::wizard::SEND_RESULTS_TO }}</span>{% call feedback::alert(crate::admin::view::Tone::Attention, crate::admin::setup::NO_LAB_APP, "Add a lab app first (its address and keys), then come back and choose it here.") %}{% endcall %}<p class="cluster">{% call forms::link_button("/setup/lab-apps/new", crate::admin::setup::ADD_LAB_APP, "btn--outline btn--sm") %}{% endcall %}</p></div>
+<div class="field"><span class="field__label">{{ crate::admin::setup::wizard::send_results_to() }}</span>{% call feedback::alert(crate::admin::view::Tone::Attention, crate::admin::setup::no_lab_app(), analyte_i18n::text("setup-add-a-lab-app-first-its-address-and-keys")) %}{% endcall %}<p class="cluster">{% call forms::link_button("/setup/lab-apps/new", crate::admin::setup::add_lab_app_label(), "btn--outline btn--sm") %}{% endcall %}</p></div>
 {%- when Picker::Unreadable(why) %}
-<div class="field"><span class="field__label">{{ crate::admin::setup::wizard::SEND_RESULTS_TO }}</span>{% call feedback::alert(crate::admin::view::Tone::Problem, "The lab apps could not be read", why) %}{% endcall %}</div>
+<div class="field"><span class="field__label">{{ crate::admin::setup::wizard::send_results_to() }}</span>{% call feedback::alert(crate::admin::view::Tone::Problem, analyte_i18n::text("setup-the-lab-apps-could-not-be-read"), why) %}{% endcall %}</div>
 {%- endmatch %}
 {%- endif %}
 </div>

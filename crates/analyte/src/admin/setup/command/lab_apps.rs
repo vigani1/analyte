@@ -28,6 +28,7 @@ use crate::admin::setup::{
     off_thread,
 };
 use crate::installation::credentials::Locked;
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_model::Identifier;
 use jiff::Timestamp;
 use std::path::Path;
@@ -37,34 +38,45 @@ use std::path::Path;
 pub enum Command {
     /// Lists the lab apps: address, timing, the machines that use each, and
     /// where each key is found (never its value).
+    #[command(about = tr("cli-help-lab-apps-command-list"))]
     List,
     /// Adds a lab app. Its two keys are then asked for without showing them,
     /// or read from standard input, one per line: the API key, then the signing key.
+    #[command(about = tr("cli-help-lab-apps-command-add"))]
     Add {
         /// Letters A to Z, digits, - and _ (at most 64); it also names its keys.
+        #[arg(help = tr("cli-help-lab-apps-command-add-name"))]
         name: String,
         /// The choices; see the options below.
+
         #[command(flatten)]
         settings: Settings,
     },
     /// Changes a lab app's address or timing; values not given stay as they are.
+    #[command(about = tr("cli-help-lab-apps-command-set"))]
     Set {
         /// The lab app's name.
+        #[arg(help = tr("cli-help-lab-apps-command-set-name"))]
         name: String,
         /// The choices; see the options below.
+
         #[command(flatten)]
         settings: Settings,
     },
     /// Replaces a lab app's keys, asked for without showing them or read from
     /// standard input (the API key, then the signing key, one per line). An
     /// empty answer keeps the stored key. Keys are never taken from options.
+    #[command(about = tr("cli-help-lab-apps-command-keys"))]
     Keys {
         /// The lab app's name.
+        #[arg(help = tr("cli-help-lab-apps-command-set-name"))]
         name: String,
     },
     /// Removes a lab app that no machine uses and nothing waits for.
+    #[command(about = tr("cli-help-lab-apps-command-remove"))]
     Remove {
         /// The lab app's name.
+        #[arg(help = tr("cli-help-lab-apps-command-set-name"))]
         name: String,
     },
 }
@@ -73,16 +85,20 @@ pub enum Command {
 #[derive(clap::Args)]
 pub struct Settings {
     /// Its HTTPS address, such as `https://lab.example.org`.
+    #[arg(help = tr("cli-help-lab-apps-settings-address"))]
     #[arg(long)]
     address: Option<String>,
     /// How long its order list counts as current, in whole seconds.
+    #[arg(help = tr("cli-help-lab-apps-settings-freshness-seconds"))]
     #[arg(long)]
     freshness_seconds: Option<String>,
     /// How long to wait for its answer, in whole seconds.
+    #[arg(help = tr("cli-help-lab-apps-settings-request-timeout-seconds"))]
     #[arg(long)]
     request_timeout_seconds: Option<String>,
     /// Whether to send it Needs review notices: `yes` or `no` (ADR 0038). A
     /// new lab app gets none unless this says yes.
+    #[arg(help = tr("cli-help-lab-apps-settings-review-notices"))]
     #[arg(long, value_parser = ["yes", "no"])]
     review_notices: Option<String>,
 }
@@ -136,7 +152,7 @@ pub(super) async fn run(
             let place = keys_go(&installation).await?;
             let [api, signing] = read_keys(keys)?;
             if api.is_empty() && signing.is_empty() {
-                say("No key was entered, so nothing was stored.")?;
+                say(tr("setup-no-key-was-entered-so-nothing-was-stored"))?;
                 return Ok(Outcome::Done);
             }
             entered.api_key = api;
@@ -220,12 +236,16 @@ async fn through_engine(
         }
     })?;
     if status == 401 {
-        return Err(Failure::EngineUnreachable(format!(
-            "the engine refused the admin key ({status})"
+        return Err(Failure::EngineUnreachable(tr_args(
+            "setup-the-engine-refused-the-admin-key",
+            [("status", (status).to_string().into())],
         )));
     }
     let answer = serde_json::from_slice::<Answer>(&body).map_err(|_| {
-        Failure::EngineNoAnswer(format!("the engine answered {status} in an unknown form"))
+        Failure::EngineNoAnswer(tr_args(
+            "setup-the-engine-answered-in-an-unknown-form",
+            [("status", (status).to_string().into())],
+        ))
     })?;
     match answer {
         Answer::Saved {
@@ -271,25 +291,41 @@ fn list(setup: &Setup) -> Result<Outcome, Failure> {
         let settings = &known.settings;
         say(&format!("{}:", settings.name.as_str()))?;
         say(&format!("  {}", address_line(settings.base_url.as_str())))?;
-        say(&format!(
-            "  Order list current for: {} s",
-            settings.freshness_seconds
+        say(&tr_args(
+            "setup-order-list-current-for-s",
+            [(
+                "freshness-seconds",
+                (settings.freshness_seconds).to_string().into(),
+            )],
         ))?;
-        say(&format!(
-            "  Request wait: {} s",
-            settings.request_timeout_seconds
+        say(&tr_args(
+            "setup-request-wait-s",
+            [(
+                "request-timeout-seconds",
+                (settings.request_timeout_seconds).to_string().into(),
+            )],
         ))?;
-        say(&format!(
-            "  Send Needs review notices: {}",
-            crate::admin::setup::lab_apps::change::notices_word(settings.review_notices)
+        say(&tr_args(
+            "setup-send-needs-review-notices-2",
+            [(
+                "review-notices",
+                (crate::admin::setup::lab_apps::change::notices_word(settings.review_notices))
+                    .to_string()
+                    .into(),
+            )],
         ))?;
-        say(&format!(
-            "  Used by: {}",
-            if known.users.is_empty() {
-                "no machine yet".to_owned()
-            } else {
-                known.users.join(", ")
-            }
+        say(&tr_args(
+            "setup-used-by-2",
+            [(
+                "join",
+                (if known.users.is_empty() {
+                    "no machine yet".to_owned()
+                } else {
+                    known.users.join(", ")
+                })
+                .to_string()
+                .into(),
+            )],
         ))?;
         for (place, exact) in where_written(known) {
             say(&format!("  {place} ({exact})"))?;
@@ -337,7 +373,10 @@ async fn add(
     entered.api_key = api;
     entered.signing_key = signing;
     if asked {
-        say(&format!("Lab app: {}", entered.name.trim()))?;
+        say(&tr_args(
+            "setup-lab-app",
+            [("trim", (entered.name.trim()).to_string().into())],
+        ))?;
         say(&address_line(entered.base_url.trim()))?;
         if !ask.confirm("Save?")? {
             return Err(Failure::NotConfirmed);
@@ -387,7 +426,12 @@ async fn remove(
     ask: Ask,
 ) -> Result<Outcome, Failure> {
     let setup = &installation.setup;
-    if ask == Ask::Terminal && !ask.confirm(&format!("Remove lab app {name}?"))? {
+    if ask == Ask::Terminal
+        && !ask.confirm(&tr_args(
+            "setup-remove-lab-app",
+            [("name", (name).to_string().into())],
+        ))?
+    {
         return Err(Failure::NotConfirmed);
     }
     installation
@@ -396,7 +440,10 @@ async fn remove(
             let lab_app = name.to_owned();
             let (kept, keys) =
                 off_thread(setup, move |setup| remove_blocking(setup, &lab_app, &open)).await?;
-            say(&format!("{name} is no longer listed."))?;
+            say(&tr_args(
+                "setup-is-no-longer-listed",
+                [("name", (name).to_string().into())],
+            ))?;
             say(keys)?;
             backups(&kept)?;
             let why = removed_reason(Via::CommandLine, name);

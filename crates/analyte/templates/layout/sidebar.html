@@ -1,13 +1,13 @@
 {#- The sidebar of every restyled page: brand, engine box (with a polite live region the script speaks updates in), main links (a region the script refreshes for the Needs review count), the More group and the sign-out foot, which names a Windows account. -#}
 {%- import "components/icon.html" as draw %}
-<nav class="sidebar" aria-label="Main">
+<nav class="sidebar" aria-label="{{ analyte_i18n::text("admin-main") }}">
 <div class="brand">
 {% call draw::brand_mark(30, "3.8") %}{% endcall %}
-<span class="brand__name">Analyte</span>
+<span class="brand__name">{{ analyte_i18n::text("admin-analyte-2") }}</span>
 </div>
 <div class="engine">
 <span class="live-dot live-dot--still"></span>
-<span class="engine__text"><span class="engine__title">Engine running</span><span class="engine__meta">{{ frame.sidebar.loaded }}</span></span>
+<span class="engine__text"><span class="engine__title">{{ analyte_i18n::text("admin-engine-running") }}</span><span class="engine__meta">{{ frame.sidebar.loaded }}</span></span>
 </div>
 <p id="live-say" class="sr-only" aria-live="polite"></p>
 <ul class="nav" data-live-region="nav">
@@ -17,7 +17,7 @@
 {%- endfor %}
 </ul>
 <details class="nav-group nav-more"{% if frame.sidebar.more_open %} open{% endif %}>
-<summary class="nav-more__summary">{% call draw::icon(crate::admin::view::icon::Icon::More, "") %}{% endcall %}<span class="nav__label">More</span>{% call draw::icon(crate::admin::view::icon::Icon::ChevronDown, "icon--md nav__chev") %}{% endcall %}</summary>
+<summary class="nav-more__summary">{% call draw::icon(crate::admin::view::icon::Icon::More, "") %}{% endcall %}<span class="nav__label">{{ analyte_i18n::text("admin-more") }}</span>{% call draw::icon(crate::admin::view::icon::Icon::ChevronDown, "icon--md nav__chev") %}{% endcall %}</summary>
 <ul class="nav nav--sub">
 {%- for link in frame.sidebar.more %}
 <li><a href="{{ link.tab.href() }}"{% if link.current %} aria-current="page"{% endif %}><span class="nav__label">{{ link.tab.label() }}</span></a></li>
@@ -27,13 +27,13 @@
 <div class="sidebar__foot">
 {%- if let Some(csrf) = frame.sidebar.csrf %}
 {%- if let Some(account) = frame.sidebar.account %}
-<span class="sidebar__account">Signed in as <span class="mono">{{ account }}</span></span>
+<span class="sidebar__account">{{ analyte_i18n::text("admin-signed-in-as") }} <span class="mono">{{ account }}</span></span>
 {%- else %}
-<span>Signed in</span>
+<span>{{ analyte_i18n::text("admin-signed-in") }}</span>
 {%- endif %}
-<form class="sidebar__signout" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">Sign out</button></form>
+<form class="sidebar__signout" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">{{ analyte_i18n::text("admin-sign-out") }}</button></form>
 {%- else %}
-<span>Signed in with the admin key</span>
+<span>{{ analyte_i18n::text("admin-signed-in-with-the-admin-key") }}</span>
 {%- endif %}
 </div>
 </nav>

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Embed Fluent catalogs for the admin pages, Setup, command line and
+  desktop app (ADR 0039). English ships first. The command line accepts
+  `--lang`, `LC_ALL` and `LANG`. The admin pages use the user's browser
+  preference and fall back to English.
+
 - Optional Needs review notices to the lab app (ADR 0038): with "Send Needs
   review notices: yes" on Setup → Lab apps (or `analyte lab-apps set <name>
   --review-notices yes`), Analyte sends `POST /review-notices` when an item

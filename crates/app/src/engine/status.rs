@@ -5,6 +5,7 @@
 //! of each thing that needs someone from a closed list (ADR 0023). Anything
 //! else (no connection, a timeout, another program's answer) is not the
 //! engine answering, and the app says what it saw instead of guessing a state.
+use analyte_i18n::text as tr;
 use std::time::Duration;
 
 /// How long one question may take, connection included: the engine reads
@@ -120,66 +121,70 @@ impl Reason {
 
     /// What happened, as a notification's title says it.
     #[must_use]
-    pub const fn title(self) -> &'static str {
+    pub fn title(self) -> &'static str {
         match self {
-            Self::DiskFull => "The disk is full: Analyte is refusing new data",
-            Self::DiskLow => "The disk is almost full",
-            Self::LabAppBlocked => "Results can’t be sent to a lab app",
-            Self::SendingFailing => "Sending results to a lab app keeps failing",
-            Self::MachineStopped => "Analyte stopped working with a machine",
-            Self::MachineLinkOff => "A machine’s connection is off",
-            Self::SendingPaused => "Sending to a lab app is paused",
-            Self::MachineSilent => "A machine has gone quiet",
-            Self::MachineSoftwareVersionChanged => "Check a machine’s software version",
-            Self::SoftwareWarningWriteFailed => "Analyte could not save a software version warning",
-            Self::MachineSoftwareVersionUnchecked => {
-                "A machine is using an unchecked software version"
+            Self::DiskFull => tr("desktop-the-disk-is-full-analyte-is-refusing-new-data"),
+            Self::DiskLow => tr("desktop-the-disk-is-almost-full"),
+            Self::LabAppBlocked => tr("desktop-results-can-t-be-sent-to-a-lab-app"),
+            Self::SendingFailing => tr("desktop-sending-results-to-a-lab-app-keeps-failing"),
+            Self::MachineStopped => tr("desktop-analyte-stopped-working-with-a-machine"),
+            Self::MachineLinkOff => tr("desktop-a-machine-s-connection-is-off"),
+            Self::SendingPaused => tr("desktop-sending-to-a-lab-app-is-paused"),
+            Self::MachineSilent => tr("desktop-a-machine-has-gone-quiet"),
+            Self::MachineSoftwareVersionChanged => tr("desktop-check-a-machine-s-software-version"),
+            Self::SoftwareWarningWriteFailed => {
+                tr("desktop-analyte-could-not-save-a-software-version-warning")
             }
-            Self::MachineRefusedConnection => "A machine refused a connection from another device",
-            Self::ResultWaiting => "A result is waiting too long to be sent",
-            Self::NeedsReview => "Something needs review",
-            Self::OrdersUncertain => "Some orders have an unknown outcome",
-            Self::OrdersCancelled => "A machine cancelled some orders",
-            Self::OrdersPausedAfterRestore => "Orders are paused after a restore",
-            Self::OrderListStale => "The order list from the lab app is out of date",
-            Self::MachineOpenToAnyDevice => "A machine accepts connections from any device",
+            Self::MachineSoftwareVersionUnchecked => {
+                tr("desktop-a-machine-is-using-an-unchecked-software-version")
+            }
+            Self::MachineRefusedConnection => {
+                tr("desktop-a-machine-refused-a-connection-from-another-device")
+            }
+            Self::ResultWaiting => tr("desktop-a-result-is-waiting-too-long-to-be-sent"),
+            Self::NeedsReview => tr("desktop-something-needs-review"),
+            Self::OrdersUncertain => tr("desktop-some-orders-have-an-unknown-outcome"),
+            Self::OrdersCancelled => tr("desktop-a-machine-cancelled-some-orders"),
+            Self::OrdersPausedAfterRestore => tr("desktop-orders-are-paused-after-a-restore"),
+            Self::OrderListStale => tr("desktop-the-order-list-from-the-lab-app-is-out"),
+            Self::MachineOpenToAnyDevice => {
+                tr("desktop-a-machine-accepts-connections-from-any-device")
+            }
         }
     }
 
     /// What to do, as a notification's body says it.
     #[must_use]
-    pub const fn advice(self) -> &'static str {
+    pub fn advice(self) -> &'static str {
         match self {
-            Self::DiskFull => "Free up space on this PC. Open Analyte to see how much is left.",
-            Self::DiskLow => "Free up space soon, or Analyte will refuse new data.",
-            Self::LabAppBlocked => "Open Analyte to see which lab app and what to fix.",
-            Self::SendingFailing => "Open Analyte to see which lab app and what to check.",
+            Self::DiskFull => tr("desktop-free-up-space-on-this-pc-open-analyte-to"),
+            Self::DiskLow => tr("desktop-free-up-space-soon-or-analyte-will-refuse-new"),
+            Self::LabAppBlocked => tr("desktop-open-analyte-to-see-which-lab-app-and-what"),
+            Self::SendingFailing => tr("desktop-open-analyte-to-see-which-lab-app-and-what-2"),
             Self::MachineStopped | Self::MachineSilent | Self::MachineSoftwareVersionUnchecked => {
-                "Open Analyte to see which machine."
+                tr("desktop-open-analyte-to-see-which-machine")
             }
             Self::MachineSoftwareVersionChanged => {
-                "Open Analyte to see which machine and check its settings before relying on it."
+                tr("desktop-open-analyte-to-see-which-machine-and-check-its")
             }
             Self::SoftwareWarningWriteFailed => {
-                "Ask IT to check the Analyte service log for the storage error."
+                tr("desktop-ask-it-to-check-the-analyte-service-log-for")
             }
-            Self::MachineLinkOff => "Open Analyte to see which machine and what to check.",
-            Self::SendingPaused => {
-                "Results wait until it is resumed. Open Analyte to see which lab app."
-            }
-            Self::ResultWaiting => "Open Analyte to see what holds it up.",
-            Self::NeedsReview => "Open Analyte and look at Needs review.",
-            Self::OrdersUncertain => "Open Analyte to see which orders to check on the machine.",
-            Self::OrdersCancelled => "Open Analyte to see which orders.",
+            Self::MachineLinkOff => tr("desktop-open-analyte-to-see-which-machine-and-what-to"),
+            Self::SendingPaused => tr("desktop-results-wait-until-it-is-resumed-open-analyte-to"),
+            Self::ResultWaiting => tr("desktop-open-analyte-to-see-what-holds-it-up"),
+            Self::NeedsReview => tr("desktop-open-analyte-and-look-at-needs-review"),
+            Self::OrdersUncertain => tr("desktop-open-analyte-to-see-which-orders-to-check-on"),
+            Self::OrdersCancelled => tr("desktop-open-analyte-to-see-which-orders"),
             Self::OrdersPausedAfterRestore => {
-                "IT must check the orders before sending starts again. Open Analyte for the steps."
+                tr("desktop-it-must-check-the-orders-before-sending-starts-again")
             }
-            Self::OrderListStale => "Open Analyte to see when it last came.",
+            Self::OrderListStale => tr("desktop-open-analyte-to-see-when-it-last-came"),
             Self::MachineRefusedConnection => {
-                "Open Analyte to see which machine and which device tried."
+                tr("desktop-open-analyte-to-see-which-machine-and-which-device")
             }
             Self::MachineOpenToAnyDevice => {
-                "Open Analyte to see which machine and limit it to the machine's own address."
+                tr("desktop-open-analyte-to-see-which-machine-and-limit-it")
             }
         }
     }
@@ -277,12 +282,12 @@ impl Health {
 
     /// The state in plain words, as the tray and notifications say it.
     #[must_use]
-    pub const fn words(self) -> &'static str {
+    pub fn words(self) -> &'static str {
         match self {
-            Self::Good => "All good",
-            Self::Attention => "Something needs you",
-            Self::Problem => "A problem needs you",
-            Self::Unknown => "The engine could not read its state",
+            Self::Good => tr("desktop-all-good"),
+            Self::Attention => tr("desktop-something-needs-you"),
+            Self::Problem => tr("desktop-a-problem-needs-you"),
+            Self::Unknown => tr("desktop-the-engine-could-not-read-its-state"),
         }
     }
 }
@@ -314,11 +319,11 @@ pub enum Silence {
 impl Silence {
     /// What the app observed, in plain words.
     #[must_use]
-    pub const fn words(self) -> &'static str {
+    pub fn words(self) -> &'static str {
         match self {
-            Self::Refused => "Nothing accepts connections at the engine’s address.",
-            Self::TimedOut => "The engine did not answer within 3 seconds.",
-            Self::Broken => "The connection to the engine broke before it answered.",
+            Self::Refused => tr("desktop-nothing-accepts-connections-at-the-engine-s-address"),
+            Self::TimedOut => tr("desktop-the-engine-did-not-answer-within-3-seconds"),
+            Self::Broken => tr("desktop-the-connection-to-the-engine-broke-before-it-answered"),
         }
     }
 }
@@ -377,7 +382,9 @@ impl Client {
             match response.chunk().await {
                 Ok(Some(chunk)) => {
                     if body.len().saturating_add(chunk.len()) > LIMIT {
-                        return Reply::Unrecognised("The answer is larger than the engine’s.");
+                        return Reply::Unrecognised(tr(
+                            "desktop-the-answer-is-larger-than-the-engine-s",
+                        ));
                     }
                     body.extend_from_slice(&chunk);
                 }
@@ -397,15 +404,15 @@ fn read(status: u16, body: &[u8]) -> Reply {
         reasons,
     }) = serde_json::from_slice::<Body>(body)
     else {
-        return Reply::Unrecognised("The answer is not the engine’s status.");
+        return Reply::Unrecognised(tr("desktop-the-answer-is-not-the-engine-s-status"));
     };
     let Some(health) = Health::of_word(&state) else {
-        return Reply::Unrecognised("The answer names a state the app does not know.");
+        return Reply::Unrecognised(tr("desktop-the-answer-names-a-state-the-app-does-not"));
     };
     // The engine answers 200 with its verdict and 503 when it could not read it.
     let expected = if health == Health::Unknown { 503 } else { 200 };
     if status != expected || version.is_empty() {
-        return Reply::Unrecognised("The answer is not the engine’s status.");
+        return Reply::Unrecognised(tr("desktop-the-answer-is-not-the-engine-s-status"));
     }
     // A kind from a newer engine is left out; the state still counts.
     let reasons = reasons
@@ -415,7 +422,7 @@ fn read(status: u16, body: &[u8]) -> Reply {
         .fold(Reasons::NONE, Reasons::with);
     // The engine lists kinds only when something needs someone.
     if matches!(health, Health::Good | Health::Unknown) && !reasons.is_empty() {
-        return Reply::Unrecognised("The answer is not the engine’s status.");
+        return Reply::Unrecognised(tr("desktop-the-answer-is-not-the-engine-s-status"));
     }
     Reply::Answered(health, reasons)
 }

@@ -14,11 +14,13 @@ mod machines;
 
 /// Reports that a settings change was written but its audit row was not.
 fn saved_without_audit(error: &impl std::fmt::Display) -> io::Result<()> {
-    problem(&format::sentence(&format!(
-        "the change was saved, but {error}"
+    problem(&format::sentence(&tr_args(
+        "setup-the-change-was-saved-but",
+        [("error", (error).to_string().into())],
     )))
 }
 
+use analyte_i18n::message as tr_args;
 #[cfg(test)]
 mod tests;
 
@@ -255,7 +257,7 @@ fn restart_note() -> io::Result<()> {
     say(&format!(
         "{} On Windows run Restart-Service Analyte in an administrator PowerShell, \
          or press Restart now on the Setup page.",
-        super::RESTART_REQUIRED
+        super::restart_required()
     ))
 }
 

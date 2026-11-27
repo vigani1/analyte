@@ -10,6 +10,7 @@ use crate::admin::setup::{
     wizard::{Draft, listen, verdict},
 };
 use crate::admin::view::{Tone, format};
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_model::Identifier;
 use std::time::Duration;
 
@@ -38,15 +39,18 @@ pub(super) async fn test(
         bytes: setup.seams.limits.bytes,
     };
     if show_bytes {
-        problem(concat!(
-            "Warning: the bytes received are printed at the end. They may contain patient ",
-            "data: do not save, paste or share this output."
+        problem(tr(
+            "setup-warning-the-bytes-received-are-printed-at-the-end",
         ))?;
     }
-    say(&format!(
-        "Testing {id} ({}): {label}, for up to {} s. Nothing is sent and nothing is stored. Press Ctrl+C to stop.",
-        plan.model,
-        limits.duration.as_secs()
+    say(&tr_args(
+        "setup-testing-for-up-to-s-nothing-is-sent-and",
+        [
+            ("id", (id).to_string().into()),
+            ("model", (plan.model).to_string().into()),
+            ("label", (label).to_string().into()),
+            ("as-secs", (limits.duration.as_secs()).to_string().into()),
+        ],
     ))?;
     let (session, bytes) = if show_bytes {
         let (session, bytes) = listen::Session::start_showing(label, target, limits);
@@ -67,7 +71,7 @@ pub(super) async fn test(
         }
         if view.closed && !told.1 {
             told.1 = true;
-            say("The machine closed the connection.")?;
+            say(tr("setup-the-machine-closed-the-connection"))?;
         }
         if view.end.is_some() {
             break view;
@@ -78,13 +82,13 @@ pub(super) async fn test(
     say(&verdict::received(&view, limits.bytes))?;
     say(&format!(
         "{}: {}",
-        verdict::FRAMING_CHARACTERS,
+        verdict::framing_characters(),
         verdict::framing(&view.framing)
     ))?;
     if let Some(bytes) = bytes
         && let Ok(bytes) = bytes.await
     {
-        say("Bytes received (may contain patient data):")?;
+        say(tr("setup-bytes-received-may-contain-patient-data"))?;
         say(&shown(&bytes))?;
     }
     drop(session);
@@ -118,21 +122,37 @@ async fn offer_peer(
     peer: std::net::IpAddr,
     ask: Ask,
 ) -> Result<Outcome, Failure> {
-    say(&format!("The device that connected: {peer}."))?;
+    say(&tr_args(
+        "setup-the-device-that-connected",
+        [("peer", (peer).to_string().into())],
+    ))?;
     if plan.peers.as_ref().is_some_and(|peers| peers.allows(peer)) {
-        say("It is one of the devices this machine accepts.")?;
+        say(tr("setup-it-is-one-of-the-devices-this-machine-accepts"))?;
         return Ok(Outcome::Done);
     }
-    let command = format!("analyte machines set {id} --allowed-peer {peer}");
+    let command = tr_args(
+        "setup-analyte-machines-set-allowed-peer",
+        [
+            ("id", (id).to_string().into()),
+            ("peer", (peer).to_string().into()),
+        ],
+    );
     if ask == Ask::Never {
-        say(&format!(
-            "Check that this is the analyzer's own address, then accept only it with: {command}"
+        say(&tr_args(
+            "setup-check-that-this-is-the-analyzer-s-own-address",
+            [("command", (command).to_string().into())],
         ))?;
         return Ok(Outcome::Done);
     }
-    say("Check that this is the analyzer's own address in its network settings.")?;
-    if !ask.confirm(&format!("Only accept this device ({peer}) from now on?"))? {
-        say(&format!("Nothing was changed. To do it later: {command}"))?;
+    say(tr("setup-check-that-this-is-the-analyzer-s-own-address-2"))?;
+    if !ask.confirm(&tr_args(
+        "setup-only-accept-this-device-from-now-on",
+        [("peer", (peer).to_string().into())],
+    ))? {
+        say(&tr_args(
+            "setup-nothing-was-changed-to-do-it-later",
+            [("command", (command).to_string().into())],
+        ))?;
         return Ok(Outcome::Done);
     }
     draft.allowed_peers = Some(peer.to_string());

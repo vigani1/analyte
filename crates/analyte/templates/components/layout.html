@@ -71,7 +71,7 @@
 {%- macro welcome(title, lede, steps, href, action, engine) -%}
 <div class="welcome anim-in">
 {% call draw::brand_mark(72, "3.2") %}{% endcall %}
-<div><p class="eyebrow">Welcome</p><h1 class="welcome__title">{{ title }}</h1></div>
+<div><p class="eyebrow">{{ analyte_i18n::text("admin-welcome") }}</p><h1 class="welcome__title">{{ title }}</h1></div>
 <p class="muted welcome__lede">{{ lede }}</p>
 <ol class="welcome__steps">
 {%- for step in steps %}

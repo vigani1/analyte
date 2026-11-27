@@ -22,6 +22,7 @@ mod window;
 use crate::engine::{Engine, LOCAL_SCHEME};
 use crate::local::{self, Off};
 use crate::title_bar::View;
+use analyte_i18n::{Language, text as tr};
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex, PoisonError};
 use tauri::Manager as _;
@@ -115,19 +116,24 @@ impl Shared {
 
 /// Runs the app until "Quit app"; the exit code says whether it could start.
 pub fn run() -> ExitCode {
+    let language = Language::command_line(None);
+    language.sync_scope(|| run_localized(language))
+}
+
+fn run_localized(language: Language) -> ExitCode {
     let folder = std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(std::path::Path::to_path_buf));
     log::start();
     let engine = folder
         .as_deref()
-        .ok_or_else(|| "the app could not find its own folder".to_owned())
+        .ok_or_else(|| tr("desktop-app-folder-missing").to_owned())
         .and_then(|folder| Engine::from_settings(folder).map_err(|error| error.to_string()));
     if let Err(why) = &engine {
         tracing::error!(%why, "the app's settings file could not be used");
     }
     let tray_only = std::env::args().any(|argument| argument == TRAY_ONLY);
-    match build(engine, tray_only) {
+    match build(engine, tray_only, language) {
         Ok(app) => {
             app.run(on_event);
             ExitCode::SUCCESS
@@ -149,7 +155,11 @@ struct Owner {
 /// or one `sc.exe` call is cancelled, never waited for.
 const STOP_TIME: std::time::Duration = std::time::Duration::from_secs(2);
 
-fn build(engine: Result<Engine, String>, tray_only: bool) -> tauri::Result<tauri::App> {
+fn build(
+    engine: Result<Engine, String>,
+    tray_only: bool,
+    language: Language,
+) -> tauri::Result<tauri::App> {
     let (commands, received) = mpsc::channel(COMMANDS);
     let origin = engine.as_ref().map(Engine::origin).ok();
     let shared = Arc::new(Shared {
@@ -171,25 +181,27 @@ fn build(engine: Result<Engine, String>, tray_only: bool) -> tauri::Result<tauri
             }
         }))
         .plugin(tauri_plugin_notification::init())
-        .register_uri_scheme_protocol(LOCAL_SCHEME, |context, request| {
+        .register_uri_scheme_protocol(LOCAL_SCHEME, move |context, request| {
             let shared = context.app_handle().state::<Arc<Shared>>();
-            local_page(
-                &shared,
-                local::Webview::of(context.webview_label()),
-                &request,
-            )
+            language.sync_scope(|| {
+                local_page(
+                    &shared,
+                    local::Webview::of(context.webview_label()),
+                    &request,
+                )
+            })
         })
         .on_window_event(window::on_event)
         .manage(Arc::clone(&shared))
         .setup(move |app| {
-            tray::create(app.handle())?;
+            language.sync_scope(|| tray::create(app.handle()))?;
             notifications(app.handle());
-            let task = tauri::async_runtime::spawn(monitor::run(
+            let task = tauri::async_runtime::spawn(language.scope(monitor::run(
                 app.handle().clone(),
                 Arc::clone(&shared),
                 received,
                 stopped,
-            ));
+            )));
             app.manage(Owner {
                 stop,
                 task: Mutex::new(Some(task)),

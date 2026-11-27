@@ -5,7 +5,7 @@ use super::{
     scan::{Known, scan},
 };
 use crate::admin::{
-    setup::{SETTINGS_UNCHANGED, Setup, SetupError, Via, copies, entries, site, stored},
+    setup::{Setup, SetupError, Via, copies, entries, settings_unchanged, site, stored},
     view::format,
 };
 use crate::installation::{
@@ -13,6 +13,7 @@ use crate::installation::{
     credentials::{Locked, Secret},
 };
 use analyte_config::{Destination, HttpsUrl};
+use analyte_i18n::{count as tr_count, message as tr_args, text as tr};
 use analyte_model::Identifier;
 use jiff::Timestamp;
 use std::path::PathBuf;
@@ -113,12 +114,12 @@ fn settings(
         freshness_seconds: seconds(
             &posted.freshness_seconds,
             Destination::DEFAULT_FRESHNESS_SECONDS,
-            "the order list time",
+            tr("setup-the-order-list-time"),
         )?,
         request_timeout_seconds: seconds(
             &posted.request_timeout_seconds,
             Destination::DEFAULT_REQUEST_TIMEOUT_SECONDS,
-            "the request wait",
+            tr("setup-the-request-wait"),
         )?,
         name,
         base_url: HttpsUrl::parse(posted.base_url.trim()).map_err(SetupError::InvalidUrl)?,
@@ -176,8 +177,14 @@ impl Saved {
     pub(super) fn usage_line(&self, unused: &str) -> String {
         match &self.users {
             Ok(users) if users.is_empty() => unused.to_owned(),
-            Ok(users) => format!("Used by {}.", users.join(", ")),
-            Err(error) => format!("Could not check which machines use this lab app: {error}"),
+            Ok(users) => tr_args(
+                "setup-used-by-3",
+                [("join", (users.join(", ")).to_string().into())],
+            ),
+            Err(error) => tr_args(
+                "setup-could-not-check-which-machines-use-this-lab-app",
+                [("error", (error).to_string().into())],
+            ),
         }
     }
 }
@@ -332,19 +339,25 @@ pub(in crate::admin::setup) fn reason(via: Via, change: Change, saved: &Saved) -
 pub(super) fn blockers(known: &Known, waiting: Result<u64, &SetupError>) -> Vec<String> {
     let mut why = Vec::new();
     if !known.users.is_empty() {
-        why.push(format!(
-            "Machines send results to it: {}. Pick another lab app on their setup pages, or remove them, first.",
-            known.users.join(", ")
+        why.push(tr_args(
+            "setup-machines-send-results-to-it-pick-another-lab-app",
+            [("join", (known.users.join(", ")).to_string().into())],
         ));
     }
     match waiting {
         Ok(0) => {}
-        Ok(count) => why.push(format!(
-            "{} still wait for it. They are delivered first; remove it when the Overview shows nothing waiting.",
-            format::amount(count, "result or order message", "results or order messages")
+        Ok(count) => why.push(tr_args(
+            "setup-still-wait-for-it-they-are-delivered-first-remove",
+            [(
+                "messages",
+                (tr_count("admin-count-results-or-order-messages", count))
+                    .to_string()
+                    .into(),
+            )],
         )),
-        Err(error) => why.push(format!(
-            "What still waits for it could not be counted ({error}), so it is kept."
+        Err(error) => why.push(tr_args(
+            "setup-what-still-waits-for-it-could-not-be-counted",
+            [("error", (error).to_string().into())],
         )),
     }
     why
@@ -395,9 +408,7 @@ pub(in crate::admin::setup) fn saved_lines(change: Change, saved: &Saved) -> Vec
         saved.settings.name.as_str(),
         change.verb()
     )];
-    lines.extend(saved.details(
-        "Used by no machine yet: pick it with analyte machines set <machine> --lab-app <name>.",
-    ));
+    lines.extend(saved.details(tr("setup-used-by-no-machine-yet-pick-it-with-analyte")));
     lines.extend(copies(&saved.backups));
     lines
 }
@@ -410,11 +421,15 @@ impl Saved {
             self.usage_line(unused),
         ];
         if !self.changed {
-            lines.push(SETTINGS_UNCHANGED.to_owned());
+            lines.push(settings_unchanged().to_owned());
         }
-        lines.extend(self.replaced.iter().map(|key| format!("Key stored: {key}")));
+        lines.extend(
+            self.replaced
+                .iter()
+                .map(|key| tr_args("setup-key-stored", [("key", (key).to_string().into())])),
+        );
         if !self.replaced.is_empty() {
-            lines.push(format::KEYS_APPLY.to_owned());
+            lines.push(format::keys_apply().to_owned());
         }
         lines
     }
@@ -422,7 +437,10 @@ impl Saved {
 
 /// Formats the address line for a lab app.
 pub(in crate::admin::setup) fn address_line(address: &str) -> String {
-    format!("Address: {address}")
+    tr_args(
+        "setup-address-2",
+        [("address", (address).to_string().into())],
+    )
 }
 
 #[cfg(test)]

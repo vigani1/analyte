@@ -13,31 +13,38 @@ use crate::admin::view::{
     parts::{Hover, Notice},
     report::{Button, Fact, Head, Link, Status, Value},
 };
+use analyte_i18n::text as tr;
 
 /// The machine list's columns.
-pub(super) const MACHINE_COLUMNS: [Column; 6] = [
-    Column::text(crate::admin::view::format::MACHINE),
-    Column::text(crate::admin::view::format::CONNECTION),
-    Column::text(crate::admin::view::format::LAST_DATA),
-    Column::text(crate::admin::view::format::CONNECTED_BY),
-    Column::text("Since"),
-    Column::text("Sends to"),
-];
+pub(super) fn machine_columns() -> [Column; 6] {
+    [
+        Column::text(crate::admin::view::format::machine()),
+        Column::text(crate::admin::view::format::connection()),
+        Column::text(crate::admin::view::format::last_data()),
+        Column::text(crate::admin::view::format::connected_by()),
+        Column::text(tr("admin-since")),
+        Column::text(tr("admin-sends-to")),
+    ]
+}
 
 /// The recent messages' columns.
-pub(super) const MESSAGE_COLUMNS: [Column; 5] = [
-    Column::text("Time"),
-    Column::text("Sample"),
-    Column::text("Reading"),
-    Column::text(crate::admin::view::format::LAB_APP),
-    Column::text("Details"),
-];
+pub(super) fn message_columns() -> [Column; 5] {
+    [
+        Column::text(tr("admin-time")),
+        Column::text(tr("admin-sample")),
+        Column::text(tr("admin-reading-3")),
+        Column::text(crate::admin::view::format::lab_app()),
+        Column::text(tr("admin-details")),
+    ]
+}
 
 /// The result statuses' columns on the departures page.
-pub(super) const STATUS_COLUMNS: [Column; 2] = [
-    Column::text("Status sent by the machine"),
-    Column::text("Shown as"),
-];
+pub(super) fn status_columns() -> [Column; 2] {
+    [
+        Column::text(tr("admin-status-sent-by-the-machine")),
+        Column::text(tr("admin-shown-as")),
+    ]
+}
 
 /// GET /machines: every machine Analyte runs or its settings list.
 #[derive(askama::Template)]

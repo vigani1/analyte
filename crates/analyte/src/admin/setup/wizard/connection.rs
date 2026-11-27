@@ -16,6 +16,7 @@ use crate::admin::{
 };
 use crate::machine::link::status::Link;
 use analyte_config::{DefinitionDetails, Endpoint, TransportKind};
+use analyte_i18n::{message as tr_args, text as tr};
 use askama::Template as _;
 
 pub(super) fn render_connection(
@@ -114,14 +115,9 @@ fn repeated_results_field(current_site: &toml::Table, draft: &Draft) -> Setting 
     Setting {
         name: "repeated_results".to_owned(),
         id: "s2-repeated-results".to_owned(),
-        label: "Repeated results".to_owned(),
+        label: tr("admin-repeated-results").to_owned(),
         chosen: options.iter().any(|option| option.selected),
-        hint: concat!(
-            "When the machine sends a result it sent before. Automatically: a resend is ",
-            "kept once and not sent again, and a correction goes to the lab app as a new ",
-            "revision. Always ask me: every repeat waits in Needs review for a person."
-        )
-        .to_owned(),
+        hint: tr("setup-when-the-machine-sends-a-result-it-sent-before").to_owned(),
         differs: false,
         options,
     }
@@ -179,7 +175,7 @@ fn analyzer_mode_field(
         id: "s2-analyzer-mode".to_owned(),
         label: mode.label.as_str().to_owned(),
         chosen: options.iter().any(|option| option.selected),
-        hint: "As the analyzer shows it; it changes how the analyzer frames its records and cannot be guessed.".to_owned(),
+        hint: tr("setup-as-the-analyzer-shows-it-it-changes-how-the").to_owned(),
         differs: false,
         options,
     })
@@ -225,7 +221,7 @@ fn connection_inputs(
         .unwrap_or_default();
     match definition.kind {
         TransportKind::Serial => (
-            "It connects by a serial cable or a USB serial adapter.",
+            tr("setup-it-connects-by-a-serial-cable-or-a-usb"),
             serial_choices(state, id, (definition, current_site), draft),
         ),
         kind @ (TransportKind::TcpServer | TransportKind::TcpClient) => {
@@ -234,11 +230,7 @@ fn connection_inputs(
             let port = draft.tcp_port.as_deref().unwrap_or(port).to_owned();
             if kind == TransportKind::TcpServer {
                 (
-                    concat!(
-                        "The machine connects to this PC over the lab network. Choose the ",
-                        "address Analyte listens on, then type that address and the port into ",
-                        "the machine’s host (LIS) settings."
-                    ),
+                    tr("setup-the-machine-connects-to-this-pc-over-the-lab"),
                     page::Inputs::Listens {
                         hosts: (state.setup.seams.addresses)()
                             .map(|found| host_choices(&found, &host))
@@ -254,16 +246,13 @@ fn connection_inputs(
                 )
             } else {
                 (
-                    concat!(
-                        "Analyte connects to the machine over the lab network. Type the address ",
-                        "and port shown in the machine’s own network or host (LIS) settings."
-                    ),
+                    tr("setup-analyte-connects-to-the-machine-over-the-lab-network"),
                     page::Inputs::Connects { host, port },
                 )
             }
         }
         TransportKind::WatchedFolder => (
-            "Analyte reads its results from a folder.",
+            tr("setup-analyte-reads-its-results-from-a-folder"),
             page::Inputs::Folder(
                 draft
                     .folder
@@ -291,9 +280,9 @@ pub(in crate::admin::setup) fn host_choices(found: &[Address], chosen: &str) -> 
             value: chosen.to_owned(),
             address: chosen.to_owned(),
             meta: if loopback {
-                "this PC only: no machine on the network can reach it".into()
+                tr("setup-this-pc-only-no-machine-on-the-network-can").into()
             } else {
-                "saved before; not an address of this PC now".into()
+                tr("setup-saved-before-not-an-address-of-this-pc-now").into()
             },
             checked: true,
         });
@@ -311,7 +300,7 @@ pub(in crate::admin::setup) fn host_choices(found: &[Address], chosen: &str) -> 
         checked: chosen == every,
         value: every.clone(),
         address: every,
-        meta: "every network card of this PC".into(),
+        meta: tr("setup-every-network-card-of-this-pc").into(),
     });
     hosts
 }
@@ -335,17 +324,20 @@ fn serial_choices(
                 .map(|port| {
                     let (value, endpoint, saved) = match port.factory_serial() {
                         Some(number) => (
-                            format!("usb:{number}"),
+                            tr_args("setup-usb", [("number", (number).to_string().into())]),
                             analyte_config::UsbSerial::new(number.into()).map_or_else(
                                 |_| Endpoint::Fixed(port.name.clone()),
                                 Endpoint::UsbSerial,
                             ),
-                            format!("remembered by its serial number {number}"),
+                            tr_args(
+                                "setup-remembered-by-its-serial-number",
+                                [("number", (number).to_string().into())],
+                            ),
                         ),
                         None => (
                             format!("name:{}", port.name),
                             Endpoint::Fixed(port.name.clone()),
-                            "no serial number; remembered by its port name".into(),
+                            tr("setup-no-serial-number-remembered-by-its-port-name").into(),
                         ),
                     };
                     let checked = match draft.port.as_deref() {
@@ -364,9 +356,10 @@ fn serial_choices(
                         meta: format!(
                             "{} – {}",
                             port.description.as_deref().unwrap_or("unknown adapter"),
-                            used_by
-                                .as_ref()
-                                .map_or(saved, |holder| format!("used by {holder}"))
+                            used_by.as_ref().map_or(saved, |holder| tr_args(
+                                "setup-used-by-4",
+                                [("holder", (holder).to_string().into())]
+                            ))
                         ),
                         value,
                         name: port.name.clone(),
@@ -376,7 +369,12 @@ fn serial_choices(
                 })
                 .collect()
         })
-        .map_err(|error| format::sentence(&format!("listing serial ports failed: {error}")));
+        .map_err(|error| {
+            format::sentence(&tr_args(
+                "setup-listing-serial-ports-failed",
+                [("error", (error).to_string().into())],
+            ))
+        });
     page::Inputs::Serial {
         ports,
         typed: draft.port_name.clone().unwrap_or_default(),
@@ -422,11 +420,13 @@ fn cable_fields(
                 label: cable::label(setting),
                 chosen: options.iter().any(|option| option.selected),
                 hint: suggested.as_deref().map_or_else(
-                    || {
-                        "The machine’s definition suggests none: read it on the analyzer’s screen."
-                            .to_owned()
+                    || tr("setup-the-machine-s-definition-suggests-none-read-it-on").to_owned(),
+                    |value| {
+                        tr_args(
+                            "setup-the-manual-suggests-3",
+                            [("value", (shown(value)).to_string().into())],
+                        )
                     },
-                    |value| format!("The manual suggests {}.", shown(value)),
                 ),
                 differs: current.is_some() && current != suggested,
                 options,
@@ -476,14 +476,16 @@ fn choice_fields(
                 .as_ref()
                 .and_then(|value| choice.value(value))
             {
-                Some(value) => format!(
-                    "{} The manual suggests {}.",
-                    choices::hint(choice.kind),
-                    value.label.as_str()
+                Some(value) => tr_args(
+                    "setup-the-manual-suggests-4",
+                    [
+                        ("kind", (choices::hint(choice.kind)).to_string().into()),
+                        ("label", (value.label.as_str()).to_string().into()),
+                    ],
                 ),
-                None => format!(
-                    "{} The machine’s definition suggests none.",
-                    choices::hint(choice.kind)
+                None => tr_args(
+                    "setup-the-machine-s-definition-suggests-none",
+                    [("kind", (choices::hint(choice.kind)).to_string().into())],
                 ),
             };
             Setting {
@@ -502,17 +504,25 @@ fn choice_fields(
 /// The chosen connection in plain words, with the exact setting on hover.
 pub(in crate::admin::setup) fn connection_words(link: Link, connection: &Endpoint) -> Hover {
     let shown = match (link, connection) {
-        (_, Endpoint::UsbSerial(number)) => {
-            format!("USB serial adapter with serial number {}", number.as_str())
+        (_, Endpoint::UsbSerial(number)) => tr_args(
+            "setup-usb-serial-adapter-with-serial-number",
+            [("number", (number.as_str()).to_string().into())],
+        ),
+        (Link::Serial, Endpoint::Fixed(name)) => {
+            tr_args("setup-serial-port", [("name", (name).to_string().into())])
         }
-        (Link::Serial, Endpoint::Fixed(name)) => format!("Serial port {name}"),
-        (Link::TcpServer, Endpoint::Fixed(address)) => {
-            format!("Analyte listens on {address}; the machine connects to it")
-        }
-        (Link::TcpClient, Endpoint::Fixed(address)) => {
-            format!("Analyte connects to the machine at {address}")
-        }
-        (Link::Folder, Endpoint::Fixed(folder)) => format!("Watched folder {folder}"),
+        (Link::TcpServer, Endpoint::Fixed(address)) => tr_args(
+            "setup-analyte-listens-on-the-machine-connects-to-it",
+            [("address", (address).to_string().into())],
+        ),
+        (Link::TcpClient, Endpoint::Fixed(address)) => tr_args(
+            "setup-analyte-connects-to-the-machine-at",
+            [("address", (address).to_string().into())],
+        ),
+        (Link::Folder, Endpoint::Fixed(folder)) => tr_args(
+            "setup-watched-folder",
+            [("folder", (folder).to_string().into())],
+        ),
     };
     Hover {
         shown,

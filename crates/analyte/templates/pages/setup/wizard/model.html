@@ -6,22 +6,22 @@
 {%- block step %}
 <form class="stack stack--lg" method="get" action="{{ action }}">
 <section class="stack" aria-labelledby="s1">
-<div><h2 id="s1" class="wizard__title">Which machine is it?</h2><p class="muted wizard__text">Pick the model. Models marked “Not ready yet” can only record until their information is complete.</p></div>
+<div><h2 id="s1" class="wizard__title">{{ analyte_i18n::text("setup-which-machine-is-it") }}</h2><p class="muted wizard__text">{{ analyte_i18n::text("setup-pick-the-model-models-marked-not-ready-yet-can") }}</p></div>
 <ul class="choices">
 {%- for choice in choices %}
 <li><label class="choice"><input type="radio" name="definition" value="{{ choice.value }}" required{% if choice.checked %} checked{% endif %}{% if choice.disabled %} disabled{% endif %}><span><span class="choice__title">{% call display::hover(choice.title.shown, choice.title.exact) %}{% endcall %}</span> <span class="choice__meta">{% call display::hover(choice.meta.shown, choice.meta.exact) %}{% endcall %}</span></span>{% if let Some((status, icon)) = choice.status %}{% call display::status_with(status.tone, icon, status.word, status.note.as_deref().unwrap_or_default()) %}{% endcall %}{% else %}<span></span>{% endif %}</label></li>
 {%- else %}
-<li>{% call feedback::note("No machine model is shipped with this Analyte", "Its machines folder holds no model to choose.") %}{% endcall %}</li>
+<li>{% call feedback::note(analyte_i18n::text("setup-no-machine-model-is-shipped-with-this-analyte"), analyte_i18n::text("setup-its-machines-folder-holds-no-model-to-choose")) %}{% endcall %}</li>
 {%- endfor %}
 </ul>
 </section>
 <fieldset class="wizard__set stack">
-<legend class="field__label wizard__legend">How Analyte uses it</legend>
+<legend class="field__label wizard__legend">{{ analyte_i18n::text("setup-how-analyte-uses-it") }}</legend>
 <ul class="choices">
-<li><label class="choice"><input type="radio" name="mode" value=""{% if !records_only %} checked{% endif %}><span><span class="choice__title">Connect normally</span> <span class="choice__meta">– results go to a lab app; needs a ready model</span></span><span></span></label></li>
-<li><label class="choice"><input type="radio" name="mode" value="record"{% if records_only %} checked{% endif %}><span><span class="choice__title">Record only</span> <span class="choice__meta">– keeps the analyzer talking and records every byte, to write its definition; nothing is sent to a lab app</span></span><span></span></label></li>
+<li><label class="choice"><input type="radio" name="mode" value=""{% if !records_only %} checked{% endif %}><span><span class="choice__title">{{ analyte_i18n::text("setup-connect-normally") }}</span> <span class="choice__meta">{{ analyte_i18n::text("setup-results-go-to-a-lab-app-needs-a-ready") }}</span></span><span></span></label></li>
+<li><label class="choice"><input type="radio" name="mode" value="record"{% if records_only %} checked{% endif %}><span><span class="choice__title">{{ analyte_i18n::text("setup-record-only") }}</span> <span class="choice__meta">{{ analyte_i18n::text("setup-keeps-the-analyzer-talking-and-records-every-byte-to") }}</span></span><span></span></label></li>
 </ul>
-<span class="field__hint">Recordings contain patient data. Export them with analyte captures export and de-identify a copy before sharing it.</span>
+<span class="field__hint">{{ analyte_i18n::text("setup-recordings-contain-patient-data-export-them-with-analyte-captures") }}</span>
 </fieldset>
 {%- call forms::hidden_fields(hidden) %}{% endcall %}
 {% call forms::step_next("", wizard.count) %}{% endcall %}

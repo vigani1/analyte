@@ -139,7 +139,7 @@ fn page(facts: &Facts, enough: bool, alerts: Vec<AlertRow>, relays: Vec<String>)
         restore: facts.restore_paused.then(|| Notice {
             tone: Tone::Attention,
             title: "Order sending is paused after a restore".into(),
-            text: crate::admin::view::format::RESTORE_ADVICE.into(),
+            text: crate::admin::view::format::restore_advice().into(),
         }),
         kept: vec![
             Notice {

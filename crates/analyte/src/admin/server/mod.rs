@@ -3,6 +3,7 @@ use super::{Token, setup::Step};
 use crate::admin::Error;
 use crate::admin::view::{frame, refusal::Refusal};
 use crate::installation::config::Program;
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_model::Identifier;
 use axum::{
     Form, Router,
@@ -19,12 +20,13 @@ use std::{
     time::Duration,
 };
 use tokio::sync::{Semaphore, watch};
+pub(super) mod language;
 pub(super) mod listener;
 pub(super) mod live;
 mod proof;
 pub(super) mod sessions;
 mod sign_in;
-pub(super) use sign_in::SIGN_IN;
+pub(super) use sign_in::sign_in;
 mod status;
 pub(super) mod token;
 // Off Windows nothing hands out codes, so the pipe's half of this module is
@@ -61,12 +63,10 @@ pub(super) struct Machine {
     /// The only devices it accepts connections from, when it listens and its
     /// site file names them (ADR 0026).
     pub(super) allowed_peers: Option<analyte_config::AllowedPeers>,
-    /// Its serial cable settings in words, with what differs from the
-    /// model's suggestion; none unless it is on a serial cable (ADR 0031).
-    pub(super) cable: Option<String>,
-    /// Its model's own choices in words, with what differs from the model's
-    /// suggestion; none when the model declares none (ADR 0032).
-    pub(super) choices: Option<String>,
+    /// Effective cable settings and the model's suggestion (ADR 0031).
+    pub(super) cable: Option<(analyte_config::Serial, Option<analyte_config::SerialValues>)>,
+    /// Effective analyzer settings and the model's suggestions (ADR 0032).
+    pub(super) choices: Vec<analyte_config::Chosen>,
     /// How repeated results are handled (ADR 0035, 2026-11-26); none where
     /// the choice does not apply (record only, IHE LAW, POCT).
     pub(super) repeated_results: Option<analyte_config::RepeatedResults>,
@@ -414,10 +414,9 @@ fn running_machines(program: &Program, seams: &super::setup::Seams) -> Result<Ve
                     &effective.site().endpoint,
                 ),
                 allowed_peers: effective.site().allowed_peers.clone(),
-                cable: super::setup::cable::of(effective.stack()).map(|serial| {
-                    super::setup::cable::summary(serial, effective.serial_suggestion())
-                }),
-                choices: super::setup::choices::summary(effective.choices()),
+                cable: super::setup::cable::of(effective.stack())
+                    .map(|serial| (serial.clone(), effective.serial_suggestion().cloned())),
+                choices: effective.choices().to_vec(),
                 repeated_results: effective.repeated_results(),
                 lab_app: effective.site().lab_app_name().cloned(),
             })
@@ -451,6 +450,7 @@ fn router(state: Arc<Context>) -> Router {
             get(super::more::retention::show_page).post(super::more::retention::hold),
         )
         .route("/settings", get(super::more::settings))
+        .route("/settings/language", post(language::change))
         .route("/activity", get(super::activity::activity))
         .route("/events", get(live::events))
         .merge(machine_routes())
@@ -538,7 +538,13 @@ async fn wrong_method(State(state): State<Arc<Context>>, method: Method) -> Resp
     Refusal::WrongMethod(method).page(&state.assets)
 }
 
-async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: Next) -> Response {
+async fn protect(State(state): State<Arc<Context>>, request: Request, next: Next) -> Response {
+    language::for_request(request.headers())
+        .scope(protect_request(state, request, next))
+        .await
+}
+
+async fn protect_request(state: Arc<Context>, mut request: Request, next: Next) -> Response {
     let valid_host = request
         .headers()
         .get(header::HOST)
@@ -719,7 +725,13 @@ async fn plain_refusal_as_page(assets: &super::view::assets::Root, response: Res
     }
     let detail = match axum::body::to_bytes(response.into_body(), PLAIN_LIMIT).await {
         Ok(words) => String::from_utf8_lossy(&words).into_owned(),
-        Err(error) => format!("its words could not be read within {PLAIN_LIMIT} bytes: {error}"),
+        Err(error) => tr_args(
+            "admin-its-words-could-not-be-read-within-bytes",
+            [
+                ("PLAIN-LIMIT", (PLAIN_LIMIT).to_string().into()),
+                ("error", (error).to_string().into()),
+            ],
+        ),
     };
     Refusal::Unreadable { status, detail }.page(assets)
 }
@@ -734,7 +746,7 @@ async fn checked(request: Request, session: Option<Arc<Session>>) -> Result<Requ
         return Ok(request);
     }
     let Some(session) = session else {
-        return Err(Refusal::FormExpired("CSRF session required"));
+        return Err(Refusal::FormExpired(tr("admin-csrf-session-required")));
     };
     let limit = if setup_write(&request) {
         super::setup::FORM_LIMIT
@@ -749,7 +761,9 @@ async fn checked(request: Request, session: Option<Arc<Session>>) -> Result<Requ
     let form = Form::<Csrf>::from_request(copy, &()).await;
     if !form.is_ok_and(|Form(form)| session.csrf_valid(&form.csrf)) {
         // Usually an old page or a new sign-in.
-        return Err(Refusal::FormExpired("CSRF token invalid or missing"));
+        return Err(Refusal::FormExpired(tr(
+            "admin-csrf-token-invalid-or-missing",
+        )));
     }
     Ok(Request::from_parts(parts, axum::body::Body::from(bytes)))
 }

@@ -10,6 +10,6 @@
 {%- if let Some(next) = next %}
 {% call forms::link_button(next.href(), next.label(), "btn--primary btn--lg panel__action") %}{% endcall %}
 {%- endif %}
-{% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::support(), support) %}{% endcall %}
 </section>
 {%- endblock %}

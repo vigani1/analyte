@@ -26,6 +26,7 @@ use crate::navigation::{Decision, PAGES_SCRIPT, decide};
 use crate::sign_in;
 use crate::title_bar::{self, Mouse, Place, Pointer, Sizing, View};
 use crate::watch::Shown;
+use analyte_i18n::text as tr;
 use tauri::{
     AppHandle, Manager as _, PhysicalPosition, PhysicalSize, Rect, Runtime, WebviewUrl, Window,
     WindowEvent,
@@ -206,7 +207,7 @@ pub(super) fn open_overview(app: &AppHandle, shared: &Shared, shown: Shown) {
 /// shows it with the keyboard on the pages.
 fn make(app: &AppHandle, url: url::Url, bar: url::Url, origin: Origin) -> tauri::Result<()> {
     let window = tauri::window::WindowBuilder::new(app, LABEL)
-        .title("Analyte")
+        .title(tr("admin-analyte-2"))
         .inner_size(1280.0, 800.0)
         .min_inner_size(900.0, 600.0)
         .center()

@@ -10,46 +10,46 @@
 {% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
 {%- endfor %}
 <div class="split">
-{% call layout::titled_card("dp-reading", "This reading", "", "") %}
+{% call layout::titled_card("dp-reading", analyte_i18n::text("admin-this-reading"), "", "") %}
 <dl class="kv">
 {%- for fact in facts %}
 {% call display::fact(fact) %}{% endcall %}
 {%- endfor %}
 </dl>
 {% endcall %}
-{% call layout::titled_card("dp-enabled", "Differences switched on for this machine", "", "stack") %}
+{% call layout::titled_card("dp-enabled", analyte_i18n::text("admin-differences-switched-on-for-this-machine"), "", "stack") %}
 {%- if let Some(enabled) = enabled %}
 {%- if enabled.is_empty() %}
-<p class="text">None were switched on.</p>
+<p class="text">{{ analyte_i18n::text("admin-none-were-switched-on") }}</p>
 {%- else %}
-<p class="muted text--sm">Switched on does not mean used: the next card says which ones were used for this message.</p>
-{% call feedback::support("Their declarations", enabled.as_slice()) %}{% endcall %}
+<p class="muted text--sm">{{ analyte_i18n::text("admin-switched-on-does-not-mean-used-the-next-card") }}</p>
+{% call feedback::support(analyte_i18n::text("admin-their-declarations"), enabled.as_slice()) %}{% endcall %}
 {%- endif %}
 {%- else %}
-<p class="muted text">Not recorded by the version that read this message.</p>
+<p class="muted text">{{ analyte_i18n::text("admin-not-recorded-by-the-version-that-read-this-message") }}</p>
 {%- endif %}
 {% endcall %}
 </div>
 {% call display::departures_used(applied) %}{% endcall %}
 {%- if let Some(statuses) = statuses %}
 <section class="section" aria-labelledby="dp-status">
-{% call layout::label("dp-status", "Result statuses", "") %}{% endcall %}
+{% call layout::label("dp-status", analyte_i18n::text("admin-result-statuses"), "") %}{% endcall %}
 {%- if statuses.is_empty() %}
-{% call feedback::empty_card("No results", "This reading produced no results.") %}{% endcall %}
+{% call feedback::empty_card(analyte_i18n::text("admin-no-results"), analyte_i18n::text("admin-this-reading-produced-no-results")) %}{% endcall %}
 {%- else %}
-{% call display::table(STATUS_COLUMNS) %}
+{% call display::table(crate::admin::machines::page::status_columns()) %}
 {%- for (sent, shown) in statuses %}
-<tr>{% if sent.is_empty() %}{% call display::cell("subtle") %}None sent{% endcall %}{% else %}{% call display::cell("mono") %}{{ sent }}{% endcall %}{% endif %}{% call display::cell("") %}{{ shown }}{% endcall %}</tr>
+<tr>{% if sent.is_empty() %}{% call display::cell("subtle") %}{{ analyte_i18n::text("admin-none-sent") }}{% endcall %}{% else %}{% call display::cell("mono") %}{{ sent }}{% endcall %}{% endif %}{% call display::cell("") %}{{ shown }}{% endcall %}</tr>
 {%- endfor %}
 {% endcall %}
 {%- endif %}
 </section>
 {%- endif %}
-<p class="subtle text--sm">The references above point to the manual sections and recordings behind each difference. The original bytes stay in the protected store; to see them, use Show the original message on an item in Needs review.</p>
+<p class="subtle text--sm">{{ analyte_i18n::text("admin-the-references-above-point-to-the-manual-sections-and") }}</p>
 {%- if !links.is_empty() %}
 <p class="cluster">
 {%- for link in links %}{% call forms::link_button(link.href, link.label, link.class) %}{% endcall %}{% endfor -%}
 </p>
 {%- endif %}
-{% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::support(), support) %}{% endcall %}
 {%- endblock %}

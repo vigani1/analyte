@@ -10,6 +10,7 @@ use crate::machine::software_version::UNCHECKED_WARNING;
 use analyte_config::{
     ChoiceKind, ChoiceLabel, ChoiceName, ChoiceSelections, Chosen, MachineChoice, VersionEvidence,
 };
+use analyte_i18n::{message as tr_args, text as tr};
 
 /// The prefix of a choice's form field: `choice.<name>`.
 pub(in crate::admin::setup) const FIELD: &str = "choice.";
@@ -101,10 +102,10 @@ pub(in crate::admin::setup) fn missing<'a>(
 }
 
 /// Where on the analyzer the lab reads this choice.
-pub(in crate::admin::setup) const fn hint(kind: ChoiceKind) -> &'static str {
+pub(in crate::admin::setup) fn hint(kind: ChoiceKind) -> &'static str {
     match kind {
-        ChoiceKind::Mode => "Match the setting on the analyzer’s own screen.",
-        ChoiceKind::SoftwareVersion => "Read the version on the analyzer’s About screen.",
+        ChoiceKind::Mode => tr("setup-match-the-setting-on-the-analyzer-s-own-screen"),
+        ChoiceKind::SoftwareVersion => tr("setup-read-the-version-on-the-analyzer-s-about-screen"),
     }
 }
 
@@ -127,14 +128,20 @@ fn word(chosen: &Chosen) -> String {
     }
     match (&chosen.suggested, chosen.differs()) {
         (_, false) => format!("{}: {value}", chosen.label.as_str()),
-        (Some((_, suggested)), true) => format!(
-            "{}: {value} (the manual suggests {})",
-            chosen.label.as_str(),
-            suggested.as_str()
+        (Some((_, suggested)), true) => tr_args(
+            "setup-the-manual-suggests-2",
+            [
+                ("label", (chosen.label.as_str()).to_string().into()),
+                ("value", (value).to_string().into()),
+                ("suggested", (suggested.as_str()).to_string().into()),
+            ],
         ),
-        (None, true) => format!(
-            "{}: {value} (the machine definition suggests none)",
-            chosen.label.as_str()
+        (None, true) => tr_args(
+            "setup-the-machine-definition-suggests-none-2",
+            [
+                ("label", (chosen.label.as_str()).to_string().into()),
+                ("value", (value).to_string().into()),
+            ],
         ),
     }
 }

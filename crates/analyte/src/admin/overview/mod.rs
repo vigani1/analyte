@@ -10,6 +10,9 @@ mod attention;
 mod page;
 mod signal;
 
+use analyte_i18n::count as tr_count;
+use analyte_i18n::message as tr_args;
+use analyte_i18n::text as tr;
 use answer::Answer;
 pub(in crate::admin) use attention::{Reason, Summary};
 pub(in crate::admin) use signal::{Delivery, Keys, Standing, kept_health, order_list, standing};
@@ -33,7 +36,7 @@ use axum::{
     response::{Html, IntoResponse, Response},
 };
 use jiff::Timestamp;
-use page::{AlertRow, Disk, OrderRow, Page, Verdict, WIZARD_STEPS, Welcome};
+use page::{AlertRow, Disk, OrderRow, Page, Verdict, Welcome, wizard_steps};
 use std::{collections::BTreeMap, sync::Arc};
 
 pub(super) async fn show(
@@ -73,26 +76,30 @@ enum Reading {
 
 impl Reading {
     /// What Analyte could not do, in plain words.
-    const fn sentence(self) -> &'static str {
+    fn sentence(self) -> &'static str {
         match self {
-            Self::Store => "Analyte could not read its store.",
+            Self::Store => tr("doctor-overview-analyte-could-not-read-its-store"),
             Self::Restore => {
-                "Analyte could not read whether order sending is paused after a restore."
+                tr("doctor-overview-analyte-could-not-read-whether-order-sending-is-paused")
             }
-            Self::Disk => "Analyte could not read the free disk space.",
-            Self::Review => "Analyte could not read how many items need review.",
-            Self::Delivered => "Analyte could not read when each lab app last accepted a delivery.",
+            Self::Disk => tr("doctor-overview-analyte-could-not-read-the-free-disk-space"),
+            Self::Review => tr("doctor-overview-analyte-could-not-read-how-many-items-need-review"),
+            Self::Delivered => tr("doctor-overview-analyte-could-not-read-when-each-lab-app-last"),
             Self::Failing => {
-                "Analyte could not read which lab apps keep failing to accept deliveries."
+                tr("doctor-overview-analyte-could-not-read-which-lab-apps-keep-failing")
             }
-            Self::Alerts => "Analyte could not read the active alerts.",
-            Self::Orders => "Analyte could not read the machine orders.",
-            Self::Receipts => "Analyte could not read when each machine last sent data.",
-            Self::LabApps => "Analyte could not read what waits for each lab app.",
-            Self::Kept => "Analyte could not read what waits for lab apps no set-up machine uses.",
-            Self::Relays => "Analyte could not read the alert relays.",
-            Self::Page => "Analyte read everything but could not write the page.",
-            Self::Time => format::SLOW_READ,
+            Self::Alerts => tr("doctor-overview-analyte-could-not-read-the-active-alerts"),
+            Self::Orders => tr("doctor-overview-analyte-could-not-read-the-machine-orders"),
+            Self::Receipts => {
+                tr("doctor-overview-analyte-could-not-read-when-each-machine-last-sent")
+            }
+            Self::LabApps => tr("doctor-overview-analyte-could-not-read-what-waits-for-each-lab"),
+            Self::Kept => tr("doctor-overview-analyte-could-not-read-what-waits-for-lab-apps"),
+            Self::Relays => tr("doctor-overview-analyte-could-not-read-the-alert-relays"),
+            Self::Page => {
+                tr("doctor-overview-analyte-read-everything-but-could-not-write-the-page")
+            }
+            Self::Time => format::slow_read(),
         }
     }
 
@@ -375,7 +382,7 @@ async fn render(
     let html = if state.machines.is_empty() && things.is_empty() && kept.is_empty() {
         Welcome {
             frame,
-            steps: WIZARD_STEPS,
+            steps: wizard_steps(),
         }
         .render()
     } else {
@@ -390,8 +397,8 @@ async fn render(
             orders,
             restore: restore_paused.then(|| Notice {
                 tone: Tone::Attention,
-                title: format::RESTORE_PAUSED.into(),
-                text: format::RESTORE_ADVICE.into(),
+                title: format::restore_paused().into(),
+                text: format::restore_advice().into(),
             }),
             kept: kept
                 .iter()
@@ -419,22 +426,38 @@ fn orders(facts: &attention::Facts) -> Vec<OrderRow> {
         order_row(
             facts.uncertain,
             format::order_look(OrderState::Uncertain),
-            "No orders with an unknown outcome",
-            &format!(
-                "{} with an unknown outcome (check the machine)",
-                format::amount(facts.uncertain, "order", "orders")
+            tr("doctor-overview-no-orders-with-an-unknown-outcome"),
+            &tr_args(
+                "doctor-overview-with-an-unknown-outcome-check-the-machine",
+                [(
+                    "uncertain",
+                    (tr_count("admin-count-orders", facts.uncertain))
+                        .to_string()
+                        .into(),
+                )],
             ),
-            (Tab::MachineOrders.href(), "See machine orders"),
+            (
+                Tab::MachineOrders.href(),
+                tr("doctor-overview-see-machine-orders"),
+            ),
         ),
         order_row(
             facts.cancelled,
             format::order_look(OrderState::CancelConfirmed),
-            "No orders cancelled by a machine",
-            &format!(
-                "{} cancelled by a machine",
-                format::amount(facts.cancelled, "order", "orders")
+            tr("doctor-overview-no-orders-cancelled-by-a-machine"),
+            &tr_args(
+                "doctor-overview-cancelled-by-a-machine",
+                [(
+                    "cancelled",
+                    (tr_count("admin-count-orders", facts.cancelled))
+                        .to_string()
+                        .into(),
+                )],
             ),
-            (Tab::CancelledByMachine.href(), "Review cancelled orders"),
+            (
+                Tab::CancelledByMachine.href(),
+                tr("doctor-overview-review-cancelled-orders"),
+            ),
         ),
     ]
 }
@@ -470,7 +493,7 @@ fn alert_row(alert: &AlertState, now: Timestamp) -> AlertRow {
             .map(|raised| format::moment_unix(raised, now)),
         value: alert
             .value
-            .map_or_else(|| format::NOT_RECORDED.into(), |value| value.to_string()),
+            .map_or_else(|| format::not_recorded().into(), |value| value.to_string()),
     }
 }
 
@@ -520,17 +543,21 @@ impl PrintedAlert {
 }
 
 /// What an alert means, in plain words; its signal name shows on hover.
-const fn alert_words(key: &AlertKey) -> &'static str {
+fn alert_words(key: &AlertKey) -> &'static str {
     match key {
-        AlertKey::OldestUndelivered => "A result has waited too long to be sent",
-        AlertKey::MachineSilent(_) => "Machine has gone quiet",
-        AlertKey::MachineSoftwareVersionChanged(_) => "Machine software version changed",
-        AlertKey::DiskReserve => "Disk space is low",
-        AlertKey::OrderCacheStale => "Order list is out of date",
-        AlertKey::UncertainOrders => "Orders with unknown outcome",
-        AlertKey::ParkedItems => "Items need review",
-        AlertKey::RestorePaused => format::RESTORE_PAUSED,
-        AlertKey::UndeliverableDestination(..) => "Results cannot be delivered",
+        AlertKey::OldestUndelivered => {
+            tr("doctor-overview-a-result-has-waited-too-long-to-be-sent")
+        }
+        AlertKey::MachineSilent(_) => tr("doctor-overview-machine-has-gone-quiet"),
+        AlertKey::MachineSoftwareVersionChanged(_) => {
+            tr("doctor-overview-machine-software-version-changed")
+        }
+        AlertKey::DiskReserve => tr("doctor-overview-disk-space-is-low"),
+        AlertKey::OrderCacheStale => tr("doctor-overview-order-list-is-out-of-date"),
+        AlertKey::UncertainOrders => tr("doctor-overview-orders-with-unknown-outcome-2"),
+        AlertKey::ParkedItems => tr("doctor-overview-items-need-review"),
+        AlertKey::RestorePaused => format::restore_paused(),
+        AlertKey::UndeliverableDestination(..) => tr("doctor-overview-results-cannot-be-delivered"),
     }
 }
 

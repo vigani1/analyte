@@ -21,6 +21,7 @@ use crate::admin::{
     },
 };
 use crate::machine::link::status::{Light, Link};
+use analyte_i18n::{message as tr_args, text as tr};
 use askama::Template as _;
 use axum::{
     Extension, Form,
@@ -110,13 +111,13 @@ pub(in crate::admin) async fn listen_view(
     };
     let section = Section::Setup(None);
     let Some(page) = page else {
-        let title = crate::admin::setup::wizard::CONNECTION_TEST;
+        let title = crate::admin::setup::wizard::connection_test();
         let report = Report::new(
             section.frame(&state, title, Some(&session)),
             section,
             Tone::Neutral,
-            "No test has been started",
-            "Start one from a machine’s setup steps, in step 3.",
+            tr("setup-no-test-has-been-started"),
+            tr("setup-start-one-from-a-machine-s-setup-steps-in"),
         );
         return respond(
             &state,
@@ -162,7 +163,7 @@ fn listen_page(state: &Context, session: &Session, test: &Test, now: Timestamp) 
                         test.target.clone(),
                         matches!(test.route, Route::Connects(_)),
                     ),
-                    "Test again",
+                    tr("setup-test-again"),
                 )
             }),
         },
@@ -181,39 +182,44 @@ fn test_state(view: &listen::View, connection: &Connection, id: &str, now: Times
         None if view.closed => (
             Tone::Neutral,
             "Closed",
-            format!(
-                "The machine closed the connection. The test ends in {}.",
-                format::duration(view.remaining.as_secs())
+            tr_args(
+                "setup-the-machine-closed-the-connection-the-test-ends-in",
+                [(
+                    "as-secs",
+                    (format::duration(view.remaining.as_secs()))
+                        .to_string()
+                        .into(),
+                )],
             ),
         ),
         None => match view.connected {
-            Some(at) => (Tone::Good, "Connected", link(Light::Live, at)),
+            Some(at) => (Tone::Good, tr("setup-connected"), link(Light::Live, at)),
             None => (
                 Tone::Attention,
-                "Waiting",
+                tr("doctor-overview-waiting-2"),
                 link(Light::Waiting, view.started),
             ),
         },
         Some(listen::End::TimeLimit) => (
             Tone::Neutral,
-            "Ended",
-            "The test ended after its time limit; the bytes were discarded.".into(),
+            tr("setup-ended"),
+            tr("setup-the-test-ended-after-its-time-limit-the-bytes").into(),
         ),
         Some(listen::End::Stopped) => (
             Tone::Neutral,
-            "Stopped",
-            "The test was stopped; the bytes were discarded.".into(),
+            tr("admin-stopped-2"),
+            tr("setup-the-test-was-stopped-the-bytes-were-discarded").into(),
         ),
         Some(listen::End::Closed) => (
             Tone::Neutral,
             "Closed",
-            "The machine closed the connection; the bytes were discarded.".into(),
+            tr("setup-the-machine-closed-the-connection-the-bytes-were-discarded").into(),
         ),
         Some(listen::End::Failed(_)) => (
             Tone::Problem,
-            "Failed",
+            tr("admin-failed"),
             match view.connected {
-                Some(_) => "Reading failed; the bytes were discarded.".into(),
+                Some(_) => tr("setup-reading-failed-the-bytes-were-discarded").into(),
                 None => link(Light::Off, view.started),
             },
         ),

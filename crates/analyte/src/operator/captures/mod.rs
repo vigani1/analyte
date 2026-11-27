@@ -11,6 +11,7 @@ pub mod deidentify;
 
 use crate::installation::config::{Program, plain_name};
 use crate::{deadline, operator::Error};
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_model::{Identifier, Reason};
 use analyte_store::Audit;
 use clap::Subcommand;
@@ -29,42 +30,55 @@ pub const PATIENT_DATA: &str = "These recordings contain patient data. Keep them
 #[derive(Subcommand)]
 pub enum Command {
     /// Lists each machine's recordings: file, size and last change. They contain patient data.
+    #[command(about = tr("cli-help-captures-command-list"))]
     List {
         /// Only this machine's recordings.
+        #[arg(help = tr("cli-help-captures-command-list-machine"))]
         #[arg(long)]
         machine: Option<String>,
     },
     /// Copies one recording to a folder, byte for byte, without overwriting.
     /// It contains patient data: de-identify a copy before sharing it.
+    #[command(about = tr("cli-help-captures-command-export"))]
     Export {
         /// The machine's name.
+        #[arg(help = tr("cli-help-captures-command-export-machine"))]
         machine: String,
         /// The recording's file name, as `captures list` shows it.
+        #[arg(help = tr("cli-help-captures-command-export-file"))]
         file: String,
         /// The folder to copy it into; it must exist.
+        #[arg(help = tr("cli-help-captures-command-export-to"))]
         #[arg(long)]
         to: PathBuf,
         /// Why it is exported; the audit keeps it.
+        #[arg(help = tr("cli-help-captures-command-export-reason"))]
         #[arg(long)]
         reason: String,
     },
     /// Writes a de-identified copy of one recording to a folder: patient
     /// fields become synthetic values of the same shape and checksums are
     /// recomputed. The original is not changed. Review the copy before sharing it.
+    #[command(about = tr("cli-help-captures-command-de-identify"))]
     #[command(name = "de-identify")]
     DeIdentify {
         /// The machine's name.
+        #[arg(help = tr("cli-help-captures-command-export-machine"))]
         machine: String,
         /// The recording's file name, as `captures list` shows it.
+        #[arg(help = tr("cli-help-captures-command-export-file"))]
         file: String,
         /// The folder to write the copy into; it must exist.
+        #[arg(help = tr("cli-help-captures-command-de-identify-to"))]
         #[arg(long)]
         to: PathBuf,
         /// Why it is de-identified; the audit keeps it.
+        #[arg(help = tr("cli-help-captures-command-de-identify-reason"))]
         #[arg(long)]
         reason: String,
         /// The checksum letter case the machine uses (VIDAS); needed only when
         /// the recording cannot show it, and then the command says so.
+        #[arg(help = tr("cli-help-captures-command-de-identify-checksum-case"))]
         #[arg(long, value_enum)]
         checksum_case: Option<deidentify::LetterCase>,
     },
@@ -207,7 +221,7 @@ pub fn export(
     let target = to.join(file);
     let mut output = create(&target)?;
     let mut input = std::fs::File::open(&source).map_err(io("open", &source))?;
-    std::io::copy(&mut input, &mut output).map_err(io("copy to", &target))?;
+    std::io::copy(&mut input, &mut output).map_err(io(tr("cli-copy-to"), &target))?;
     output.sync_all().map_err(io("flush", &target))?;
     Ok(target)
 }
@@ -292,9 +306,9 @@ pub fn de_identify(
             .map_err(io("encode", &source))?;
     }
     if encoded.len() > Limits::default().file_bytes {
-        return Err(io("encode", &source)(std::io::Error::other(
-            "the copy exceeds the recording file bound",
-        )));
+        return Err(io("encode", &source)(std::io::Error::other(tr(
+            "cli-the-copy-exceeds-the-recording-file-bound",
+        ))));
     }
     let stem = file.strip_suffix(SUFFIX).unwrap_or(file);
     let target = to.join(format!("{stem}.deidentified{SUFFIX}"));
@@ -330,22 +344,37 @@ fn show(program: &Program, machine: Option<String>) -> Result<(), Error> {
     for machine in machines {
         let recordings = list(program, &machine)?;
         if recordings.is_empty() {
-            super::display::line(&format!("{machine}: no recordings"))?;
+            super::display::line(&tr_args(
+                "cli-no-recordings",
+                [("machine", (machine).to_string().into())],
+            ))?;
         }
         for recording in recordings {
-            super::display::line(&format!(
-                "{} {} {} bytes, last changed {}{}",
-                recording.machine,
-                recording.file,
-                recording.bytes,
-                recording
-                    .modified
-                    .map_or_else(|| "unknown".to_owned(), |at| at.to_string()),
-                if recording.failed {
-                    " (capture stopped early: incomplete)"
-                } else {
-                    ""
-                }
+            super::display::line(&tr_args(
+                "cli-bytes-last-changed",
+                [
+                    ("machine", (recording.machine).to_string().into()),
+                    ("file", (recording.file).to_string().into()),
+                    ("bytes", (recording.bytes).to_string().into()),
+                    (
+                        "at",
+                        (recording
+                            .modified
+                            .map_or_else(|| "unknown".to_owned(), |at| at.to_string()))
+                        .to_string()
+                        .into(),
+                    ),
+                    (
+                        "else",
+                        (if recording.failed {
+                            " (capture stopped early: incomplete)"
+                        } else {
+                            ""
+                        })
+                        .to_string()
+                        .into(),
+                    ),
+                ],
             ))?;
         }
     }
@@ -406,9 +435,9 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
             machine, file, to, ..
         } => {
             let target = export(program, &machine, &file, &to)?;
-            super::display::line(&format!(
-                "Copied to {}. It contains patient data: de-identify a copy before sharing it.",
-                target.display()
+            super::display::line(&tr_args(
+                "cli-copied-to-it-contains-patient-data-de-identify-a",
+                [("target", (target.display()).to_string().into())],
             ))?;
         }
         Command::DeIdentify {
@@ -419,11 +448,13 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
             ..
         } => {
             let copy = de_identify(program, &machine, &file, &to, checksum_case)?;
-            super::display::line(&format!(
-                "Wrote {}: {} values replaced ({} distinct). The original is unchanged.",
-                copy.path.display(),
-                copy.replaced,
-                copy.distinct
+            super::display::line(&tr_args(
+                "cli-wrote-values-replaced-distinct-the-original-is-unchanged",
+                [
+                    ("path", (copy.path.display()).to_string().into()),
+                    ("replaced", (copy.replaced).to_string().into()),
+                    ("distinct", (copy.distinct).to_string().into()),
+                ],
             ))?;
             super::display::line(deidentify::CHECKLIST)?;
         }

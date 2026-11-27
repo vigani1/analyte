@@ -1,5 +1,6 @@
 //! Holds every refusal that has no page of its own, in the plain frame because it may be shown before sign-in: its status code, what it tells people, where to go next and the exact reason kept for support.
 use super::{assets::Root, frame::Plain};
+use analyte_i18n::{message as tr_args, text as tr};
 use askama::Template as _;
 use axum::{
     http::{Method, StatusCode},
@@ -60,10 +61,10 @@ impl Next {
         }
     }
 
-    pub(in crate::admin) const fn label(self) -> &'static str {
+    pub(in crate::admin) fn label(self) -> &'static str {
         match self {
-            Self::Overview => "Go to Overview",
-            Self::SignIn => "Try again",
+            Self::Overview => tr("admin-go-to-overview"),
+            Self::SignIn => tr("admin-try-again"),
         }
     }
 }
@@ -99,52 +100,55 @@ impl Refusal {
     }
 
     /// The page's title and what it tells people.
-    const fn words(&self) -> (&'static str, &'static str) {
+    fn words(&self) -> (&'static str, &'static str) {
         match self {
             Self::PageNotFound => (
-                "Page not found",
-                "Analyte has no page at this address. Check the address, or go to the Overview.",
+                tr("admin-page-not-found"),
+                tr("admin-analyte-has-no-page-at-this-address-check-the"),
             ),
-            Self::FileNotFound => ("File not found", "Analyte has no file at this address."),
+            Self::FileNotFound => (
+                tr("admin-file-not-found"),
+                tr("admin-analyte-has-no-file-at-this-address"),
+            ),
             Self::WrongMethod(_) => (
-                "This cannot be done here",
-                "Analyte does not take this kind of request at this address. Nothing was changed.",
+                tr("admin-this-cannot-be-done-here"),
+                tr("admin-analyte-does-not-take-this-kind-of-request-at"),
             ),
             Self::Unreadable { .. } => (
-                "This could not be read",
-                "Analyte could not read the address or the form it was sent. Nothing was changed. Go back and try again.",
+                tr("admin-this-could-not-be-read"),
+                tr("admin-analyte-could-not-read-the-address-or-the-form"),
             ),
             Self::FormExpired(_) => (
-                "This form has expired",
-                "Go back, reload the page and try again. Nothing was changed.",
+                tr("admin-this-form-has-expired"),
+                tr("admin-go-back-reload-the-page-and-try-again-nothing"),
             ),
             Self::TooMuchText => (
-                "Too much text",
-                "The form holds more text than Analyte accepts. Shorten what you typed and try again.",
+                tr("admin-too-much-text"),
+                tr("admin-the-form-holds-more-text-than-analyte-accepts-shorten"),
             ),
             Self::TooLong => (
-                "This took too long",
-                "Analyte did not finish in time. Check the page before trying again: an action may already have been saved.",
+                tr("admin-this-took-too-long"),
+                tr("admin-analyte-did-not-finish-in-time-check-the-page"),
             ),
             Self::NeedsRestart => (
-                "Analyte needs a restart",
-                "Analyte cannot check browser sessions any more. Restart Analyte, then sign in again.",
+                tr("admin-analyte-needs-a-restart"),
+                tr("admin-analyte-cannot-check-browser-sessions-any-more-restart-analyte"),
             ),
             Self::SessionsFull(_) => (
-                "You cannot sign in right now",
-                "Too many browser sessions are open. Wait a few minutes and try again, or restart Analyte.",
+                tr("admin-you-cannot-sign-in-right-now"),
+                tr("admin-too-many-browser-sessions-are-open-wait-a-few"),
             ),
             Self::SessionHeader => (
-                "You cannot sign in right now",
-                "Analyte could not start a browser session. Try again; if this keeps happening, give the details below to support.",
+                tr("admin-you-cannot-sign-in-right-now"),
+                tr("admin-analyte-could-not-start-a-browser-session-try-again"),
             ),
             Self::SignOut(_) => (
-                "You cannot sign out right now",
-                "Analyte cannot check browser sessions any more. Restart Analyte; that signs everyone out.",
+                tr("admin-you-cannot-sign-out-right-now"),
+                tr("admin-analyte-cannot-check-browser-sessions-any-more-restart-analyte-2"),
             ),
             Self::TooManyStreams => (
-                "Too many live pages",
-                "Analyte keeps a few pages live at once, and all are in use. Pages still work; reload one to see what changed, or close a tab.",
+                tr("admin-too-many-live-pages"),
+                tr("admin-analyte-keeps-a-few-pages-live-at-once-and"),
             ),
             Self::PageFailed { title, text, .. } => (title, text),
         }
@@ -170,19 +174,22 @@ impl Refusal {
     /// The exact reason, for support.
     fn detail(&self) -> String {
         match self {
-            Self::PageNotFound => "no admin page at this address".into(),
-            Self::FileNotFound => "static asset not found".into(),
-            Self::WrongMethod(method) => format!("{method} is not allowed at this address"),
+            Self::PageNotFound => tr("admin-no-admin-page-at-this-address").into(),
+            Self::FileNotFound => tr("admin-static-asset-not-found").into(),
+            Self::WrongMethod(method) => tr_args(
+                "admin-is-not-allowed-at-this-address",
+                [("method", (method).to_string().into())],
+            ),
             Self::Unreadable { detail, .. }
             | Self::SessionsFull(detail)
             | Self::SignOut(detail)
             | Self::PageFailed { detail, .. } => detail.clone(),
             Self::FormExpired(detail) => (*detail).into(),
-            Self::TooMuchText => "admin form exceeds limit".into(),
-            Self::TooLong => "admin request deadline exceeded".into(),
-            Self::NeedsRestart => "admin session lookup failed".into(),
-            Self::SessionHeader => "admin session header invalid".into(),
-            Self::TooManyStreams => "every admin live stream is in use".into(),
+            Self::TooMuchText => tr("admin-admin-form-exceeds-limit").into(),
+            Self::TooLong => tr("admin-admin-request-deadline-exceeded").into(),
+            Self::NeedsRestart => tr("admin-admin-session-lookup-failed").into(),
+            Self::SessionHeader => tr("admin-admin-session-header-invalid").into(),
+            Self::TooManyStreams => tr("admin-every-admin-live-stream-is-in-use").into(),
         }
     }
 
@@ -202,9 +209,14 @@ impl Refusal {
             Ok(html) => (self.status(), Html(html)).into_response(),
             Err(render) => (
                 self.status(),
-                format!(
-                    "{title}\n\n{text}\n\nDetails for support: {}; the page failed too: {render}",
-                    self.detail()
+                tr_args(
+                    "admin-details-for-support-the-page-failed-too",
+                    [
+                        ("title", (title).to_string().into()),
+                        ("text", (text).to_string().into()),
+                        ("detail", (self.detail()).to_string().into()),
+                        ("render", (render).to_string().into()),
+                    ],
                 ),
             )
                 .into_response(),

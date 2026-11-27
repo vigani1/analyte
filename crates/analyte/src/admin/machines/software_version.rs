@@ -7,6 +7,7 @@ use crate::admin::view::{
     report::{Problem, Section},
 };
 use analyte_config::software_version::{Check, ExpectedVersions};
+use analyte_i18n::text as tr;
 use analyte_model::{Digest, Identifier, Reason};
 use analyte_store::{Audit, Handle};
 use axum::{
@@ -85,7 +86,7 @@ pub(in crate::admin) async fn submit(
         machine.software.as_ref().and_then(Check::expected),
         session.actor(),
     ) else {
-        return refusal("This machine has no software warning you can confirm.".into());
+        return refusal(tr("admin-this-machine-has-no-software-warning-you-can-confirm").into());
     };
     match confirm(
         &state.store,

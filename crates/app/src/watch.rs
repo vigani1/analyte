@@ -10,6 +10,7 @@
 //! words name the most serious kind and what to do; they say nothing about
 //! patients or results, and no name or count, as `/status` has none.
 use crate::engine::status::{Health, Reason, Reasons, Reply};
+use analyte_i18n::{message as tr_args, text as tr};
 use jiff::{SignedDuration, Timestamp, Zoned, tz::TimeZone};
 
 /// How many unanswered questions in a row make the engine count as off once
@@ -72,11 +73,11 @@ impl Shown {
 
     /// The tray's state line and tooltip, in plain words.
     #[must_use]
-    pub const fn words(self) -> &'static str {
+    pub fn words(self) -> &'static str {
         match self {
-            Self::Checking => "Checking the engine…",
+            Self::Checking => tr("desktop-checking-the-engine"),
             Self::Running(health) => health.words(),
-            Self::Off => "The engine isn’t answering",
+            Self::Off => tr("desktop-the-engine-isn-t-answering"),
         }
     }
 
@@ -152,13 +153,12 @@ impl Notice {
         match shown {
             Shown::Off => Self {
                 title: shown.words(),
-                body: "Open Analyte to see what the app saw.".into(),
+                body: tr("desktop-open-analyte-to-see-what-the-app-saw").into(),
                 about: About::Off,
             },
             Shown::Running(Health::Unknown) => Self {
                 title: shown.words(),
-                body: "It is running but could not say how things are. Open Analyte to see more."
-                    .into(),
+                body: tr("desktop-it-is-running-but-could-not-say-how-things").into(),
                 about: About::State(Health::Unknown),
             },
             Shown::Checking
@@ -166,16 +166,21 @@ impl Notice {
                 match new.first().or_else(|| reasons.first()) {
                     Some(reason) => Self {
                         title: reason.title(),
-                        body: format!(
-                            "{}{}",
-                            reason.advice(),
-                            more(reasons.without(Reasons::NONE.with(reason)).len())
+                        body: tr_args(
+                            "desktop-notification-body",
+                            [
+                                ("advice", reason.advice().into()),
+                                (
+                                    "others",
+                                    reasons.without(Reasons::NONE.with(reason)).len().into(),
+                                ),
+                            ],
                         ),
                         about: About::Reason(reason),
                     },
                     None => Self {
                         title: shown.words(),
-                        body: "Open Analyte to see what.".into(),
+                        body: tr("desktop-open-analyte-to-see-what").into(),
                         about: About::State(match shown {
                             Shown::Running(health) => health,
                             Shown::Checking | Shown::Off => Health::Unknown,
@@ -184,15 +189,6 @@ impl Notice {
                 }
             }
         }
-    }
-}
-
-/// That `others` other things need a look, after the advice.
-fn more(others: u32) -> String {
-    match others {
-        0 => String::new(),
-        1 => " 1 more thing needs a look too.".into(),
-        many => format!(" {many} more things need a look too."),
     }
 }
 
@@ -215,11 +211,23 @@ impl Recap {
     /// fixed for longer than [`RECAP_KEPT`].
     #[must_use]
     pub fn line(&self, now: Timestamp, zone: &TimeZone) -> Option<String> {
-        let sent = format!("Notified {} · {}", moment(self.sent, now, zone), self.title);
+        let sent = tr_args(
+            "desktop-notified",
+            [
+                ("zone", (moment(self.sent, now, zone)).to_string().into()),
+                ("title", (self.title).to_string().into()),
+            ],
+        );
         match self.fixed {
             None => Some(sent),
             Some(fixed) if now.duration_since(fixed) > RECAP_KEPT => None,
-            Some(fixed) => Some(format!("{sent} · Fixed since {}", moment(fixed, now, zone))),
+            Some(fixed) => Some(tr_args(
+                "desktop-fixed-since",
+                [
+                    ("sent", (sent).to_string().into()),
+                    ("zone", (moment(fixed, now, zone)).to_string().into()),
+                ],
+            )),
         }
     }
 }

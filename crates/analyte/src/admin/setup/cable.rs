@@ -9,6 +9,7 @@ use super::wizard::Draft;
 use analyte_config::{
     FlowControl, Parity, RecordTransport, Serial, SerialSetting, SerialValues, Stack, StreamKind,
 };
+use analyte_i18n::{message as tr_args, text as tr};
 
 /// The serial settings a validated stack opens its port with; none for a link
 /// that is not a serial cable.
@@ -29,39 +30,58 @@ pub(in crate::admin) fn of(stack: &Stack) -> Option<&Serial> {
     }
 }
 
-const PARITIES: [(Parity, &str, &str, &str); 3] = [
-    (Parity::None, "none", "None", "no parity"),
-    (Parity::Odd, "odd", "Odd", "odd parity"),
-    (Parity::Even, "even", "Even", "even parity"),
-];
+fn parities() -> [(Parity, &'static str, &'static str, &'static str); 3] {
+    [
+        (
+            Parity::None,
+            "none",
+            tr("setup-none"),
+            tr("setup-no-parity"),
+        ),
+        (Parity::Odd, "odd", tr("setup-odd"), tr("setup-odd-parity")),
+        (
+            Parity::Even,
+            "even",
+            tr("setup-even"),
+            tr("setup-even-parity"),
+        ),
+    ]
+}
 
-const FLOWS: [(FlowControl, &str, &str, &str); 3] = [
-    (FlowControl::None, "none", "None", "no flow control"),
-    (
-        FlowControl::Hardware,
-        "hardware",
-        "Hardware (RTS/CTS)",
-        "hardware flow control (RTS/CTS)",
-    ),
-    (
-        FlowControl::Software,
-        "software",
-        "Software (XON/XOFF)",
-        "software flow control (XON/XOFF)",
-    ),
-];
+fn flows() -> [(FlowControl, &'static str, &'static str, &'static str); 3] {
+    [
+        (
+            FlowControl::None,
+            "none",
+            tr("setup-none"),
+            tr("setup-no-flow-control"),
+        ),
+        (
+            FlowControl::Hardware,
+            "hardware",
+            "Hardware (RTS/CTS)",
+            tr("setup-hardware-flow-control-rts-cts"),
+        ),
+        (
+            FlowControl::Software,
+            "software",
+            "Software (XON/XOFF)",
+            tr("setup-software-flow-control-xon-xoff"),
+        ),
+    ]
+}
 
 const DATA_BITS: [u8; 4] = [5, 6, 7, 8];
 const STOP_BITS: [u8; 2] = [1, 2];
 
 /// The setting's name for people.
-pub(in crate::admin) const fn label(setting: SerialSetting) -> &'static str {
+pub(in crate::admin) fn label(setting: SerialSetting) -> &'static str {
     match setting {
-        SerialSetting::Baud => "Baud rate",
-        SerialSetting::DataBits => "Data bits",
-        SerialSetting::Parity => "Parity",
-        SerialSetting::StopBits => "Stop bits",
-        SerialSetting::FlowControl => "Flow control",
+        SerialSetting::Baud => tr("setup-baud-rate"),
+        SerialSetting::DataBits => tr("setup-data-bits-2"),
+        SerialSetting::Parity => tr("setup-parity"),
+        SerialSetting::StopBits => tr("setup-stop-bits-2"),
+        SerialSetting::FlowControl => tr("setup-flow-control"),
     }
 }
 
@@ -76,7 +96,7 @@ pub(in crate::admin::setup) fn options(setting: SerialSetting) -> Vec<(String, S
             .iter()
             .map(|bits| (bits.to_string(), bits.to_string()))
             .collect(),
-        SerialSetting::Parity => PARITIES
+        SerialSetting::Parity => parities()
             .iter()
             .map(|(_, value, shown, _)| ((*value).to_owned(), (*shown).to_owned()))
             .collect(),
@@ -84,7 +104,7 @@ pub(in crate::admin::setup) fn options(setting: SerialSetting) -> Vec<(String, S
             .iter()
             .map(|bits| (bits.to_string(), bits.to_string()))
             .collect(),
-        SerialSetting::FlowControl => FLOWS
+        SerialSetting::FlowControl => flows()
             .iter()
             .map(|(_, value, shown, _)| ((*value).to_owned(), (*shown).to_owned()))
             .collect(),
@@ -100,14 +120,14 @@ pub(in crate::admin::setup) fn value(
         SerialSetting::Baud => values.baud.map(|baud| baud.to_string()),
         SerialSetting::DataBits => values.data_bits.map(|bits| bits.to_string()),
         SerialSetting::Parity => values.parity.and_then(|parity| {
-            PARITIES
+            parities()
                 .iter()
                 .find(|(known, ..)| *known == parity)
                 .map(|(_, value, ..)| (*value).to_owned())
         }),
         SerialSetting::StopBits => values.stop_bits.map(|bits| bits.to_string()),
         SerialSetting::FlowControl => values.flow_control.and_then(|flow| {
-            FLOWS
+            flows()
                 .iter()
                 .find(|(known, ..)| *known == flow)
                 .map(|(_, value, ..)| (*value).to_owned())
@@ -119,14 +139,20 @@ pub(in crate::admin::setup) fn value(
 fn word(setting: SerialSetting, serial: &Serial) -> String {
     match setting {
         SerialSetting::Baud => format!("{} baud", serial.baud),
-        SerialSetting::DataBits => format!("{} data bits", serial.data_bits),
-        SerialSetting::Parity => PARITIES
+        SerialSetting::DataBits => tr_args(
+            "setup-data-bits",
+            [("data-bits", (serial.data_bits).to_string().into())],
+        ),
+        SerialSetting::Parity => parities()
             .iter()
             .find(|(known, ..)| *known == serial.parity)
             .map_or_else(String::new, |(.., words)| (*words).to_owned()),
-        SerialSetting::StopBits if serial.stop_bits == 1 => "1 stop bit".to_owned(),
-        SerialSetting::StopBits => format!("{} stop bits", serial.stop_bits),
-        SerialSetting::FlowControl => FLOWS
+        SerialSetting::StopBits if serial.stop_bits == 1 => tr("setup-1-stop-bit").to_owned(),
+        SerialSetting::StopBits => tr_args(
+            "setup-stop-bits",
+            [("stop-bits", (serial.stop_bits).to_string().into())],
+        ),
+        SerialSetting::FlowControl => flows()
             .iter()
             .find(|(known, ..)| *known == serial.flow_control)
             .map_or_else(String::new, |(.., words)| (*words).to_owned()),
@@ -164,13 +190,26 @@ fn differences(serial: &Serial, suggestion: Option<&SerialValues>) -> Vec<String
         .map(|setting| {
             let now = value(setting, &chosen).unwrap_or_default();
             match suggestion.and_then(|suggested| value(setting, suggested)) {
-                Some(suggested) => format!(
-                    "{} {now} (the manual suggests {suggested})",
-                    label(setting).to_lowercase()
+                Some(suggested) => tr_args(
+                    "setup-the-manual-suggests",
+                    [
+                        (
+                            "to-lowercase",
+                            (label(setting).to_lowercase()).to_string().into(),
+                        ),
+                        ("now", (now).to_string().into()),
+                        ("suggested", (suggested).to_string().into()),
+                    ],
                 ),
-                None => format!(
-                    "{} {now} (the machine definition suggests none)",
-                    label(setting).to_lowercase()
+                None => tr_args(
+                    "setup-the-machine-definition-suggests-none",
+                    [
+                        (
+                            "to-lowercase",
+                            (label(setting).to_lowercase()).to_string().into(),
+                        ),
+                        ("now", (now).to_string().into()),
+                    ],
                 ),
             }
         })
@@ -182,12 +221,17 @@ fn differences(serial: &Serial, suggestion: Option<&SerialValues>) -> Vec<String
 pub(in crate::admin) fn summary(serial: &Serial, suggestion: Option<&SerialValues>) -> String {
     let differs = differences(serial, suggestion);
     if differs.is_empty() {
-        format!("{}; as the manual suggests", words(serial))
+        tr_args(
+            "setup-as-the-manual-suggests",
+            [("serial", (words(serial)).to_string().into())],
+        )
     } else {
-        format!(
-            "{}; differs from the manual's suggestion: {}",
-            words(serial),
-            differs.join(", ")
+        tr_args(
+            "setup-differs-from-the-manual-s-suggestion",
+            [
+                ("serial", (words(serial)).to_string().into()),
+                ("join", (differs.join(", ")).to_string().into()),
+            ],
         )
     }
 }
@@ -242,32 +286,36 @@ pub(in crate::admin::setup) fn chosen(
     let typed_values = SerialValues {
         baud: typed(draft, SerialSetting::Baud)
             .map(|text| {
-                text.parse()
-                    .map_err(|_| SetupError::Connection("choose the baud rate from the list"))
+                text.parse().map_err(|_| {
+                    SetupError::Connection(tr("setup-choose-the-baud-rate-from-the-list"))
+                })
             })
             .transpose()?,
-        data_bits: number(SerialSetting::DataBits, "choose 5, 6, 7 or 8 data bits")?,
+        data_bits: number(
+            SerialSetting::DataBits,
+            tr("setup-choose-5-6-7-or-8-data-bits"),
+        )?,
         parity: typed(draft, SerialSetting::Parity)
             .map(|text| {
-                PARITIES
+                parities()
                     .iter()
                     .find(|(_, value, ..)| *value == text)
                     .map(|(parity, ..)| *parity)
-                    .ok_or(SetupError::Connection(
-                        "choose the parity: none, odd or even",
-                    ))
+                    .ok_or(SetupError::Connection(tr(
+                        "setup-choose-the-parity-none-odd-or-even",
+                    )))
             })
             .transpose()?,
-        stop_bits: number(SerialSetting::StopBits, "choose 1 or 2 stop bits")?,
+        stop_bits: number(SerialSetting::StopBits, tr("setup-choose-1-or-2-stop-bits"))?,
         flow_control: typed(draft, SerialSetting::FlowControl)
             .map(|text| {
-                FLOWS
+                flows()
                     .iter()
                     .find(|(_, value, ..)| *value == text)
                     .map(|(flow, ..)| *flow)
-                    .ok_or(SetupError::Connection(
-                        "choose the flow control: none, hardware or software",
-                    ))
+                    .ok_or(SetupError::Connection(tr(
+                        "setup-choose-the-flow-control-none-hardware-or-software",
+                    )))
             })
             .transpose()?,
     };

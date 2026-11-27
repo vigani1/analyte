@@ -5,13 +5,13 @@
 {%- import "components/layout.html" as layout %}
 {%- block main %}
 {% call layout::detail_head(head) %}{% endcall %}
-{% call feedback::alert(crate::admin::view::Tone::Attention, crate::admin::view::format::PATIENT_DATA, crate::admin::view::format::PATIENT_DATA_TEXT) %}{% endcall %}
+{% call feedback::alert(crate::admin::view::Tone::Attention, crate::admin::view::format::patient_data(), crate::admin::view::format::patient_data_text()) %}{% endcall %}
 <div class="stack">
 {% call feedback::exact_lines(what, lines, true) %}{% endcall %}
-<p class="subtle note">Left: every byte exactly, in hex. Right: the same bytes as text, with bytes that are not plain letters or signs shown as dots.</p>
+<p class="subtle note">{{ analyte_i18n::text("admin-left-every-byte-exactly-in-hex-right-the-same") }}</p>
 </div>
 {%- if let Some(form) = more %}
 {% call layout::card() %}{% call forms::raw_request(form) %}{% endcall %}{% endcall %}
 {%- endif %}
-{% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::support(), support) %}{% endcall %}
 {%- endblock %}

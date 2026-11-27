@@ -21,6 +21,8 @@ pub(super) mod report;
 pub(super) const READ_BUDGET: std::time::Duration = std::time::Duration::from_millis(1500);
 
 /// One page of the sidebar: the main links, and the rest under "More".
+use analyte_i18n::text as tr;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Tab {
     Overview,
@@ -58,36 +60,36 @@ impl Tab {
     }
 
     /// The sidebar label, which is also the page's heading.
-    pub(super) const fn label(self) -> &'static str {
+    pub(super) fn label(self) -> &'static str {
         match self {
-            Self::Overview => "Overview",
-            Self::Activity => "Activity",
-            Self::NeedsReview => "Needs review",
-            Self::Machines => "Machines",
-            Self::LabApps => "Lab apps",
-            Self::Setup => "Setup",
-            Self::MachineOrders => "Machine orders",
-            Self::CancelledByMachine => "Cancelled by machine",
-            Self::Deliveries => "Deliveries",
-            Self::DataKeeping => "Data keeping",
-            Self::Settings => "Settings",
+            Self::Overview => tr("admin-overview"),
+            Self::Activity => tr("admin-activity"),
+            Self::NeedsReview => tr("admin-needs-review"),
+            Self::Machines => tr("admin-machines"),
+            Self::LabApps => tr("admin-lab-apps-2"),
+            Self::Setup => tr("admin-setup"),
+            Self::MachineOrders => tr("admin-machine-orders"),
+            Self::CancelledByMachine => tr("admin-cancelled-by-machine"),
+            Self::Deliveries => tr("admin-deliveries"),
+            Self::DataKeeping => tr("admin-data-keeping"),
+            Self::Settings => tr("admin-settings"),
         }
     }
 
     /// The link back to the page, at the foot of a page that only reports.
-    pub(super) const fn back(self) -> &'static str {
+    pub(super) fn back(self) -> &'static str {
         match self {
-            Self::Overview => "Back to Overview",
-            Self::Activity => "Back to Activity",
-            Self::NeedsReview => "Back to Needs review",
-            Self::Machines => "Back to Machines",
-            Self::LabApps => "Back to Lab apps",
-            Self::Setup => "Back to Setup",
-            Self::MachineOrders => "Back to Machine orders",
-            Self::CancelledByMachine => "Back to Cancelled by machine",
-            Self::Deliveries => "Back to Deliveries",
-            Self::DataKeeping => "Back to Data keeping",
-            Self::Settings => "Back to Settings",
+            Self::Overview => tr("admin-back-to-overview"),
+            Self::Activity => tr("admin-back-to-activity"),
+            Self::NeedsReview => tr("admin-back-to-needs-review"),
+            Self::Machines => tr("admin-back-to-machines"),
+            Self::LabApps => tr("admin-back-to-lab-apps"),
+            Self::Setup => tr("admin-back-to-setup"),
+            Self::MachineOrders => tr("admin-back-to-machine-orders"),
+            Self::CancelledByMachine => tr("admin-back-to-cancelled-by-machine"),
+            Self::Deliveries => tr("admin-back-to-deliveries"),
+            Self::DataKeeping => tr("admin-back-to-data-keeping"),
+            Self::Settings => tr("admin-back-to-settings"),
         }
     }
 }
@@ -127,12 +129,12 @@ impl Tone {
     }
 
     /// The word a to-do line shows above its title.
-    pub(super) const fn word(self) -> &'static str {
+    pub(super) fn word(self) -> &'static str {
         match self {
-            Self::Good => "Good",
+            Self::Good => tr("admin-good"),
             Self::Attention => "Warning",
-            Self::Problem => "Problem",
-            Self::Neutral => "Note",
+            Self::Problem => tr("admin-problem"),
+            Self::Neutral => tr("admin-note"),
         }
     }
 }

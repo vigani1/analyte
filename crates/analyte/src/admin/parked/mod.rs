@@ -33,6 +33,7 @@ use crate::admin::{
 };
 use crate::operator::recovery;
 use crate::{deadline, installation::config::Program};
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_model::{Identifier, ReceiptId};
 use analyte_store::{Audit, OperatorError, Parked, ParkedCounts, ParkedFilter, Store};
 use askama::Template;
@@ -293,7 +294,7 @@ fn list_page(
         }),
         // Under open items only: an empty Open filter says so on its own.
         Show::Open => (!cards.is_empty() && !today.is_empty()).then(|| Resolved {
-            heading: Some("Resolved today"),
+            heading: Some(tr("admin-resolved-today")),
             rows: today
                 .into_iter()
                 .map(|item| {
@@ -320,13 +321,13 @@ fn list_page(
         chips: [
             Chip {
                 href: Show::Open.href(),
-                label: "Open",
+                label: tr("admin-open"),
                 count: counts.open,
                 current: show == Show::Open,
             },
             Chip {
                 href: Show::Resolved.href(),
-                label: "Resolved",
+                label: tr("admin-resolved"),
                 count: counts.resolved,
                 current: show == Show::Resolved,
             },
@@ -362,24 +363,25 @@ fn empty(show: Show, shown: u64, counts: ParkedCounts) -> Empty {
     match show {
         _ if shown > 0 => Empty {
             good: false,
-            title: "No more items",
-            text: "This page is past the last item.",
-            link: Some((show.href(), format::FIRST_PAGE.into())),
+            title: tr("admin-no-more-items"),
+            text: tr("admin-this-page-is-past-the-last-item"),
+            link: Some((show.href(), format::first_page().into())),
         },
         Show::Open => Empty {
             good: true,
-            title: "Nothing needs review.",
-            text: concat!(
-                "When Analyte cannot handle a message or result on its own, it keeps it ",
-                "here with what to do next.",
+            title: tr("admin-nothing-needs-review"),
+            text: tr("admin-when-analyte-cannot-handle-a-message-or-result-on"),
+            link: other(
+                Show::Resolved,
+                counts.resolved,
+                tr("admin-see-resolved-items"),
             ),
-            link: other(Show::Resolved, counts.resolved, "See resolved items"),
         },
         Show::Resolved => Empty {
             good: false,
-            title: "No resolved items yet.",
-            text: "Items marked resolved or processed again move here and keep their history.",
-            link: other(Show::Open, counts.open, "See open items"),
+            title: tr("admin-no-resolved-items-yet"),
+            text: tr("admin-items-marked-resolved-or-processed-again-move-here-and"),
+            link: other(Show::Open, counts.open, tr("admin-see-open-items")),
         },
     }
 }
@@ -419,14 +421,14 @@ enum Kind {
 fn actions(id: i64, parked: &Parked, action: Action, size: Size) -> Vec<Button> {
     let resolve = |kind| Button {
         href: format!("/parked/{id}/resolve"),
-        label: format::MARK_RESOLVED,
+        label: format::mark_resolved(),
         class: size.class(kind),
     };
     let mut buttons = Vec::new();
     match action {
         Action::ProcessAgain => buttons.push(Button {
             href: format!("/parked/{id}/reprocess"),
-            label: format::PROCESS_AGAIN,
+            label: format::process_again(),
             class: size.class(Kind::Main),
         }),
         // A rejected delivery's target is its delivery ID; anything else gets no button.
@@ -437,7 +439,7 @@ fn actions(id: i64, parked: &Parked, action: Action, size: Size) -> Vec<Button> 
                 .and_then(|target| uuid::Uuid::parse_str(target.as_str()).ok())
                 .map(|delivery| Button {
                     href: format!("/deliveries/{delivery}/resend"),
-                    label: format::SEND_AGAIN,
+                    label: format::send_again(),
                     class: size.class(Kind::Main),
                 }),
         ),
@@ -449,7 +451,7 @@ fn actions(id: i64, parked: &Parked, action: Action, size: Size) -> Vec<Button> 
     if matches!(size, Size::Small) {
         buttons.push(Button {
             href: format::parked_href(id),
-            label: "Details",
+            label: tr("admin-details"),
             class: size.class(Kind::Quiet),
         });
     }
@@ -469,7 +471,7 @@ fn settled_line(
     now: Timestamp,
 ) -> format::Line {
     resolution(stored).map_or_else(
-        || format::Line::text("Resolved; how it was resolved could not be read"),
+        || format::Line::text(tr("admin-resolved-how-it-was-resolved-could-not-be-read")),
         |audit| {
             format::settled_line(
                 &what(&audit),
@@ -613,9 +615,9 @@ fn item_page(
         Some(Linked::Removed | Linked::Other) | None => None,
     };
     let (tone, word) = if open {
-        (Tone::Attention, "Open")
+        (Tone::Attention, tr("admin-open"))
     } else {
-        (Tone::Good, "Resolved")
+        (Tone::Good, tr("admin-resolved"))
     };
     head.status = Some(Status {
         tone,
@@ -626,19 +628,18 @@ fn item_page(
     });
     let mut history_notes = Vec::new();
     if read.reprocessed.1 {
-        history_notes.push("Older entries are kept but not shown here.");
+        history_notes.push(tr("admin-older-entries-are-kept-but-not-shown-here"));
     }
     if open {
-        history_notes.push(concat!(
-            "When someone resolves this item or processes it again, the time, the ",
-            "action and the reason appear here.",
+        history_notes.push(tr(
+            "admin-when-someone-resolves-this-item-or-processes-it-again",
         ));
     }
     Item {
         frame: Frame::new(
             state,
             Tab::NeedsReview,
-            "Item to review",
+            tr("admin-item-to-review"),
             Some(read.counts.open),
             session,
             now,
@@ -657,7 +658,7 @@ fn item_page(
                         0,
                         Button {
                             href: format!("/parked/{id}/measurement"),
-                            label: format::COMPARE_MEASUREMENTS,
+                            label: format::compare_measurements(),
                             class: "btn--outline",
                         },
                     );
@@ -667,9 +668,16 @@ fn item_page(
         }),
         linked: linked_pairs(&read.linked, now),
         linked_note: (total > PAGE).then(|| {
-            format!(
-                "Linked records {} to {end} of {total}.",
-                read.after.saturating_add(1)
+            tr_args(
+                "admin-linked-records-to-of",
+                [
+                    (
+                        "saturating-add",
+                        (read.after.saturating_add(1)).to_string().into(),
+                    ),
+                    ("end", (end).to_string().into()),
+                    ("total", (total).to_string().into()),
+                ],
             )
         }),
         next: (end < total).then(|| format!("/parked/{id}?after={end}")),
@@ -685,26 +693,24 @@ fn item_page(
 fn linked_pairs(linked: &[(Identifier, Linked)], now: Timestamp) -> Vec<Pair> {
     if linked.is_empty() {
         return vec![Pair {
-            term: format::LINKED_RECORD,
-            value: format::Line::text("None recorded"),
+            term: format::linked_record(),
+            value: format::Line::text(tr("admin-none-recorded")),
         }];
     }
     linked
         .iter()
         .map(|(_, linked)| match linked {
             Linked::Message { machine, at } => Pair {
-                term: "Message",
+                term: tr("admin-message"),
                 value: format::arrived(machine, *at, now),
             },
             Linked::Removed => Pair {
-                term: "Message",
-                value: format::Line::text("Removed by data keeping"),
+                term: tr("admin-message"),
+                value: format::Line::text(tr("admin-removed-by-data-keeping")),
             },
             Linked::Other => Pair {
-                term: format::LINKED_RECORD,
-                value: format::Line::text(
-                    "Not a stored message; its ID is under Details for support",
-                ),
+                term: format::linked_record(),
+                value: format::Line::text(tr("admin-not-a-stored-message-its-id-is-under-details")),
             },
         })
         .collect()
@@ -732,19 +738,22 @@ fn original(id: i64, read: &ItemRead, session: Option<&Session>, now: Timestamp)
                         format!("/receipts/{}/departures", uuid::Uuid::from(receipt))
                     }),
                     vec![
-                        ("receipt", "Show the message as stored"),
-                        ("frames", format::AS_ARRIVED),
+                        ("receipt", tr("admin-show-the-message-as-stored")),
+                        ("frames", format::as_arrived()),
                     ],
                 ),
                 Linked::Removed => (
-                    format::Line::text("Message removed by data keeping"),
+                    format::Line::text(tr("admin-message-removed-by-data-keeping")),
                     None,
-                    vec![("frames", format::AS_ARRIVED)],
+                    vec![("frames", format::as_arrived())],
                 ),
                 Linked::Other => (
-                    format::Line::text(format!("Linked record {number}")),
+                    format::Line::text(tr_args(
+                        "admin-linked-record-2",
+                        [("number", (number).to_string().into())],
+                    )),
                     None,
-                    vec![("frames", format::AS_ARRIVED)],
+                    vec![("frames", format::as_arrived())],
                 ),
             };
             OriginalTarget {
@@ -776,8 +785,11 @@ fn history(read: &ItemRead, settled: Option<&Audit>, now: Timestamp) -> Vec<Entr
     if let Some(Linked::Message { machine, at }) = &read.first {
         entries.push(Entry {
             when: Some(format::moment(*at, now)),
-            text: format!("Arrived from {machine}"),
-            who: "Analyte stored the message".into(),
+            text: tr_args(
+                "admin-arrived-from",
+                [("machine", (machine).to_string().into())],
+            ),
+            who: tr("admin-analyte-stored-the-message").into(),
             good: false,
         });
     }
@@ -797,9 +809,8 @@ fn history(read: &ItemRead, settled: Option<&Audit>, now: Timestamp) -> Vec<Entr
         (Some(audit), _) if !shown => entries.push(entry(audit, true)),
         (None, Some(_)) => entries.push(Entry {
             when: None,
-            text: "Resolved".into(),
-            who: "How it was resolved could not be read; the stored record is under Details for support."
-                .into(),
+            text: tr("admin-resolved").into(),
+            who: tr("admin-how-it-was-resolved-could-not-be-read-the").into(),
             good: true,
         }),
         _ => {}
@@ -821,25 +832,34 @@ fn same(a: &Audit, b: &Audit) -> bool {
 /// and what goes with it.
 fn support(read: &ItemRead, reason: Vec<String>, settled: Option<&Audit>) -> Vec<String> {
     let mut lines = vec![format!("Item {}", read.id)];
-    lines.push(format!("Category as stored: {}", read.parked.kind.as_str()));
+    lines.push(tr_args(
+        "admin-category-as-stored",
+        [("kind", (read.parked.kind.as_str()).to_string().into())],
+    ));
     lines.extend(reason);
-    lines.extend(
-        read.linked
-            .iter()
-            .map(|(target, _)| format!("Linked record: {}", target.as_str())),
-    );
+    lines.extend(read.linked.iter().map(|(target, _)| {
+        tr_args(
+            "admin-linked-record-3",
+            [("target", (target.as_str()).to_string().into())],
+        )
+    }));
     for audit in read.reprocessed.0.iter().chain(settled) {
-        lines.push(format!(
-            "Recorded at Unix {}: {} by {}",
-            audit.time,
-            audit.action.as_str(),
-            audit.actor.as_str()
+        lines.push(tr_args(
+            "admin-recorded-at-unix-by",
+            [
+                ("time", (audit.time).to_string().into()),
+                ("action", (audit.action.as_str()).to_string().into()),
+                ("actor", (audit.actor.as_str()).to_string().into()),
+            ],
         ));
     }
     if settled.is_none()
         && let Some(stored) = &read.resolution
     {
-        lines.push(format!("Resolution as stored: {stored}"));
+        lines.push(tr_args(
+            "admin-resolution-as-stored",
+            [("stored", (stored).to_string().into())],
+        ));
     }
     lines
 }

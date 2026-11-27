@@ -7,6 +7,7 @@
 use crate::admin::error::CommandError;
 use crate::admin::{Error, activity, more, overview::PrintedAlert};
 use crate::installation::config::Program;
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_model::{Identifier, Reason};
 use analyte_store::{ActivityCursor, Audit, Handle};
 use jiff::Timestamp;
@@ -77,20 +78,23 @@ pub(super) async fn activity(
     }
     if lines.is_empty() {
         super::say(if page.before.is_some() {
-            "No earlier activity: this is past the oldest line Analyte keeps."
+            tr("cli-no-earlier-activity-this-is-past-the-oldest-line")
         } else {
-            "No activity yet."
+            tr("cli-no-activity-yet")
         })?;
     }
     for line in &lines {
         let at = line
             .local
             .as_deref()
-            .unwrap_or(crate::admin::view::format::FEED_UNDATED);
+            .unwrap_or(crate::admin::view::format::feed_undated());
         super::say(&format!("{at}  {:<12} {}", line.kind, line.text))?;
     }
     if let Some(next) = next {
-        super::say(&format!("More: analyte activity --before {next}"))?;
+        super::say(&tr_args(
+            "cli-more-analyte-activity-before",
+            [("next", (next).to_string().into())],
+        ))?;
     }
     Ok(())
 }
@@ -110,21 +114,32 @@ pub(super) async fn alerts(program: &Program, json: bool) -> Result<(), Error> {
         return super::json(&printed);
     }
     if printed.is_empty() {
-        return super::say("No active alerts.");
+        return super::say(tr("cli-no-active-alerts"));
     }
     for alert in &printed {
-        let raised = alert.raised.as_deref().unwrap_or("not recorded");
-        super::say(&format!(
-            "{} ({}) · raised {raised} · for {}",
-            alert.alert, alert.signal, alert.responder
+        let raised = alert.raised.as_deref().unwrap_or(tr("cli-not-recorded"));
+        super::say(&tr_args(
+            "cli-raised-for",
+            [
+                ("alert", (alert.alert).to_string().into()),
+                ("signal", (alert.signal).to_string().into()),
+                ("raised", (raised).to_string().into()),
+                ("responder", (alert.responder).to_string().into()),
+            ],
         ))?;
         super::say(&format!("  {}", alert.reason))?;
         if let Some(fix) = &alert.fix {
             super::say(&format!("  {fix}"))?;
         }
-        super::say(&format!("  Fix on: {}", alert.page))?;
+        super::say(&tr_args(
+            "cli-fix-on",
+            [("page", (alert.page).to_string().into())],
+        ))?;
         if let Some(command) = alert.command {
-            super::say(&format!("  Command: {command}"))?;
+            super::say(&tr_args(
+                "cli-command",
+                [("command", (command).to_string().into())],
+            ))?;
         }
     }
     Ok(())
@@ -140,26 +155,29 @@ pub(super) async fn keeping(program: &Program, after: u64, json: bool) -> Result
     if json {
         return super::json(&page);
     }
-    super::say("How long messages are kept")?;
+    super::say(tr("cli-how-long-messages-are-kept"))?;
     if page.kept.is_empty() {
-        super::say("  No machine is set up.")?;
+        super::say(tr("cli-no-machine-is-set-up"))?;
     }
     for (machine, kept) in &page.kept {
         super::say(&format!("  {machine}: {kept}"))?;
     }
-    super::say(more::retention::LAST_CLEAN_UP)?;
+    super::say(more::retention::last_clean_up())?;
     match &page.clean_up {
         Some(facts) => {
             for (term, value) in facts {
                 super::say(&format!("  {term}: {value}"))?;
             }
         }
-        None => super::say("  Not run yet")?,
+        None => super::say(tr("cli-not-run-yet"))?,
     }
-    super::say(&format!("Oldest message kept: {}", page.oldest))?;
-    super::say(more::retention::HOLDS)?;
+    super::say(&tr_args(
+        "cli-oldest-message-kept",
+        [("oldest", (page.oldest).to_string().into())],
+    ))?;
+    super::say(more::retention::holds())?;
     if page.holds.is_empty() {
-        super::say("  No holds: messages are deleted only as kept above.")?;
+        super::say(tr("cli-no-holds-messages-are-deleted-only-as-kept-above"))?;
     }
     for hold in &page.holds {
         super::say(&format!("  {}. {}", hold.number, hold.keeps))?;
@@ -167,7 +185,10 @@ pub(super) async fn keeping(program: &Program, after: u64, json: bool) -> Result
         super::say(&format!("     {}", hold.target))?;
     }
     if let Some(next) = page.next {
-        super::say(&format!("More: analyte data-keeping --after {next}"))?;
+        super::say(&tr_args(
+            "cli-more-analyte-data-keeping-after",
+            [("next", (next).to_string().into())],
+        ))?;
     }
     Ok(())
 }
@@ -203,12 +224,20 @@ pub(super) async fn cancelled(
         });
     }
     if items.is_empty() {
-        super::say("No orders cancelled by a machine.")?;
+        super::say(tr("cli-no-orders-cancelled-by-a-machine"))?;
     }
     for item in &items {
         let title = item.sample.as_ref().map_or_else(
             || format!("Order {}", item.order),
-            |sample| format!("Sample {sample} · order {}", item.order),
+            |sample| {
+                tr_args(
+                    "cli-sample-order",
+                    [
+                        ("sample", (sample).to_string().into()),
+                        ("order", (item.order).to_string().into()),
+                    ],
+                )
+            },
         );
         let machine = item.model.as_ref().map_or_else(
             || item.machine.clone(),
@@ -225,7 +254,10 @@ pub(super) async fn cancelled(
         super::say(&format!("  {}", item.identity))?;
     }
     if let Some(next) = next {
-        super::say(&format!("More: analyte orders cancelled --after {next}"))?;
+        super::say(&tr_args(
+            "cli-more-analyte-orders-cancelled-after",
+            [("next", (next).to_string().into())],
+        ))?;
     }
     Ok(())
 }
@@ -264,5 +296,5 @@ pub(super) async fn confirm_software(
         .await
     })
     .await?;
-    super::say("Settings checked for this version.")
+    super::say(tr("cli-settings-checked-for-this-version"))
 }

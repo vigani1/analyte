@@ -10,22 +10,27 @@ use crate::admin::view::{
     icon::Icon,
     report::{Head, Status},
 };
+use analyte_i18n::text as tr;
 
 /// The machine table's columns.
-pub(super) const MACHINE_COLUMNS: [Column; 5] = [
-    Column::text(crate::admin::view::format::MACHINE),
-    Column::text(crate::admin::view::format::MODEL),
-    Column::text("Status"),
-    Column::text("Settings version"),
-    Column::text(""),
-];
+pub(super) fn machine_columns() -> [Column; 5] {
+    [
+        Column::text(crate::admin::view::format::machine()),
+        Column::text(crate::admin::view::format::model()),
+        Column::text(tr("admin-status")),
+        Column::text(tr("admin-settings-version-2")),
+        Column::text(""),
+    ]
+}
 
 /// The supported models' columns.
-pub(super) const MODEL_COLUMNS: [Column; 3] = [
-    Column::text(crate::admin::view::format::MODEL),
-    Column::text("How it was checked"),
-    Column::text("Status"),
-];
+pub(super) fn model_columns() -> [Column; 3] {
+    [
+        Column::text(crate::admin::view::format::model()),
+        Column::text(tr("setup-how-it-was-checked")),
+        Column::text(tr("admin-status")),
+    ]
+}
 
 /// GET /setup: the lab apps, the machines the settings list and the shipped models.
 #[derive(askama::Template)]

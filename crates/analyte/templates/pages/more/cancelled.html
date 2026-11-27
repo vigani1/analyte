@@ -6,16 +6,16 @@
 {%- import "components/icon.html" as draw %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("", "Cancelled by machine", CANCELLED_LEDE) %}{% endcall %}
+{% call layout::intro_head("", "Cancelled by machine", crate::admin::more::page::cancelled_lede()) %}{% endcall %}
 {%- if cards.is_empty() %}
-{% call feedback::empty_card("No order was cancelled by a machine", "Order items a machine cancels on its own are listed here.") %}{% endcall %}
+{% call feedback::empty_card(analyte_i18n::text("admin-no-order-was-cancelled-by-a-machine"), analyte_i18n::text("admin-order-items-a-machine-cancels-on-its-own-are")) %}{% endcall %}
 {%- else %}
-{% call feedback::alert(crate::admin::view::Tone::Attention, "Check each order below with the lab and the lab app", CANCELLED_NOTICE) %}{% endcall %}
+{% call feedback::alert(crate::admin::view::Tone::Attention, analyte_i18n::text("admin-check-each-order-below-with-the-lab-and-the"), crate::admin::more::page::cancelled_notice()) %}{% endcall %}
 <ul class="stack more-list">
 {%- for card in cards %}
-<li class="card"><div class="row more-row">{% call draw::icon(crate::admin::view::icon::Icon::Cancelled, "tone-off") %}{% endcall %}<div class="row__main"><p class="more-row__title" title="{{ card.exact }}">{% if let Some(sample) = card.sample %}Sample <span class="mono">{{ sample }}</span>{% else %}Order <span class="mono">{{ card.order }}</span>{% endif %} · {{ card.machine }}{% if let Some(model) = card.model %} ({{ model }}){% endif %}{% if let Some(tests) = card.tests %} · {{ tests }}{% endif %}</p>
+<li class="card"><div class="row more-row">{% call draw::icon(crate::admin::view::icon::Icon::Cancelled, "tone-off") %}{% endcall %}<div class="row__main"><p class="more-row__title" title="{{ card.exact }}">{% if let Some(sample) = card.sample %}{{ analyte_i18n::text("admin-sample") }} <span class="mono">{{ sample }}</span>{% else %}{{ analyte_i18n::text("admin-order") }} <span class="mono">{{ card.order }}</span>{% endif %} · {{ card.machine }}{% if let Some(model) = card.model %} ({{ model }}){% endif %}{% if let Some(tests) = card.tests %} · {{ tests }}{% endif %}</p>
 {%- for line in card.lines %}<p class="muted text--sm">{% call display::words(line) %}{% endcall %}</p>{% endfor -%}
-</div><div class="cluster">{% call forms::link_button(card.href, "Details", "btn--outline btn--sm") %}{% endcall %}</div></div></li>
+</div><div class="cluster">{% call forms::link_button(card.href, analyte_i18n::text("admin-details"), "btn--outline btn--sm") %}{% endcall %}</div></div></li>
 {%- endfor %}
 </ul>
 {%- endif %}

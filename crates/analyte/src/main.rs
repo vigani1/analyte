@@ -5,6 +5,7 @@ use analyte::{
     installation::{config::Program, program_file},
     runtime::service,
 };
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_model::{Identifier, Reason};
 use analyte_store::Audit;
 use clap::{Parser, Subcommand};
@@ -23,7 +24,7 @@ const BACKUP_REQUEST_BUDGET: Duration = Duration::from_secs(30);
 const BACKUP_WORK_BUDGET: Duration = Duration::from_secs(25);
 
 #[derive(Parser)]
-#[command(version, about = "Faithful analyzer receive service")]
+#[command(version, about = tr("cli-about"))]
 struct Cli {
     /// Program file for operator commands. Without it: the file named by
     /// ANALYTE_CONFIG; else analyte.toml in the current folder, if there is
@@ -31,6 +32,7 @@ struct Cli {
     /// %ProgramData%\Analyte\config\analyte.toml; Linux:
     /// /etc/analyte/analyte.toml), if there is one. A file found this way is
     /// named on standard error.
+    #[arg(help = tr("cli-help-main-cli-config"))]
     #[expect(
         clippy::doc_markdown,
         reason = "clap prints this comment as --help, where backticks would show"
@@ -39,8 +41,11 @@ struct Cli {
     config: Option<PathBuf>,
     /// Explicit local operator identity, recorded in the audit trail; it may
     /// not begin like an admin page sign-in's (`admin-session-`, `windows:`).
+    #[arg(help = tr("cli-help-main-cli-actor"))]
     #[arg(long, global = true, value_parser = analyte::admin::command_line_actor)]
     actor: Option<Identifier>,
+    #[arg(long, global = true, help = tr("cli-lang-help"))]
+    lang: Option<String>,
     #[command(subcommand)]
     command: Command,
 }
@@ -48,6 +53,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Retries exhausted alert events with their original identities and bytes.
+    #[command(about = tr("cli-help-main-command-retry-alerts"))]
     RetryAlerts {
         #[arg(value_parser = Identifier::new)]
         endpoint: Identifier,
@@ -56,22 +62,26 @@ enum Command {
     },
     /// Recorded conversations (ADR 0009, ADR 0034): list them, or copy one to
     /// a folder. They contain patient data; both are audited.
+    #[command(about = tr("cli-help-main-command-captures"))]
     Captures {
         #[command(subcommand)]
         command: analyte::operator::captures::Command,
     },
     /// Places or releases an indefinite retention hold.
+    #[command(about = tr("cli-help-main-command-holds"))]
     Holds {
         #[command(subcommand)]
         command: analyte::operator::holds::Command,
     },
     /// The admin page's key.
+    #[command(about = tr("cli-help-main-command-admin"))]
     Admin {
         #[command(subcommand)]
         command: Admin,
     },
     /// Lists, adds, sets up, tests and removes machines through the Setup
     /// page's own checks; changes apply after a restart.
+    #[command(about = tr("cli-help-main-command-machines"))]
     Machines {
         // Boxed: its setup choices are much larger than every other command.
         #[command(subcommand)]
@@ -79,50 +89,61 @@ enum Command {
     },
     /// Lists, adds, changes and removes lab apps and stores their keys
     /// through the Lab apps page's own checks; changes apply after a restart.
+    #[command(about = tr("cli-help-main-command-lab-apps"))]
     LabApps {
         #[command(subcommand)]
         command: analyte::admin::LabApps,
     },
     /// Machine orders: list, cancelled by a machine, reconcile, resume after a restore.
+    #[command(about = tr("cli-help-main-command-orders"))]
     Orders {
         #[command(subcommand)]
         command: analyte::orders::Command,
     },
     /// Checks a program file and lists each machine's settings version and evidence level.
+    #[command(about = tr("cli-help-main-command-check-config"))]
     CheckConfig { file: PathBuf },
     /// Runs the engine in this window until Ctrl+C (the service uses `service run`).
+    #[command(about = tr("cli-help-main-command-run"))]
     Run {
         file: Option<PathBuf>,
         /// Hard process deadline after shutdown begins.
+        #[arg(help = tr("cli-help-main-command-run-shutdown-timeout-secs"))]
         #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u64).range(30..=300))]
         shutdown_timeout_secs: u64,
     },
     /// Entry point for the Windows service; start it with Start-Service Analyte.
+    #[command(about = tr("cli-help-main-command-service"))]
     #[cfg(windows)]
     Service {
         #[command(subcommand)]
         command: ServiceCommand,
     },
     /// Technical health lines for support: alerts, queues, last data per machine.
+    #[command(about = tr("cli-help-main-command-status"))]
     Status { file: PathBuf },
     /// Needs review: items Analyte kept but could not process. `review` and
     /// `parked` are the same command.
+    #[command(about = tr("cli-help-main-command-parked"))]
     #[command(visible_alias = "review")]
     Parked {
         #[command(subcommand)]
         command: Parked,
     },
     /// Reprocesses one stored message with the current settings.
+    #[command(about = tr("cli-help-main-command-receipts"))]
     Receipts {
         #[command(subcommand)]
         command: Receipts,
     },
     /// Deliveries to lab apps: list, send again.
+    #[command(about = tr("cli-help-main-command-deliveries"))]
     Deliveries {
         #[command(subcommand)]
         command: Deliveries,
     },
     /// Restores the store from a verified backup; order sending stays paused until reconciled.
+    #[command(about = tr("cli-help-main-command-restore"))]
     Restore {
         #[arg(long)]
         from: PathBuf,
@@ -130,11 +151,13 @@ enum Command {
         reason: String,
     },
     /// Writes a verified backup of the store to a file.
+    #[command(about = tr("cli-help-main-command-backup"))]
     Backup { target: PathBuf },
     #[command(flatten)]
     Pages(analyte::admin::command::Command),
     /// Prints a script that completes analyte's commands in `shell`.
     /// PowerShell: analyte completions powershell | Out-String | Invoke-Expression
+    #[command(about = tr("cli-help-main-command-completions"))]
     Completions {
         #[arg(value_enum)]
         shell: clap_complete::Shell,
@@ -144,6 +167,7 @@ enum Command {
 #[derive(Subcommand)]
 enum Admin {
     /// Replaces the protected admin credential and prints it once.
+    #[command(about = tr("cli-help-main-admin-token"))]
     Token {
         #[arg(long, required = true)]
         rotate: bool,
@@ -162,15 +186,18 @@ enum ServiceCommand {
 #[derive(Subcommand)]
 enum Parked {
     /// Show the protected result comparison and its confirmation snapshot.
+    #[command(about = tr("cli-help-main-parked-compare"))]
     Compare {
         id: i64,
     },
     /// List missing-sample suggestions for one page of open items.
+    #[command(about = tr("cli-help-main-parked-suggestions"))]
     Suggestions {
         #[arg(long, default_value_t = 0)]
         after: i64,
     },
     /// Confirm a displayed measurement comparison.
+    #[command(about = tr("cli-help-main-parked-decide"))]
     Decide {
         id: i64,
         #[arg(value_enum)]
@@ -182,6 +209,7 @@ enum Parked {
     },
     List {
         /// Continue after the last ID of a previous bounded page.
+        #[arg(help = tr("cli-help-main-parked-list-after"))]
         #[arg(long, default_value_t = 0)]
         after: i64,
     },
@@ -247,7 +275,7 @@ fn required_actor(actor: Option<Identifier>) -> Result<Identifier, Error> {
     actor.ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            "--actor is required for recovery commands",
+            tr("cli-actor-is-required-for-recovery-commands"),
         )
         .into()
     })
@@ -277,16 +305,46 @@ async fn recover(
         analyte::operator::recovery::reprocess(&store, &program, target, actor, reason).await;
     store.shutdown(analyte::deadline()?).await?;
     let commit = result?;
-    analyte::operator::display::line(&format!(
-        "Interpretation {} recorded; decisions: {}. Inspect parked items for failures.",
-        commit.version,
-        analyte::operator::display::list(&commit.outcomes)
+    analyte::operator::display::line(&tr_args(
+        "cli-interpretation-recorded-decisions-inspect-parked-items-for-failures",
+        [
+            ("version", (commit.version).to_string().into()),
+            (
+                "outcomes",
+                (analyte::operator::display::list(&commit.outcomes))
+                    .to_string()
+                    .into(),
+            ),
+        ],
     ))?;
     Ok(())
 }
 
 fn main() -> Result<ExitCode, Error> {
-    let cli = Cli::parse();
+    let arguments: Vec<_> = std::env::args_os().collect();
+    let explicit = language_argument(&arguments);
+    analyte_i18n::Language::command_line(explicit).sync_scope(|| run(Cli::parse_from(arguments)))
+}
+
+// Select the catalog before Clap renders help or a diagnostic. Clap still
+// owns validation, including missing and duplicate option values.
+fn language_argument(arguments: &[std::ffi::OsString]) -> Option<&str> {
+    let mut arguments = arguments.iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        match argument.to_str() {
+            Some("--") => break,
+            Some("--lang") => return arguments.next().and_then(|value| value.to_str()),
+            Some(argument) if argument.starts_with("--lang=") => {
+                return argument.strip_prefix("--lang=");
+            }
+            Some(_) | None => {}
+        }
+    }
+    None
+}
+
+fn run(cli: Cli) -> Result<ExitCode, Error> {
+    let language = analyte_i18n::Language::command_line(cli.lang.as_deref());
     if let Command::Completions { shell } = cli.command {
         let mut command = <Cli as clap::CommandFactory>::command();
         clap_complete::generate(shell, &mut command, "analyte", &mut std::io::stdout());
@@ -317,6 +375,7 @@ fn main() -> Result<ExitCode, Error> {
         config,
         actor,
         command,
+        lang,
     } = cli;
     // `overview` and `doctor` say how things are in their exit code.
     if let Command::Pages(pages) = command {
@@ -330,7 +389,8 @@ fn main() -> Result<ExitCode, Error> {
         };
         let config = program_file(config)?;
         let doctor = matches!(pages, analyte::admin::command::Command::Doctor { .. });
-        let result = runtime.block_on(analyte::admin::command::run(&config, actor, pages));
+        let result =
+            runtime.block_on(language.scope(analyte::admin::command::run(&config, actor, pages)));
         if doctor {
             // A timed-out read-only probe can still be in an OS call.
             // Return the reported exit code without joining it at process exit.
@@ -342,19 +402,22 @@ fn main() -> Result<ExitCode, Error> {
     // own exit code (0 done, 1 refused, 3 partly done, 4 test saw no data).
     if let Command::Machines { command } = command {
         let config = program_file(config)?;
-        let outcome = runtime.block_on(analyte::admin::run_machines(&config, actor, *command));
+        let outcome = runtime
+            .block_on(language.scope(analyte::admin::run_machines(&config, actor, *command)));
         return Ok(outcome.into());
     }
     if let Command::LabApps { command } = command {
         let config = program_file(config)?;
-        let outcome = runtime.block_on(analyte::admin::run_lab_apps(&config, actor, command));
+        let outcome =
+            runtime.block_on(language.scope(analyte::admin::run_lab_apps(&config, actor, command)));
         return Ok(outcome.into());
     }
-    runtime.block_on(execute(Cli {
+    runtime.block_on(language.scope(execute(Cli {
         config,
         actor,
         command,
-    }))
+        lang,
+    })))
 }
 
 /// The program file this command reads: `--config`, or the one
@@ -365,9 +428,14 @@ fn program_file(explicit: Option<PathBuf>) -> Result<PathBuf, Error> {
     if found.source != program_file::Source::Explicit {
         writeln!(
             std::io::stderr().lock(),
-            "Using {} ({}).",
-            found.path.display(),
-            found.source.describe()
+            "{}",
+            tr_args(
+                "cli-using",
+                [
+                    ("path", (found.path.display()).to_string().into()),
+                    ("describe", (found.source.describe()).to_string().into())
+                ]
+            )
         )?;
     }
     Ok(found.path)
@@ -413,10 +481,7 @@ async fn execute(cli: Cli) -> Result<ExitCode, Error> {
             command: ServiceCommand::Run {
                 shutdown_timeout_secs,
             },
-        } => Err(std::io::Error::other(format!(
-            "SCM dispatch was not selected ({shutdown_timeout_secs})"
-        ))
-        .into()),
+        } => Err(service_dispatch_error(shutdown_timeout_secs)),
         Command::Orders { command } => {
             analyte::orders::run(&Program::load(&config()?)?, actor, command)
                 .await
@@ -464,9 +529,20 @@ async fn execute(cli: Cli) -> Result<ExitCode, Error> {
         Command::Pages(_)
         | Command::Completions { .. }
         | Command::Machines { .. }
-        | Command::LabApps { .. } => Err(std::io::Error::other("dispatched in main").into()),
+        | Command::LabApps { .. } => {
+            Err(std::io::Error::other(tr("cli-dispatched-in-main")).into())
+        }
     };
     done.map(|()| ExitCode::SUCCESS)
+}
+
+#[cfg(windows)]
+fn service_dispatch_error(seconds: u64) -> Error {
+    std::io::Error::other(tr_args(
+        "cli-scm-dispatch-was-not-selected",
+        [("shutdown-timeout-secs", seconds.to_string().into())],
+    ))
+    .into()
 }
 
 async fn operator(
@@ -501,17 +577,19 @@ async fn operator(
                 "operator inspected parked item".to_owned(),
             ),
             Parked::Reprocess { .. } => {
-                return Err(
-                    std::io::Error::other("reprocess must use the recovery entry point").into(),
-                );
+                return Err(std::io::Error::other(tr(
+                    "cli-reprocess-must-use-the-recovery-entry-point",
+                ))
+                .into());
             }
             Parked::Compare { .. }
             | Parked::Suggestions { .. }
             | Parked::Decide { .. }
             | Parked::Resolve { .. } => {
-                return Err(
-                    std::io::Error::other("resolve must use the recovery entry point").into(),
-                );
+                return Err(std::io::Error::other(tr(
+                    "cli-resolve-must-use-the-recovery-entry-point",
+                ))
+                .into());
             }
         };
         let audit = Audit {
@@ -548,11 +626,18 @@ async fn operator(
             })
             .await?;
         for row in rows {
-            analyte::operator::display::line(&format!(
-                "{} {} resolution={}",
-                row.id,
-                row.evidence,
-                analyte::operator::display::optional_text(row.resolution.as_deref())
+            analyte::operator::display::line(&tr_args(
+                "cli-resolution",
+                [
+                    ("id", (row.id).to_string().into()),
+                    ("evidence", (row.evidence).to_string().into()),
+                    (
+                        "as-deref",
+                        (analyte::operator::display::optional_text(row.resolution.as_deref()))
+                            .to_string()
+                            .into(),
+                    ),
+                ],
             ))?;
         }
         Ok::<_, Error>(())
@@ -623,7 +708,10 @@ fn print_measurement(
             comparison,
         })
         .map_err(analyte::operator::Error::from)?,
-        None => format!("Item {id} has no eligible measurement comparison."),
+        None => tr_args(
+            "cli-item-has-no-eligible-measurement-comparison",
+            [("id", (id).to_string().into())],
+        ),
     };
     Ok(analyte::operator::display::line(&text)?)
 }
@@ -655,7 +743,10 @@ async fn measurement_suggestions(
         }
     }
     if let Some(last) = rows.last() {
-        analyte::operator::display::line(&format!("Continue with --after {}", last.id))?;
+        analyte::operator::display::line(&tr_args(
+            "cli-continue-with-after",
+            [("id", (last.id).to_string().into())],
+        ))?;
     }
     Ok(())
 }
@@ -683,13 +774,13 @@ fn check_config(file: &std::path::Path) -> Result<(), Error> {
         analyte::operator::display::line(&format!("{} {digest} {level}", machine.id().as_str()))?;
     }
     for id in program.awaiting_setup() {
-        analyte::operator::display::line(&format!(
-            "{} not set up: choose its definition on the setup page",
-            id.as_str()
+        analyte::operator::display::line(&tr_args(
+            "cli-not-set-up-choose-its-definition-on-the-setup",
+            [("id", (id.as_str()).to_string().into())],
         ))?;
     }
     if program.machines().is_empty() && program.awaiting_setup().is_empty() {
-        analyte::operator::display::line("no machines: add one on the setup page")?;
+        analyte::operator::display::line(tr("cli-no-machines-add-one-on-the-setup-page"))?;
     }
     Ok(())
 }
@@ -733,9 +824,9 @@ async fn deliveries(
             Deliveries::Resend { id, reason } => {
                 analyte::operator::recovery::resend(&store, id, true, actor, Reason::new(&reason)?)
                     .await?;
-                analyte::operator::display::line(
-                    "Delivery queued with its original ID and bytes.",
-                )?;
+                analyte::operator::display::line(tr(
+                    "cli-delivery-queued-with-its-original-id-and-bytes",
+                ))?;
                 Ok(())
             }
         }
@@ -760,9 +851,9 @@ async fn restore(
         reason: Reason::new(reason)?,
     };
     let kept = service::restore(program, from, audit).await?;
-    analyte::operator::display::line(&format!(
-        "Restored; order sending paused pending reconciliation. Previous store: {}",
-        kept.display()
+    analyte::operator::display::line(&tr_args(
+        "cli-restored-order-sending-paused-pending-reconciliation-previous-store",
+        [("kept", (kept.display()).to_string().into())],
     ))?;
     Ok(())
 }
@@ -787,6 +878,6 @@ async fn backup(config: &std::path::Path, target: PathBuf) -> Result<(), Error> 
         .await;
     store.shutdown(analyte::deadline()?).await?;
     result?;
-    analyte::operator::display::line("Backup verified.")?;
+    analyte::operator::display::line(tr("cli-backup-verified"))?;
     Ok(())
 }

@@ -13,6 +13,7 @@
 //! address of the device that connected is kept too, so the setup can offer
 //! to accept only that device (ADR 0026); an address is not patient data.
 use super::verdict::{self, Guess};
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_transport::serial;
 use std::{
     io,
@@ -240,7 +241,7 @@ impl Session {
             closed: false,
             bytes: Vec::new(),
             seen: 0,
-            end: Some(End::Failed("test state unavailable".into())),
+            end: Some(End::Failed(tr("setup-test-state-unavailable").into())),
             guess: Guess::Nothing,
             framing: Vec::new(),
             handover: None,
@@ -381,7 +382,15 @@ async fn read_serial(
     let reader = tokio::task::spawn_blocking(move || {
         let mut port = match open(&name, &settings) {
             Ok(port) => port,
-            Err(error) => return Some(End::Failed(format!("open {name}: {error}"))),
+            Err(error) => {
+                return Some(End::Failed(tr_args(
+                    "setup-open",
+                    [
+                        ("name", (name).to_string().into()),
+                        ("error", (error).to_string().into()),
+                    ],
+                )));
+            }
         };
         if let Ok(mut capture) = capture.lock() {
             capture.connect();
@@ -404,14 +413,27 @@ async fn read_serial(
                         error.kind(),
                         io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
                     ) => {}
-                Err(error) => return Some(End::Failed(format!("read {name}: {error}"))),
+                Err(error) => {
+                    return Some(End::Failed(tr_args(
+                        "setup-read",
+                        [
+                            ("name", (name).to_string().into()),
+                            ("error", (error).to_string().into()),
+                        ],
+                    )));
+                }
             }
         }
         Some(End::Stopped)
     });
     let result = reader.await;
     drop(halt);
-    result.unwrap_or_else(|error| Some(End::Failed(format!("serial reader: {error}"))))
+    result.unwrap_or_else(|error| {
+        Some(End::Failed(tr_args(
+            "setup-serial-reader",
+            [("error", (error).to_string().into())],
+        )))
+    })
 }
 
 #[cfg(test)]

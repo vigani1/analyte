@@ -17,6 +17,7 @@ use crate::admin::view::{
 };
 use crate::admin::{Error, server::Context};
 use crate::deadline;
+use analyte_i18n::text as tr;
 use analyte_model::DeliveryId;
 use analyte_store::{Activity, ActivityCursor, ActivityGroup, ActivityLine};
 use askama::Template as _;
@@ -74,13 +75,13 @@ impl Show {
         }
     }
 
-    const fn label(self) -> &'static str {
+    fn label(self) -> &'static str {
         match self {
-            Self::All => "All",
-            Self::Results => "Results",
-            Self::Orders => "Orders",
-            Self::Problems => "Problems",
-            Self::Changes => "Changes",
+            Self::All => tr("admin-all"),
+            Self::Results => tr("admin-results"),
+            Self::Orders => tr("admin-orders"),
+            Self::Problems => tr("admin-problems"),
+            Self::Changes => tr("admin-changes"),
         }
     }
 }
@@ -245,32 +246,29 @@ fn feed(
         if before.is_some() {
             Empty {
                 good: false,
-                title: "No earlier activity",
-                text: "This page is past the oldest line Analyte keeps.",
-                link: Some((Tab::Activity.href(), "Back to the newest".into())),
+                title: tr("admin-no-earlier-activity"),
+                text: tr("admin-this-page-is-past-the-oldest-line-analyte-keeps"),
+                link: Some((Tab::Activity.href(), tr("admin-back-to-the-newest").into())),
             }
         } else if matches!(lines, Lines::Tries(_)) {
             Empty {
                 good: false,
-                title: "No tries kept",
-                text: "Analyte keeps no try of this delivery.",
-                link: Some((Tab::Activity.href(), "Show all activity".into())),
+                title: tr("admin-no-tries-kept"),
+                text: tr("admin-analyte-keeps-no-try-of-this-delivery"),
+                link: Some((Tab::Activity.href(), tr("admin-show-all-activity").into())),
             }
         } else if machine.is_some() || show != Show::All {
             Empty {
                 good: false,
-                title: "Nothing for this filter",
-                text: "No stored activity matches this machine and type.",
-                link: Some((Tab::Activity.href(), "Show all activity".into())),
+                title: tr("admin-nothing-for-this-filter"),
+                text: tr("admin-no-stored-activity-matches-this-machine-and-type"),
+                link: Some((Tab::Activity.href(), tr("admin-show-all-activity").into())),
             }
         } else {
             Empty {
                 good: false,
-                title: "No activity yet",
-                text: concat!(
-                    "Messages from machines, deliveries to lab apps, orders and changes ",
-                    "are listed here once Analyte stores them.",
-                ),
+                title: tr("admin-no-activity-yet"),
+                text: tr("admin-messages-from-machines-deliveries-to-lab-apps-orders-and"),
                 link: None,
             }
         }
@@ -312,7 +310,7 @@ fn days(state: &Context, lines: &[ActivityLine], now: Timestamp) -> Vec<Day> {
             .at
             .and_then(|at| Timestamp::from_second(at).ok())
             .map_or_else(
-                || format::FEED_UNDATED.to_owned(),
+                || format::feed_undated().to_owned(),
                 |at| format::feed_day(at, now),
             );
         let said = said(line, |id| state.machine_model(id));
@@ -414,7 +412,7 @@ pub(in crate::admin) fn parse_position(written: &str) -> Result<ActivityCursor, 
     let mut parts = written.splitn(3, '.').map(str::parse::<i64>);
     match (parts.next(), parts.next(), parts.next()) {
         (Some(Ok(at)), Some(Ok(source)), Some(Ok(key))) => Ok(ActivityCursor { at, source, key }),
-        _ => Err("expected the position of a line, as at.source.key"),
+        _ => Err(tr("admin-expected-the-position-of-a-line-as-at-source")),
     }
 }
 

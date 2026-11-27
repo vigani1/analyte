@@ -3,10 +3,10 @@
 {%- import "components/icon.html" as draw %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("Set up a machine", wizard.id, wizard.model.as_deref().unwrap_or_default()) %}{% if wizard.cancel %}<a class="btn btn--quiet" href="/setup">Cancel</a>{% endif %}{% endcall %}
-<ol class="stepper" aria-label="Setup steps">
+{% call layout::intro_head(analyte_i18n::text("setup-set-up-a-machine"), wizard.id, wizard.model.as_deref().unwrap_or_default()) %}{% if wizard.cancel %}<a class="btn btn--quiet" href="/setup">{{ analyte_i18n::text("admin-cancel") }}</a>{% endif %}{% endcall %}
+<ol class="stepper" aria-label="{{ analyte_i18n::text("setup-setup-steps") }}">
 {%- for step in wizard.steps %}
-<li class="step{% if step.done %} step--done{% endif %}"{% if step.current %} aria-current="step"{% endif %}><span class="step__n">{% if step.done %}{% call draw::icon(crate::admin::view::icon::Icon::Check, "icon--sm") %}{% endcall %}{% endif %}Step {{ step.number }}{% if step.done %} · done{% endif %}</span><span class="step__name">{{ step.label }}</span></li>
+<li class="step{% if step.done %} step--done{% endif %}"{% if step.current %} aria-current="step"{% endif %}><span class="step__n">{% if step.done %}{% call draw::icon(crate::admin::view::icon::Icon::Check, "icon--sm") %}{% endcall %}{% endif %}{{ analyte_i18n::text("setup-step") }} {{ step.number }}{% if step.done %} {{ analyte_i18n::text("setup-done-2") }}{% endif %}</span><span class="step__name">{{ step.label }}</span></li>
 {%- endfor %}
 </ol>
 <div class="wizard anim-in">

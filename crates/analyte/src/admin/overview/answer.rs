@@ -6,6 +6,7 @@
 //! every page; only `GET /status` is public, and it says no names or counts.
 use super::attention::{Overall, Thing};
 use crate::admin::view::Tone;
+use analyte_i18n::text as tr;
 use serde::{Deserialize, Serialize};
 
 /// The overall state, as the verdict shows it, or unknown when the engine
@@ -120,7 +121,9 @@ impl Answer {
     /// you", or for an unknown state that Analyte cannot say how things are.
     pub(crate) fn title(&self) -> String {
         match self.verdict {
-            Verdict::Unknown => "Analyte cannot say how things are right now".into(),
+            Verdict::Unknown => {
+                tr("doctor-overview-analyte-cannot-say-how-things-are-right-now").into()
+            }
             Verdict::Good | Verdict::Attention | Verdict::Problem => {
                 super::page::title(self.needs.len())
             }
@@ -131,7 +134,9 @@ impl Answer {
     pub(crate) fn sub(&self) -> String {
         match (&self.verdict, &self.unread) {
             (Verdict::Unknown, Some(unread)) => unread.clone(),
-            (Verdict::Unknown, None) => "The engine could not read its state.".into(),
+            (Verdict::Unknown, None) => {
+                tr("doctor-overview-the-engine-could-not-read-its-state").into()
+            }
             (Verdict::Good | Verdict::Attention | Verdict::Problem, _) => {
                 super::page::sub(self.needs.len()).to_owned()
             }

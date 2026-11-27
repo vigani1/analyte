@@ -9,6 +9,7 @@ use crate::admin::view::{
 };
 use crate::installation::config::Program;
 use crate::machine::link::status::Light;
+use analyte_i18n::{count as tr_count, message as tr_args, text as tr};
 use analyte_model::Identifier;
 use askama::Template as _;
 use axum::{Extension, extract::State, http::StatusCode, response::Response};
@@ -93,15 +94,28 @@ pub(in crate::admin) async fn settings(
     let mut problems = Vec::new();
     let mut support = Vec::new();
     if let Some(why) = unlisted {
-        problems.push(
-            "The lab apps’ settings could not be read, so their keys are not listed".to_owned(),
-        );
-        support.push(format!("Lab apps: {why}"));
+        problems.push(tr("admin-the-lab-apps-settings-could-not-be-read-so").to_owned());
+        support.push(tr_args(
+            "admin-lab-apps",
+            [("why", (why).to_string().into())],
+        ));
     }
     if let Some(why) = unreadable {
         support.push(why);
     }
     let page = Settings {
+        languages: if analyte_i18n::Language::installed().count() > 1 {
+            analyte_i18n::Language::installed()
+                .map(|language| {
+                    (
+                        language.tag(),
+                        language == analyte_i18n::Language::current(),
+                    )
+                })
+                .collect()
+        } else {
+            Vec::new()
+        },
         frame: Frame::new(
             &state,
             Tab::Settings,
@@ -134,7 +148,7 @@ fn path(path: &std::path::Path) -> Value {
 fn size(bytes: u64) -> Value {
     Value::Code {
         shown: format::bytes(bytes),
-        exact: format::amount(bytes, "byte", "bytes"),
+        exact: tr_count("admin-count-bytes", bytes),
     }
 }
 
@@ -157,33 +171,39 @@ fn engine(state: &Context) -> Vec<Fact> {
         .count();
     let mut facts = vec![
         Fact {
-            term: "Analyte version",
+            term: tr("admin-analyte-version"),
             value: Value::Code {
                 shown: env!("CARGO_PKG_VERSION").into(),
                 exact: env!("CARGO_PKG_VERSION").into(),
             },
         },
         Fact {
-            term: "Machine links open",
-            value: Value::Text(format!("{open} of {}", state.machines.len())),
+            term: tr("admin-machine-links-open"),
+            value: Value::Text(tr_args(
+                "admin-of",
+                [
+                    ("open", (open).to_string().into()),
+                    ("machines", (state.machines.len()).to_string().into()),
+                ],
+            )),
         },
         Fact {
-            term: "Admin pages",
+            term: tr("admin-admin-pages"),
             value: Value::Code {
                 shown: state.origin().to_owned(),
-                exact: "Reachable from this PC only".into(),
+                exact: tr("admin-reachable-from-this-pc-only").into(),
             },
         },
         Fact {
-            term: "Program file",
+            term: tr("admin-program-file"),
             value: path(state.setup.config()),
         },
         Fact {
-            term: "Data folder",
+            term: tr("admin-data-folder"),
             value: path(&state.directory),
         },
         Fact {
-            term: "Times on these pages",
+            term: tr("admin-times-on-these-pages"),
             value: Value::Text(format::time_zone()),
         },
     ];
@@ -192,7 +212,7 @@ fn engine(state: &Context) -> Vec<Fact> {
         facts.insert(
             3,
             Fact {
-                term: "Windows sign-in",
+                term: tr("admin-windows-sign-in"),
                 value: Value::Text(status.line()),
             },
         );
@@ -205,23 +225,23 @@ fn store(state: &Context) -> Vec<Fact> {
     let limits = &state.installed;
     vec![
         Fact {
-            term: "Disk space kept free",
+            term: tr("admin-disk-space-kept-free"),
             value: size(state.reserve),
         },
         Fact {
-            term: "Largest database",
+            term: tr("admin-largest-database"),
             value: size(limits.database_bytes),
         },
         Fact {
-            term: "Largest message or record",
+            term: tr("admin-largest-message-or-record"),
             value: size(u64::try_from(limits.record_bytes).unwrap_or(u64::MAX)),
         },
         Fact {
-            term: "Wait for a busy store",
+            term: tr("admin-wait-for-a-busy-store"),
             value: limit(limits.busy_timeout),
         },
         Fact {
-            term: "Store start limit",
+            term: tr("admin-store-start-limit"),
             value: limit(limits.startup_timeout),
         },
     ]
@@ -231,19 +251,19 @@ fn store(state: &Context) -> Vec<Fact> {
 fn times(state: &Context) -> Vec<Fact> {
     vec![
         Fact {
-            term: "Shutdown limit",
+            term: tr("admin-shutdown-limit"),
             value: limit(state.installed.shutdown),
         },
         Fact {
-            term: "Page reads",
+            term: tr("admin-page-reads"),
             value: limit(view::READ_BUDGET),
         },
         Fact {
-            term: "Page requests",
+            term: tr("admin-page-requests"),
             value: limit(crate::admin::server::REQUEST_BUDGET),
         },
         Fact {
-            term: "Setup changes",
+            term: tr("admin-setup-changes"),
             value: limit(state.write_budget),
         },
     ]
@@ -254,19 +274,19 @@ fn times(state: &Context) -> Vec<Fact> {
 fn alerts(state: &Context) -> Vec<Fact> {
     let installed = &state.installed;
     let mut facts = vec![Fact {
-        term: "Checked every",
+        term: tr("admin-checked-every"),
         value: limit(installed.alert_interval),
     }];
     if installed.alert_targets.is_empty() {
         facts.push(Fact {
-            term: "Alert targets",
-            value: Value::Text("None set up; alerts show on these pages only".into()),
+            term: tr("admin-alert-targets"),
+            value: Value::Text(tr("admin-none-set-up-alerts-show-on-these-pages-only").into()),
         });
         return facts;
     }
     facts.extend([
         Fact {
-            term: "Alert targets",
+            term: tr("admin-alert-targets"),
             value: Value::Text(
                 installed
                     .alert_targets
@@ -277,15 +297,15 @@ fn alerts(state: &Context) -> Vec<Fact> {
             ),
         },
         Fact {
-            term: "Reminder every",
+            term: tr("admin-reminder-every"),
             value: limit(installed.alert_reminder),
         },
         Fact {
-            term: "Wait for an answer",
+            term: tr("admin-wait-for-an-answer"),
             value: limit(installed.alert_timeout),
         },
         Fact {
-            term: "Tries per alert",
+            term: tr("admin-tries-per-alert"),
             value: Value::Text(installed.alert_attempts.to_string()),
         },
     ]);
@@ -296,10 +316,10 @@ fn alerts(state: &Context) -> Vec<Fact> {
 /// alert target's keys by the service's own rule; never a value.
 fn keys(state: &Context, found: Vec<crate::admin::setup::Found>) -> Vec<KeyRow> {
     let mut rows = vec![KeyRow {
-        owner: "Admin pages".into(),
-        label: "Admin key",
+        owner: tr("admin-admin-pages").into(),
+        label: tr("admin-admin-key"),
         tone: Tone::Good,
-        word: "In the file admin-token in the data folder".into(),
+        word: tr("admin-in-the-file-admin-token-in-the-data-folder").into(),
         exact: state.directory.join("admin-token").display().to_string(),
     }];
     rows.extend(found.into_iter().map(|found| KeyRow {

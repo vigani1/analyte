@@ -1,7 +1,8 @@
 //! Says who did what in a history line: the recorded actor, the settled action and what a new reading decided.
-use super::{Line, amount, moment, moment_unix};
+use super::{Line, moment, moment_unix, nonzero_count};
 use crate::admin::server::{sessions::ADMIN_KEY_PREFIX, windows::ACTOR_PREFIX};
 use crate::operator::recovery;
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_store::RevisionOutcome;
 use jiff::Timestamp;
 
@@ -13,7 +14,7 @@ use jiff::Timestamp;
 /// is ever made up.
 pub(in crate::admin) fn actor(recorded: &str) -> String {
     if recorded.starts_with(ADMIN_KEY_PREFIX) {
-        "admin session".into()
+        tr("admin-admin-session").into()
     } else if let Some(account) = recorded.strip_prefix(ACTOR_PREFIX) {
         // SIDs hold no ':', so the first one ends the SID.
         account
@@ -45,10 +46,13 @@ pub(in crate::admin) fn settled(action: &str, targets: &[&str]) -> String {
                 .find_map(|target| target.strip_prefix("interpretation:"))
                 .and_then(|rest| rest.rsplit(':').next())
                 .map_or_else(String::new, |version| {
-                    format!(": reading {version} recorded")
+                    tr_args(
+                        "admin-reading-recorded",
+                        [("version", (version).to_string().into())],
+                    )
                 });
             let still = if targets.contains(&"reprocess:parked") {
-                "; it still needs review"
+                tr("admin-it-still-needs-review")
             } else {
                 ""
             };
@@ -62,12 +66,14 @@ pub(in crate::admin) fn settled(action: &str, targets: &[&str]) -> String {
 /// resolved", "Processed again", or "Resolved" for an action recorded elsewhere.
 pub(in crate::admin) fn settled_action(action: &str) -> &'static str {
     match action {
-        recovery::RESOLVE_ACTION => crate::admin::view::format::MARKED_RESOLVED,
-        recovery::REPROCESS_ACTION => crate::admin::view::format::PROCESSED_AGAIN,
-        analyte_store::RESEND_MEASUREMENT_ACTION => "Recorded as a resend",
-        analyte_store::RERUN_MEASUREMENT_ACTION => "Rerun queued",
-        analyte_store::SUPERSEDE_SAMPLE_ACTION => "Superseded by the receipt with a tube ID",
-        _ => "Resolved",
+        recovery::RESOLVE_ACTION => crate::admin::view::format::marked_resolved(),
+        recovery::REPROCESS_ACTION => crate::admin::view::format::processed_again(),
+        analyte_store::RESEND_MEASUREMENT_ACTION => tr("admin-recorded-as-a-resend"),
+        analyte_store::RERUN_MEASUREMENT_ACTION => tr("admin-rerun-queued"),
+        analyte_store::SUPERSEDE_SAMPLE_ACTION => {
+            tr("admin-superseded-by-the-receipt-with-a-tube-id")
+        }
+        _ => tr("admin-resolved"),
     }
 }
 
@@ -80,15 +86,25 @@ pub(in crate::admin) fn settled_line(
     reason: &str,
     now: Timestamp,
 ) -> Line {
-    Line::text(format!("{what} by {actor} at "))
-        .time(moment_unix(seconds, now))
-        .text_part(&format!(": “{reason}”"))
+    Line::text(tr_args(
+        "admin-by-at",
+        [
+            ("what", (what).to_string().into()),
+            ("actor", (actor).to_string().into()),
+        ],
+    ))
+    .time(moment_unix(seconds, now))
+    .text_part(&format!(": “{reason}”"))
 }
 
 /// Where a parked item's message came from and when it arrived:
 /// "From cobas-e411 · arrived 10:45".
 pub(in crate::admin) fn arrived(machine: &str, at: Timestamp, now: Timestamp) -> Line {
-    Line::text(format!("From {machine} · arrived ")).time(moment(at, now))
+    Line::text(tr_args(
+        "admin-from-arrived",
+        [("machine", (machine).to_string().into())],
+    ))
+    .time(moment(at, now))
 }
 
 /// What a new reading decided for each of its results, counted: "2 new
@@ -97,39 +113,33 @@ pub(in crate::admin) fn outcomes(outcomes: &[RevisionOutcome]) -> String {
     let count = |wanted: fn(&RevisionOutcome) -> bool| {
         u64::try_from(outcomes.iter().filter(|outcome| wanted(outcome)).count()).unwrap_or(u64::MAX)
     };
-    let parts: Vec<String> = [
-        (
+    let parts: Vec<_> = [
+        nonzero_count(
+            "admin-count-new-results",
             count(|o| matches!(o, RevisionOutcome::New(_))),
-            "new result",
-            "new results",
         ),
-        (
+        nonzero_count(
+            "admin-count-corrections",
             count(|o| matches!(o, RevisionOutcome::Correction(_))),
-            "correction",
-            "corrections",
         ),
-        (
+        nonzero_count(
+            "admin-count-already-received",
             count(|o| matches!(o, RevisionOutcome::Retransmission(_))),
-            "result already received",
-            "results already received",
         ),
-        (
+        nonzero_count(
+            "admin-count-conflicts",
             count(|o| matches!(o, RevisionOutcome::Conflict)),
-            "conflicting result kept for review",
-            "conflicting results kept for review",
         ),
-        (
+        nonzero_count(
+            "admin-count-unresolved",
             count(|o| matches!(o, RevisionOutcome::Unresolved)),
-            "result without an identity kept for review",
-            "results without an identity kept for review",
         ),
     ]
     .into_iter()
-    .filter(|(n, _, _)| *n > 0)
-    .map(|(n, one, many)| amount(n, one, many))
+    .flatten()
     .collect();
     if parts.is_empty() {
-        "no results in it".into()
+        tr("admin-no-results-in-it").into()
     } else {
         parts.join(", ")
     }

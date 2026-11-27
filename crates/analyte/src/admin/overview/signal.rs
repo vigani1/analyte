@@ -11,6 +11,7 @@ use crate::admin::removed::Kept;
 use crate::admin::server::Context;
 use crate::admin::view::{Tone, format, format::Line, icon::Icon};
 use crate::machine::link::status::Light;
+use analyte_i18n::{message as tr_args, text as tr};
 use analyte_model::Identifier;
 use analyte_store::{FailingDestination, Health, LastDelivered};
 use jiff::Timestamp;
@@ -68,7 +69,7 @@ pub(super) fn machines(
                 ));
             }
             let (tone, state, wire) = match (running, light) {
-                (false, _) => (Tone::Problem, format::STOPPED, Wire::Cut),
+                (false, _) => (Tone::Problem, format::stopped(), Wire::Cut),
                 (true, Light::Live) => (Tone::Good, status.state(), Wire::Live),
                 (true, Light::Waiting) => (Tone::Neutral, status.state(), Wire::Wait),
                 (true, Light::Off) => (Tone::Problem, status.state(), Wire::Cut),
@@ -93,14 +94,14 @@ pub(super) fn machines(
                     _ => "wire__dot--3",
                 },
                 line: match (running, light) {
-                    (false, _) => Some(format::STOPPED_SENTENCE.into()),
+                    (false, _) => Some(format::stopped_sentence().into()),
                     (true, Light::Live) => None,
                     (true, Light::Waiting | Light::Off) => Some(sentence),
                 },
                 recording: status.recording().map(|tally| {
                     format!(
                         "{}. {}",
-                        format::RECORDING_ONLY,
+                        format::recording_only(),
                         format::recording_counts(tally)
                     )
                 }),
@@ -200,13 +201,13 @@ impl Delivery {
         }
     }
 
-    pub(in crate::admin) const fn word(self) -> &'static str {
+    pub(in crate::admin) fn word(self) -> &'static str {
         match self {
-            Self::CannotDeliver => "Cannot deliver",
-            Self::Paused => "Sending paused",
-            Self::NotDelivering => "Not delivering",
-            Self::Queued => "Queued",
-            Self::UpToDate => "Up to date",
+            Self::CannotDeliver => tr("doctor-overview-cannot-deliver"),
+            Self::Paused => tr("doctor-overview-sending-paused"),
+            Self::NotDelivering => tr("doctor-overview-not-delivering"),
+            Self::Queued => tr("admin-queued"),
+            Self::UpToDate => tr("doctor-overview-up-to-date"),
         }
     }
 }
@@ -306,7 +307,7 @@ fn lab_node(
         mark: if blocked { Icon::Key } else { Icon::Cross },
         lines,
         support: support.into_iter().collect(),
-        todo: blocked.then_some(format::KEYS_ADVICE),
+        todo: blocked.then_some(format::keys_advice()),
     };
     (node, observed)
 }
@@ -357,15 +358,15 @@ async fn missing_keys(state: &Context, kept: &Kept) -> Result<Keys, Error> {
     use crate::installation::{credentials::Locked, secrets};
     let directory = state.directory.clone();
     let names = [
-        ("API key", kept.api_key.clone()),
-        ("signing key", kept.signing_key.clone()),
+        (tr("doctor-overview-api-key"), kept.api_key.clone()),
+        (tr("doctor-overview-signing-key"), kept.signing_key.clone()),
     ];
     Ok(tokio::task::spawn_blocking(move || {
         let stored = match Locked::new(&directory).read() {
             Ok(stored) => stored,
             Err(error) => {
                 return Keys {
-                    line: "Its keys cannot be checked.".into(),
+                    line: tr("doctor-overview-its-keys-cannot-be-checked").into(),
                     support: Some(error.to_string()),
                 };
             }
@@ -395,9 +396,9 @@ pub(in crate::admin) fn order_list(health: &Health) -> (Tone, &'static str, Opti
         .last_successful_poll
         .and_then(|second| Timestamp::from_second(second).ok());
     let (tone, value) = match (health.cache_trusted, checked) {
-        (true, _) => (Tone::Good, "Up to date"),
-        (false, Some(_)) => (Tone::Attention, "Out of date"),
-        (false, None) => (Tone::Neutral, "Not checked yet"),
+        (true, _) => (Tone::Good, tr("doctor-overview-up-to-date")),
+        (false, Some(_)) => (Tone::Attention, tr("doctor-overview-out-of-date")),
+        (false, None) => (Tone::Neutral, tr("doctor-overview-not-checked-yet")),
     };
     (tone, value, checked)
 }
@@ -406,7 +407,10 @@ pub(in crate::admin) fn order_list(health: &Health) -> (Tone, &'static str, Opti
 fn order_list_figure(name: &Identifier, health: &Health, now: Timestamp) -> Figure {
     let (tone, value, checked) = order_list(health);
     Figure {
-        label: format!("Order list · {}", name.as_str()),
+        label: tr_args(
+            "doctor-overview-order-list",
+            [("name", (name.as_str()).to_string().into())],
+        ),
         value: value.into(),
         when: None,
         aside: if checked.is_some() {
@@ -440,10 +444,10 @@ impl Waiting {
 
     fn figures(&self, now: Timestamp) -> [Figure; 2] {
         let items = Figure {
-            label: "Items waiting to send".into(),
+            label: tr("doctor-overview-items-waiting-to-send").into(),
             value: self.count.to_string(),
             when: None,
-            aside: "results and order messages".into(),
+            aside: tr("doctor-overview-results-and-order-messages").into(),
             aside_when: None,
             tone: None,
         };
@@ -454,22 +458,26 @@ impl Waiting {
             .and_then(|second| Timestamp::from_second(second).ok());
         let oldest = match (self.count, self.unknown, since) {
             (0, _, _) => Figure {
-                label: "Oldest waiting".into(),
+                label: tr("doctor-overview-oldest-waiting").into(),
                 value: "—".into(),
                 when: None,
-                aside: format::NOTHING_WAITING.into(),
+                aside: format::nothing_waiting().into(),
                 aside_when: None,
                 tone: None,
             },
             (_, false, Some(at)) => Figure {
-                label: "Oldest waiting".into(),
+                label: tr("doctor-overview-oldest-waiting").into(),
                 value: String::new(),
                 when: Some(format::moment(at, now)),
                 aside: format::ago(at, now),
                 aside_when: None,
                 tone: None,
             },
-            _ => worded("Oldest waiting", Tone::Neutral, format::NOT_RECORDED),
+            _ => worded(
+                tr("doctor-overview-oldest-waiting"),
+                Tone::Neutral,
+                format::not_recorded(),
+            ),
         };
         [items, oldest]
     }

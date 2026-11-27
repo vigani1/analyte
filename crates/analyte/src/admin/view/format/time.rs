@@ -1,5 +1,5 @@
 //! Says times, durations and countdowns in the PC's own time zone, and builds the lines that carry a time with its exact value.
-use super::amount;
+use analyte_i18n::{count as tr_count, message as tr_args, text as tr};
 use jiff::{Timestamp, tz::TimeZone};
 
 /// A length of time in its largest whole unit: "45 s", "3 min", "2 h", "1 day".
@@ -8,7 +8,7 @@ pub(in crate::admin) fn duration(seconds: u64) -> String {
         0..60 => format!("{seconds} s"),
         60..3_600 => format!("{} min", seconds / 60),
         3_600..86_400 => format!("{} h", seconds / 3_600),
-        _ => amount(seconds / 86_400, "day", "days"),
+        _ => tr_count("admin-count-days", seconds / 86_400),
     }
 }
 
@@ -27,8 +27,11 @@ pub(in crate::admin) fn limit(limit: std::time::Duration) -> String {
 /// has one.
 pub(in crate::admin) fn time_zone() -> String {
     match TimeZone::system().iana_name() {
-        Some(name) => format!("This PC’s time zone ({name})"),
-        None => "This PC’s time zone".into(),
+        Some(name) => tr_args(
+            "admin-this-pc-s-time-zone",
+            [("name", (name).to_string().into())],
+        ),
+        None => tr("admin-this-pc-s-time-zone-2").into(),
     }
 }
 
@@ -36,9 +39,9 @@ pub(in crate::admin) fn time_zone() -> String {
 /// "less than a minute ago", since seconds are not worth reading.
 pub(in crate::admin) fn ago(then: Timestamp, now: Timestamp) -> String {
     match u64::try_from(now.as_second().saturating_sub(then.as_second())) {
-        Ok(0..60) => "less than a minute ago".into(),
+        Ok(0..60) => tr("admin-less-than-a-minute-ago").into(),
         Ok(seconds) => format!("{} ago", duration(seconds)),
-        Err(_) => "unknown (clock moved back)".into(),
+        Err(_) => tr("admin-unknown-clock-moved-back").into(),
     }
 }
 
@@ -69,7 +72,10 @@ pub(in crate::admin) fn page_loaded(now: Timestamp) -> String {
 }
 
 fn page_loaded_in(now: Timestamp, zone: &TimeZone) -> String {
-    format!("Page loaded {}", clock_in(now, now, zone))
+    tr_args(
+        "admin-page-loaded",
+        [("zone", (clock_in(now, now, zone)).to_string().into())],
+    )
 }
 
 /// The time a live page last heard from Analyte, to the second: "10:45:12".
@@ -119,7 +125,10 @@ pub(in crate::admin) fn local_time(at: Timestamp) -> String {
 
 /// A stored Unix time outside the calendar, shown as it is.
 pub(super) fn not_a_date(seconds: i64) -> String {
-    format!("Unix time {seconds} (not a valid date)")
+    tr_args(
+        "admin-unix-time-not-a-valid-date",
+        [("seconds", (seconds).to_string().into())],
+    )
 }
 
 /// A time ready for a `<time>` element: its machine-readable value, what

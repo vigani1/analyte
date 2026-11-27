@@ -11,15 +11,18 @@ use crate::admin::view::{
     icon::Icon,
     parts::Notice,
 };
+use analyte_i18n::{count as tr_count, message as tr_args, text as tr};
 
 /// The alerts table's columns.
-pub(super) const ALERT_COLUMNS: [Column; 5] = [
-    Column::text("Alert"),
-    Column::text(format::MACHINE),
-    Column::text("Responder"),
-    Column::text("Raised"),
-    Column::number("Last value"),
-];
+pub(super) fn alert_columns() -> [Column; 5] {
+    [
+        Column::text(tr("doctor-overview-alert")),
+        Column::text(format::machine()),
+        Column::text(tr("doctor-overview-responder")),
+        Column::text(tr("doctor-overview-raised")),
+        Column::number(tr("doctor-overview-last-value")),
+    ]
+}
 
 /// GET / once something is set up or needs someone.
 #[derive(askama::Template)]
@@ -58,12 +61,14 @@ pub(super) struct Welcome {
 }
 
 /// The setup wizard's four steps (`setup::wizard::Step`) as the welcome words them.
-pub(super) const WIZARD_STEPS: [&str; 4] = [
-    "Pick the machine’s model",
-    "Choose how it’s connected and which lab app gets its results",
-    "Run a listen-only test. Analyte only reads and sends nothing to the machine",
-    "Save, then restart Analyte to use the new settings",
-];
+pub(super) fn wizard_steps() -> [&'static str; 4] {
+    [
+        tr("doctor-overview-pick-the-machine-s-model"),
+        tr("doctor-overview-choose-how-it-s-connected-and-which-lab-app"),
+        tr("doctor-overview-run-a-listen-only-test-analyte-only-reads-and"),
+        tr("doctor-overview-save-then-restart-analyte-to-use-the-new-settings"),
+    ]
+}
 
 /// The answer to "is everything OK?": all good, or the things that need someone.
 pub(super) struct Verdict {
@@ -87,24 +92,23 @@ pub(super) struct Todo {
 /// The verdict's title for `count` things: "All good", or "3 things need you".
 pub(super) fn title(count: usize) -> String {
     if count == 0 {
-        return "All good".into();
+        return tr("desktop-all-good").into();
     }
     format!(
         "{} you",
-        format::amount(
-            u64::try_from(count).unwrap_or(u64::MAX),
-            "thing needs",
-            "things need"
+        tr_count(
+            "admin-count-things-need",
+            u64::try_from(count).unwrap_or(u64::MAX)
         )
     )
 }
 
 /// The line under the verdict's title for `count` things.
-pub(super) const fn sub(count: usize) -> &'static str {
+pub(super) fn sub(count: usize) -> &'static str {
     if count == 0 {
-        "Nothing needs you right now."
+        tr("doctor-overview-nothing-needs-you-right-now")
     } else {
-        "Analyte keeps everything it has received while you fix these."
+        tr("doctor-overview-analyte-keeps-everything-it-has-received-while-you-fix")
     }
 }
 
@@ -165,20 +169,20 @@ impl Wire {
     }
 
     /// The legend's sample line for this kind.
-    pub(super) const fn legend_class(self) -> &'static str {
+    pub(super) fn legend_class(self) -> &'static str {
         match self {
             Self::Live => "legend__line",
-            Self::Wait => "legend__line legend__line--wait",
-            Self::Cut => "legend__line legend__line--cut",
+            Self::Wait => tr("doctor-overview-legend-line-legend-line-wait"),
+            Self::Cut => tr("doctor-overview-legend-line-legend-line-cut"),
         }
     }
 
     /// What the legend calls it: an open link does not prove that data flows.
-    pub(super) const fn word(self) -> &'static str {
+    pub(super) fn word(self) -> &'static str {
         match self {
-            Self::Live => "Link open",
-            Self::Wait => "Waiting",
-            Self::Cut => "Broken",
+            Self::Live => tr("doctor-overview-link-open"),
+            Self::Wait => tr("doctor-overview-waiting-2"),
+            Self::Cut => tr("doctor-overview-broken"),
         }
     }
 }
@@ -261,9 +265,15 @@ impl Disk {
     pub(super) fn of(free: u64, reserve: u64) -> Self {
         Self {
             free: format!("{} free", format::bytes(free)),
-            free_exact: format!("{free} bytes free"),
+            free_exact: tr_args(
+                "doctor-overview-bytes-free",
+                [("free", (free).to_string().into())],
+            ),
             reserve: format::bytes(reserve),
-            reserve_exact: format!("{reserve} bytes"),
+            reserve_exact: tr_args(
+                "doctor-overview-bytes",
+                [("reserve", (reserve).to_string().into())],
+            ),
             enough: free > reserve,
         }
     }
@@ -276,11 +286,11 @@ impl Disk {
         }
     }
 
-    pub(super) const fn status(&self) -> &'static str {
+    pub(super) fn status(&self) -> &'static str {
         if self.enough {
-            "Enough space"
+            tr("doctor-overview-enough-space")
         } else {
-            "Almost full: receiving refused"
+            tr("doctor-overview-almost-full-receiving-refused")
         }
     }
 }
