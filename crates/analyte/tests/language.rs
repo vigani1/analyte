@@ -63,3 +63,22 @@ fn doctor_renders_in_spanish() -> Result<(), Box<dyn std::error::Error>> {
     );
     Ok(())
 }
+
+// ADR 0039: `--lang de` scopes the diagnostic output to German, with the
+// German plural forms for the counts.
+#[test]
+fn doctor_renders_in_german() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+        .args(["--lang", "de", "--config"])
+        .arg(directory.path().join("missing.toml"))
+        .arg("doctor")
+        .output()?;
+    assert_eq!(output.status.code(), Some(2));
+    let diagnostics = String::from_utf8(output.stdout)?;
+    assert!(
+        diagnostics.contains("Diagnose: 1 Fehler und 0 Warnungen."),
+        "{diagnostics}"
+    );
+    Ok(())
+}

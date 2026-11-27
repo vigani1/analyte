@@ -44,6 +44,15 @@ const SPANISH: &[&str] = &[
     include_str!("../../../../locales/es/dates.ftl"),
 ];
 
+const GERMAN: &[&str] = &[
+    include_str!("../../../../locales/de/admin.ftl"),
+    include_str!("../../../../locales/de/setup.ftl"),
+    include_str!("../../../../locales/de/cli.ftl"),
+    include_str!("../../../../locales/de/desktop.ftl"),
+    include_str!("../../../../locales/de/doctor-overview.ftl"),
+    include_str!("../../../../locales/de/dates.ftl"),
+];
+
 struct Catalog {
     tag: &'static str,
     name: &'static str,
@@ -121,6 +130,7 @@ static TRANSLATIONS: LazyLock<Vec<Catalog>> = LazyLock::new(|| {
         ("sq", "Shqip", ALBANIAN),
         ("fr", "Français", FRENCH),
         ("es", "Español", SPANISH),
+        ("de", "Deutsch", GERMAN),
     ];
     embedded
         .iter()
@@ -355,6 +365,24 @@ mod tests {
                 );
                 assert_eq!(weekday(1), "lunes");
                 assert_eq!(month(11), "noviembre");
+            });
+        }
+    }
+
+    // ADR 0039: regional German tags use the one German catalog, and
+    // CLDR German plurals have one and other.
+    #[test]
+    fn german_matches_regional_tags_and_formats_one_and_other() {
+        for tag in ["de", "de-DE", "de-AT", "de-CH"] {
+            let language = Language::select([tag, "en"]);
+            assert_eq!(language.tag(), "de");
+            assert_eq!(language.name(), "Deutsch");
+            language.sync_scope(|| {
+                assert_eq!(text("admin-language"), "Sprache");
+                assert_eq!(count("admin-count-results", 1_u64), "1 Ergebnis");
+                assert_eq!(count("admin-count-results", 2_u64), "2 Ergebnisse");
+                assert_eq!(weekday(1), "Montag");
+                assert_eq!(month(3), "März");
             });
         }
     }
