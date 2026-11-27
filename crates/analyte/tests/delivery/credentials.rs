@@ -540,3 +540,47 @@ async fn restart_after_store_before_ack_delivers_once() -> Result<(), Error> {
     reference.close().await?;
     Ok(())
 }
+
+// ADR 0037; CLSI LIS01-A2 §8.3.3; LIS02-A2 §8.4.3: a de-identified copy of an
+// upload replays through the program and delivers the same result, under the
+// stand-in sample ID.
+#[tokio::test]
+async fn de_identified_upload_delivers_the_same_result() -> Result<(), Error> {
+    use analyte::operator::captures::deidentify;
+    let directory = tempfile::tempdir()?;
+    let path = config(directory.path(), true)?;
+    let receiver_path = directory.path().join("reference.db");
+    let mut reference = Reference::start(
+        &receiver_path,
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
+    let (header, events) = recording("astm")?;
+    let copy = deidentify::de_identify(&header, &events, None)?;
+    let order = copy
+        .events
+        .iter()
+        .find(|event| event.bytes.windows(4).any(|w| w == b"O|1|"))
+        .ok_or("order frame")?;
+    let text = std::str::from_utf8(&order.bytes)?;
+    let sample = text
+        .split('|')
+        .nth(2)
+        .and_then(|field| field.split('\r').next())
+        .ok_or("sample ID")?;
+    assert_ne!(sample, "00012A");
+    assert_eq!(sample.len(), 6);
+    assert!(sample.starts_with("000"));
+    let mut peer = connect(&path, "astm").await?;
+    let deadline = recording_deadline(&path)?;
+    analyte_sim::replay(&mut peer, &copy.events, &copy.header.exceptions, deadline).await?;
+    recording_eof(&mut peer).await?;
+    let delivered = reference.event().await?;
+    assert_content(&delivered, "astm", sample, "12.30", "final", 0)?;
+    wait_state(&path, "done", 1).await?;
+    service.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
