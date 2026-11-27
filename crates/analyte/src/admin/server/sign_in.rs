@@ -98,7 +98,7 @@ impl Attempt {
         match self {
             Self::Open | Self::WrongKey | Self::Unreadable => None,
             Self::Form => attention(
-                "Nothing was changed",
+                format::NOTHING_CHANGED,
                 "The form was sent without a signed-in session. Sign in, then open the page again and repeat what you did.",
             ),
             Self::Windows(Declined::NotAllowed) => attention(
@@ -188,7 +188,7 @@ fn sign_in_page(
     let mut response = match session {
         Ok(session) => {
             let page = Page {
-                frame: Plain::new(&state.assets, "Sign in"),
+                frame: Plain::new(&state.assets, SIGN_IN),
                 csrf: session.csrf.form_value().to_owned(),
                 error: attempt.error(),
                 notice: attempt.notice(),
@@ -199,7 +199,7 @@ fn sign_in_page(
                 Ok(html) => (StatusCode::UNAUTHORIZED, Html(html)).into_response(),
                 Err(render) => Refusal::PageFailed {
                     status: StatusCode::UNAUTHORIZED,
-                    title: "Sign in",
+                    title: SIGN_IN,
                     text: "The sign-in page could not be shown. Give the details below to support.",
                     detail: format!("sign-in page failed: {render}"),
                 }
@@ -355,3 +355,6 @@ pub(super) async fn logout(
         .insert(header::LOCATION, header::HeaderValue::from_static("/login"));
     response
 }
+
+/// Labels the sign-in page and its action.
+pub(in crate::admin) const SIGN_IN: &str = "Sign in";

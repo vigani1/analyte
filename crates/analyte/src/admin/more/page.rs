@@ -35,7 +35,7 @@ pub(super) const ORDER_COLUMNS: [Column; 7] = [
     Column::text("Last change"),
     Column::text("Order"),
     Column::text("Sample"),
-    Column::text("Machine"),
+    Column::text(crate::admin::view::format::MACHINE),
     Column::number("Tests"),
     Column::text("Status"),
     Column::action("Action"),

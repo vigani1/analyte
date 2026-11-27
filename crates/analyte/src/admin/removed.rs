@@ -211,6 +211,10 @@ fn names(machines: &[Identifier]) -> String {
     text
 }
 
+/// Heads the warning when the count for removed machines is unavailable.
+pub(in crate::admin) const COUNT_FAILED: &str =
+    "Results still waiting from removed machines could not be counted";
+
 #[cfg(test)]
 mod tests {
     use super::*;

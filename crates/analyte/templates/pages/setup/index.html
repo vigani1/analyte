@@ -6,19 +6,19 @@
 {%- import "components/layout.html" as layout %}
 {%- block main %}
 {% call layout::intro_head("", "Setup", "Add a machine, or choose one to set its connection and pick its lab app. Changes apply after Analyte restarts.") %}
-{% call forms::icon_button("/setup/add", crate::admin::view::icon::Icon::Plus, "Add a machine", "btn--primary") %}{% endcall %}
+{% call forms::icon_button("/setup/add", crate::admin::view::icon::Icon::Plus, crate::admin::view::format::ADD_MACHINE, "btn--primary") %}{% endcall %}
 {% endcall %}
 <section class="card card--pad stack" aria-labelledby="st-labs">
-<h2 id="st-labs" class="label">Lab apps</h2>
+<h2 id="st-labs" class="label">{{ crate::admin::view::Tab::LabApps.label() }}</h2>
 <p class="text">Where results are sent. Each lab app is set once, with its address and keys; each machine picks one in setup step 2.</p>
 {%- match lab_apps %}
 {%- when LabApps::None %}
-{% call feedback::note("No lab app is set up yet", "Setting up a machine needs one. Add it first: its address and keys.") %}{% endcall %}
-<p class="cluster">{% call forms::link_button("/setup/lab-apps/new", "Add a lab app", "btn--primary btn--sm") %}{% endcall %}</p>
+{% call feedback::note(crate::admin::setup::NO_LAB_APP, "Setting up a machine needs one. Add it first: its address and keys.") %}{% endcall %}
+<p class="cluster">{% call forms::link_button("/setup/lab-apps/new", crate::admin::setup::ADD_LAB_APP, "btn--primary btn--sm") %}{% endcall %}</p>
 {%- when LabApps::Some %}
 <p class="cluster">{% call forms::link_button(crate::admin::view::Tab::LabApps.href(), "Open Lab apps", "btn--outline btn--sm") %}{% endcall %}</p>
 {%- when LabApps::Unreadable(why) %}
-{% call feedback::alert(crate::admin::view::Tone::Problem, "The lab apps file could not be read", why) %}{% endcall %}
+{% call feedback::alert(crate::admin::view::Tone::Problem, crate::admin::setup::LAB_APPS_UNREADABLE, why) %}{% endcall %}
 {%- endmatch %}
 </section>
 {%- for notice in notices %}
@@ -29,20 +29,20 @@
 {%- match machines %}
 {%- when Ok(rows) %}
 {%- if rows.is_empty() %}
-{% call feedback::empty_card("No machine is listed", "Add the first machine; its setup steps follow.") %}{% call forms::link_button("/setup/add", "Add a machine", "btn--outline btn--sm") %}{% endcall %}{% endcall %}
+{% call feedback::empty_card("No machine is listed", "Add the first machine; its setup steps follow.") %}{% call forms::link_button("/setup/add", crate::admin::view::format::ADD_MACHINE, "btn--outline btn--sm") %}{% endcall %}{% endcall %}
 {%- else %}
 {% call display::table(MACHINE_COLUMNS) %}
 {%- for row in rows %}
 <tr>{% call display::cell("") %}<div class="cell-main">{% if let Some((setup, _)) = row.links %}<a href="{{ setup }}">{{ row.id }}</a>{% else %}{{ row.id }}{% endif %}</div>{% endcall %}
-{%- if let Some(model) = row.model %}{% call display::cell("") %}{% call display::hover(model.shown, model.exact) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("subtle") %}Not chosen yet{% endcall %}{% endif %}
+{%- if let Some(model) = row.model %}{% call display::cell("") %}{% call display::hover(model.shown, model.exact) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("subtle") %}{{ crate::admin::view::format::NOT_CHOSEN }}{% endcall %}{% endif %}
 {%- call display::cell("") %}{% call display::status_with(row.status.tone, row.status.icon, row.status.word, "") %}{% endcall %}{% endcall %}
-{%- if let Some(version) = row.version %}{% call display::cell("") %}{% call display::code(version.shown, version.exact) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("subtle") %}Not running yet{% endcall %}{% endif %}
-{%- call display::cell("right") %}{% if let Some((setup, remove)) = row.links %}<span class="cluster setup__actions">{% call forms::link_button(setup, "Set up", "btn--outline btn--sm") %}{% endcall %}{% call forms::link_button(remove, "Remove", "btn--danger-quiet btn--sm") %}{% endcall %}</span>{% endif %}{% endcall %}</tr>
+{%- if let Some(version) = row.version %}{% call display::cell("") %}{% call display::code(version.shown, version.exact) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("subtle") %}{{ crate::admin::view::format::NOT_RUNNING }}{% endcall %}{% endif %}
+{%- call display::cell("right") %}{% if let Some((setup, remove)) = row.links %}<span class="cluster setup__actions">{% call forms::link_button(setup, "Set up", "btn--outline btn--sm") %}{% endcall %}{% call forms::link_button(remove, crate::admin::setup::REMOVE, "btn--danger-quiet btn--sm") %}{% endcall %}</span>{% endif %}{% endcall %}</tr>
 {%- endfor %}
 {% endcall %}
 {%- endif %}
 {%- when Err(why) %}
-{% call feedback::alert(crate::admin::view::Tone::Problem, "Analyte’s settings could not be read", why) %}{% endcall %}
+{% call feedback::alert(crate::admin::view::Tone::Problem, crate::admin::view::format::SETTINGS_UNREADABLE, why) %}{% endcall %}
 {%- endmatch %}
 </section>
 <section class="stack" aria-labelledby="st-models">

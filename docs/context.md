@@ -98,17 +98,19 @@ Open questions in its README in `machines/`.
 
 ### Before machine configs (phase 7)
 
-No machine config is written or qualified yet; each machine folder in
-`machines/` holds a blocked definition listing what is missing. The config
+No machine config is qualified yet. Since the ADR 0034 amendment
+(2026-11-26), cobas e 411, iFlash 1200, Biolyte 2000, VIDAS and Autolyser
+ship full definitions written from their manuals at level documented; Swelab
+Lumi holds a blocked definition listing what is missing. The config
 already offers what the cobas mapping needs (selectors, QC rules, correction
 codes in `crates/core/config/src/schema/mod.rs`) and the legacy HL7 query
 exchange (`crates/core/config/src/orders/mod.rs`).
 
-- cobas e 411 and Biolyte 2000: no known config gap; the lab's settings and a
-  recording are still needed.
-- iFlash 1200: the categorized ORU departure reads documented patient and
-  QC layouts. Installed behavior, report completion and measurement identity
-  still need evidence.
+- cobas e 411, Biolyte 2000, VIDAS and Autolyser: shipped at documented;
+  the lab's settings and recordings are still needed to confirm them.
+- iFlash 1200: shipped at documented; the categorized ORU departure reads
+  documented patient and QC layouts. Installed behavior, report completion
+  and measurement identity still need evidence.
 - Swelab Lumi: nothing can be added until the installed protocol is known.
 
 Machine-specific behavior needs evidence before it becomes a named departure.

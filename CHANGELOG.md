@@ -9,6 +9,16 @@
   message control ID. The connection stays open for the next message
   (ADR 0010, amended 2026-11-27).
 
+- The plan, guides and READMEs no longer call cobas e 411, iFlash 1200,
+  Biolyte 2000, VIDAS and Autolyser blocked: they ship definitions at level
+  documented. Swelab Lumi stays blocked.
+- The bioMérieux VIDAS definition offers "Other version (not checked)" in
+  Setup. The sample-ID limit is now its own question, "Longest sample ID the
+  VIDAS PC accepts: 12 or 17 characters", with no suggestion, so an unchecked
+  version never implies a limit. Software 4.0.0 answers 12 and VU_06 answers
+  17, as before; an existing VIDAS site file needs the new
+  `sample_id_length` answer before it loads (ADR 0032).
+
 - `analyte captures de-identify` writes a de-identified copy of a recording on
   the lab PC: patient fields become synthetic values of the same shape and
   checksums are recomputed, so the copy still replays. ASTM, HL7, IHE LAW,

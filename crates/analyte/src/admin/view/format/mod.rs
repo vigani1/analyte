@@ -23,24 +23,34 @@ pub(in crate::admin) use href::{
     lab_app_href, machine_href, order_item_href, parked_href, path_segment, setup_href,
 };
 pub(in crate::admin) use lab_app::{
-    failing, last_delivered, missing_keys, senders, set_in_environment, set_on, waiting,
+    LAB_APP, NOTHING_WAITING, SEND_AGAIN, WAITING_TO_SEND, failing, last_delivered, missing_keys,
+    senders, set_in_environment, set_on, waiting,
 };
 pub(in crate::admin) use look::{StateLook, attempt_look, delivery_look, execution, order_look};
 pub(in crate::admin) use machine::{
-    MachineCounts, OPEN_TO_ANY, OPEN_TO_ANY_ADVICE, RECORDING_ONLY, REFUSED_ADVICE, accepts,
-    connection_detail, connection_kind, connection_note, control_names, deliveries, departure,
-    driver, link_advice, link_sentence, machine_lede, machines_summary, reading, recording_counts,
+    ACCEPTS_FROM, ADD_MACHINE, ANALYZER_SETTINGS, ANY_DEVICE, CABLE_SETTINGS, CONNECTED_BY,
+    CONNECTION, IN_ANALYTE, LAST_DATA, MACHINE, MODEL, MachineCounts, NO_MACHINE_RUNNING,
+    NO_MACHINE_SET_UP, NOT_CHOSEN, NOT_RUNNING, NOT_SET_UP, NOTHING_RECEIVED_YET, OPEN_MACHINE,
+    OPEN_TO_ANY, OPEN_TO_ANY_ADVICE, RECORDING_ONLY, REFUSED_ADVICE, SENDS_RESULTS_TO,
+    SETTINGS_UNREADABLE, STARTS_AFTER_RESTART, STOPS_AT_RESTART, accepts, connection_detail,
+    connection_kind, connection_note, control_names, deliveries, departure, driver, link_advice,
+    link_sentence, machine_lede, machines_summary, only_devices, reading, recording_counts,
     refused, samples,
 };
-pub(in crate::admin) use parked::{POLL_TITLE, explain, reason_words};
+pub(in crate::admin) use parked::{
+    AS_ARRIVED, COMPARE_MEASUREMENTS, HOW_READ, LINKED_RECORD, MARK_RESOLVED, MARKED_RESOLVED,
+    OPEN_ITEM, ORIGINAL_MESSAGE, POLL_TITLE, PROCESS_AGAIN, PROCESSED_AGAIN, SHOW_ORIGINAL,
+    explain, reason_words,
+};
 pub(in crate::admin) use time::{
     Line, Moment, Part, ago, clock, countdown, duration, exact_time, limit, live_clock, local_time,
     moment, moment_unix, page_loaded, time_zone, today, today_span,
 };
 pub(in crate::admin) use wording::{
-    FAILING_ADVICE, KEY_NEEDED, KEY_UNCHECKED, KEYS_ADVICE, KEYS_APPLY, NOT_APPLICABLE,
-    NOT_RECORDED, NOTHING_YET, PATIENT_DATA, PATIENT_DATA_TEXT, REMOVED_ADVICE, RESTART_ADVICE,
-    RESTORE_ADVICE, RESTORE_PAUSED, SET_UP_ADVICE, SLOW_READ, STOPPED, STOPPED_SENTENCE, SUPPORT,
+    FAILING_ADVICE, FIRST_PAGE, KEY_NEEDED, KEY_UNCHECKED, KEYS_ADVICE, KEYS_APPLY, NOT_APPLICABLE,
+    NOT_RECORDED, NOTHING_CHANGED, NOTHING_YET, PATIENT_DATA, PATIENT_DATA_TEXT, REMOVED_ADVICE,
+    RESTART_ADVICE, RESTART_NOW, RESTORE_ADVICE, RESTORE_PAUSED, SET_UP_ADVICE, SLOW_READ, STOPPED,
+    STOPPED_SENTENCE, SUPPORT,
 };
 
 /// A size such as "477 GB" or "1.5 MB"; under 1 KB it counts bytes.

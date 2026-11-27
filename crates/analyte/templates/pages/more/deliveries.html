@@ -16,13 +16,13 @@
 {%- if !rows.is_empty() %}
 {% call display::table(DELIVERY_COLUMNS) %}
 {%- for row in rows %}
-<tr>{% if let Some(queued) = row.queued %}{% call display::cell("num") %}{% call display::time(queued) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("subtle") %}Not recorded{% endcall %}{% endif %}
+<tr>{% if let Some(queued) = row.queued %}{% call display::cell("num") %}{% call display::time(queued) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("subtle") %}{{ crate::admin::view::format::NOT_RECORDED }}{% endcall %}{% endif %}
 {%- if let Some((shown, all)) = row.sample %}{% call display::cell("num") %}{% call display::hover(shown, all) %}{% endcall %}{% endcall %}{% else if let Some(kind) = row.kind %}{% call display::cell("subtle more-nowrap") %}{{ kind }}{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}
 {%- if let Some(from) = row.from %}{% call display::cell("more-nowrap") %}{{ from }}{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}
 {%- call display::cell("more-nowrap") %}{{ row.to }}{% endcall %}
 {%- if let Some(results) = row.results %}{% call display::cell("num right") %}{{ results }}{% endcall %}{% else %}{% call display::cell("right subtle") %}—{% endcall %}{% endif %}
 {%- call display::cell("") %}{% call display::status_with(row.outcome.tone, row.outcome.icon, row.outcome.word, row.outcome.exact) %}{% endcall %}{% endcall %}
-{%- if let Some(href) = row.resend %}{% call display::cell("right more-nowrap") %}<a class="link" href="{{ href }}">Send again</a>{% endcall %}{% else %}{% call display::cell("") %}{% endcall %}{% endif %}</tr>
+{%- if let Some(href) = row.resend %}{% call display::cell("right more-nowrap") %}<a class="link" href="{{ href }}">{{ crate::admin::view::format::SEND_AGAIN }}</a>{% endcall %}{% else %}{% call display::cell("") %}{% endcall %}{% endif %}</tr>
 {%- endfor %}
 {% endcall %}
 {%- endif %}

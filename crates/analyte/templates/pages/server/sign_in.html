@@ -22,7 +22,7 @@
 {%- endmatch %}
 <div class="field"><label class="field__label" for="si-key">Admin key</label><input id="si-key" class="input" type="password" name="token" required autocomplete="off" maxlength="44" autofocus{% if error.is_some() %} aria-invalid="true" aria-describedby="si-error"{% endif %}>
 {%- if let Some(error) = error %}<span id="si-error" class="field__error">{% call draw::icon(crate::admin::view::icon::Icon::Problem, "icon--sm") %}{% endcall %}{{ error }}</span>{% endif %}</div>
-<button type="submit" class="btn btn--primary btn--lg panel__action">Sign in</button>
+<button type="submit" class="btn btn--primary btn--lg panel__action">{{ crate::admin::server::SIGN_IN }}</button>
 {%- if windows %}
 {% call forms::link_button("/login/windows", "Sign in with Windows", "btn--outline btn--lg panel__action") %}{% endcall %}
 {%- endif %}

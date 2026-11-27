@@ -4,7 +4,7 @@
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head(today, "Overview", "") %}{% if !counts.is_empty() %}<p class="mono subtle page-head__aside">{{ counts }}</p>{% endif %}{% endcall %}
+{% call layout::intro_head(today, crate::admin::view::Tab::Overview.label(), "") %}{% if !counts.is_empty() %}<p class="mono subtle page-head__aside">{{ counts }}</p>{% endif %}{% endcall %}
 {% call display::verdict(verdict) %}{% endcall %}
 
 <section class="section" id="sending" aria-labelledby="ov-path">
